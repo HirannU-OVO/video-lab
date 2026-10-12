@@ -1050,7 +1050,9 @@ function openSettingsWindow() {
     if (mainWin && !mainWin.isDestroyed() && mainWin.webContents && !mainWin.webContents.isDestroyed()) {
       mainWin.webContents.send('settings_window_opened');
     }
-    if (httpServerInfo && httpServerInfo.broadcastAll) httpServerInfo.broadcastAll('settings_window_opened', null);
+    // ⚠ 刻意**不广播**：内嵌设置面板是软件端主窗口的 UI 状态；广播会让浏览器端主页面也弹出设置面板，
+    //   而浏览器端没有 IPC 通道去关闭它（表现为「浏览器端那个关不掉，得软件端关」）。
+    //   浏览器端要用设置页，走它自己的入口（settings.html 本身就是完整页面）。
   } catch (e) {}
   return null;
 }
@@ -1061,7 +1063,7 @@ function closeSettingsPanel() {
     if (mainWin && !mainWin.isDestroyed() && mainWin.webContents && !mainWin.webContents.isDestroyed()) {
       mainWin.webContents.send('settings_window_closed');
     }
-    if (httpServerInfo && httpServerInfo.broadcastAll) httpServerInfo.broadcastAll('settings_window_closed', null);
+    // 同上：与 settings_window_opened 成对，不广播。
   } catch (e) {}
   // 关闭后把主窗口提回前台：面板里可能开过资源管理器（打开日志/选择目录），
   // explorer 会压在 Z 序上方，Windows 激活的常常不是主窗
@@ -1163,14 +1165,19 @@ function cmpVersion(a, b) {
   }
   return 0;
 }
+// 不跨端广播的事件：更新链路（见下方两处调用的说明）
+//   · 浏览器端发起检查走 HTTP，结果由返回值给到发起页面（页面自己弹窗）；
+//     若把事件也广播回去，浏览器端会重复弹（主页面一个 + 内嵌设置页一个，要关两次）。
+//   · 窗口 UI 状态（settings_window_*）同理：那是软件端窗口的事。
+const NO_BROADCAST = /^(update_|check_update_result$|settings_window_)/;
 function sendToMain(channel, payload) {
   try { if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send(channel, payload); } catch (e) {}
-  if (httpServerInfo && httpServerInfo.broadcastAll) httpServerInfo.broadcastAll(channel, payload);
+  if (!NO_BROADCAST.test(channel) && httpServerInfo && httpServerInfo.broadcastAll) httpServerInfo.broadcastAll(channel, payload);
 }
 function sendToSettings(channel, payload) {
   // 设置已内嵌为主窗口面板：发给设置页的广播直接投递到主窗口
   try { if (mainWin && !mainWin.isDestroyed() && mainWin.webContents && !mainWin.webContents.isDestroyed()) mainWin.webContents.send(channel, payload); } catch (e) {}
-  if (httpServerInfo && httpServerInfo.broadcastAll) httpServerInfo.broadcastAll(channel, payload);
+  if (!NO_BROADCAST.test(channel) && httpServerInfo && httpServerInfo.broadcastAll) httpServerInfo.broadcastAll(channel, payload);
 }
 // 更新链路日志：不落盘（保留调用点，便于需要时接回）
 function writeUpdateLog(line) {}
@@ -1936,8 +1943,10 @@ function buildHttpExtraRoutes() {
       return url ? { ok: true, url } : { ok: false, error: 'HTTP 服务未就绪' };
     },
     check_update: (args) => {
+      // 浏览器端发起：结果由返回值给到发起页面（自己弹窗），不通知软件端主窗口 —— 否则
+      // 浏览器端点一下，软件端也会弹一个（跨端串扰）。
       const silent = !!args[0];
-      return checkForUpdate({ silent: silent, notifyMain: true });
+      return checkForUpdate({ silent: silent, notifyMain: false });
     },
     // 浏览器侧同样支持「检查更新前先让更新源/方式即时生效」（与 IPC 路径共用同一处理函数）
     apply_update_pref: (args) => applyUpdatePref(args[0]),
@@ -2241,7 +2250,7 @@ function registerIpc() {
     // 故此处不通知主窗口 —— 否则软件端会双弹（设置面板内一个、主窗口一个）。
     // 托盘入口仍走 notifyMain（见 tray_menu_click），由主窗口弹。
     // ⚠ checkForUpdate 内的三处事件都有 !silent 闸门：后台自动/每日检查不会弹窗打扰。
-    return checkForUpdate({ silent: !!silent, notifyMain: false });
+    return checkForUpdate({ silent: !!silent, notifyMain: false });   // 结果由设置页自己弹（见 settings.js 的 showUr）
   });
   // 设置页：更新源/更新方式即时落盘（检查更新前调用，使界面当前选中值立刻生效）
   ipcMain.handle('apply_update_pref', (e, pref) => applyUpdatePref(pref));
