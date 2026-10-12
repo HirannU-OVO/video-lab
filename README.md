@@ -64,22 +64,11 @@ Video Lab/
 
 ## 运行环境
 
-应用依赖以下外部环境（FFmpeg 由应用自行获取，无需手动安装）。**FFmpeg 缺失时应用会在启动后自动下载**（国内镜像，无需手动配置；仅在下载失败时才提示）：
-
 - **NVIDIA 显卡（必需）**
 
   视频编码使用 NVIDIA NVENC 硬件编码器，必须配备 NVIDIA 独立显卡才能生成成片；
   暂不支持 CPU 回退编码，也不支持 AMD / Intel 等其他显卡的硬件编码。
 
-- **FFmpeg / FFprobe（自动获取，无需手动安装）**
-
-  应用启动时自动检测环境（含滤镜与编码器的可用性），缺失即**静默下载**一份
-  （npmmirror 的 ffmpeg-builds 构建），落在**程序目录的 `resources\ffmpeg`** ——
-  内置目录是唯一权威，缺了就地修复，不在数据目录另养副本；仅当该目录不可写
-  （装在受保护位置或只读盘）才退回数据目录。
-  全程不依赖系统 PATH，避免不同机器的 PATH 差异导致环境意外；下载失败时界面会提示「重新下载」。
-
-  如需离线自备：把 `ffmpeg.exe` 与 `ffprobe.exe` 放进上述 `ffmpeg` 目录即可。
 
 ## 首次运行
 
@@ -97,11 +86,9 @@ npm start              # 开发运行
 npm run build:dir      # 构建可直接运行的程序（产出 dist\win-unpacked，双击其中的 Video Lab.exe 即可使用）
 ```
 
-> 构建产物是**可直接运行的目录** `dist\win-unpacked\`：拷走整个目录、双击 `Video Lab.exe` 即可使用，无需安装。
-> **本仓库不产出安装包**（安装包等分发产物属各自的发布流程，不在本仓库范围内）。
->
-> 任务引擎（`engines/`）随构建内置，复制为产物 `resources\Engines`；FFmpeg 不在构建产物内，
-> 由应用首次启动时自动获取（见上）。任务执行全部由内置 Node 引擎完成，不依赖系统安装 PowerShell。
+> 构建产物是**可直接运行的目录** `dist\win-unpacked\`：双击里面的 `Video Lab.exe` 即可使用，无需安装。
+
+> FFmpeg 不在构建产物内，应用启动会自动下载；如需离线使用：把自备的 `ffmpeg.exe` 与 `ffprobe.exe` 放进**程序目录的 `resources\ffmpeg`**，或在设置页指定 FFmpeg 目录（适合自备完整版）。**不会回退系统 PATH**。
 
 ## 皮肤素材来源与许可
 
