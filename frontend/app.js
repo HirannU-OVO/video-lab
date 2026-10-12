@@ -4352,7 +4352,11 @@
       html += '<div class="mask-proj-item' + (active ? ' mask-proj-item--active' : '') + '" data-maskproj="' + escapeHtml(p.name) + '">' +
         icon('folder', 16, 'mask-proj-item__icon') +
         '<span class="mask-proj-item__name">' + escapeHtml(p.name) + '</span>' +
-        '<span class="mask-proj-item__badge">' + (p.themeCount != null ? p.themeCount : (p.themes ? p.themes.length : 0)) + '种遮罩</span></div>';
+        // 软件内新建、尚未放素材的项目：说「暂无素材」而不是「0种遮罩」——
+        // 后者读起来像"这个项目坏了/是空的"，前者才是实情（等用户放 .mov 进来即可）
+        '<span class="mask-proj-item__badge">' + (p.isEmptyProject
+          ? '暂无素材'
+          : ((p.themeCount != null ? p.themeCount : (p.themes ? p.themes.length : 0)) + '种遮罩')) + '</span></div>';
     });
     tree.innerHTML = html;
     // 列表重建后选中项一出生就带 active，::before 的 transition 无从触发（没有 0→1 的变化），

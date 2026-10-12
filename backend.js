@@ -7081,18 +7081,18 @@ class Api {
       if (!en.isDirectory()) continue;
       const pdir = path.join(root, en.name);
       // 遮罩主题：项目下直接子文件夹中任一含 mov 视频（遮罩素材仅认 .mov，mp4 不算遮罩主题）
-let themes = [];
-    try {
-    themes = fs.readdirSync(pdir, { withFileTypes: true })
-    .filter((s) => s.isDirectory())
-    .map((s) => s.name)
-    .filter((n) => {
-    try {
-    return fs.readdirSync(path.join(pdir, n)).some((f) => /\.mov$/i.test(f));
-    } catch (e) { return false; }
-    })
-    .sort((a, b) => a.localeCompare(b, 'zh-CN'));
-    } catch (e) {}
+      let themes = [];
+      try {
+        themes = fs.readdirSync(pdir, { withFileTypes: true })
+          .filter((s) => s.isDirectory())
+          .map((s) => s.name)
+          .filter((n) => {
+            try {
+              return fs.readdirSync(path.join(pdir, n)).some((f) => /\.mov$/i.test(f));
+            } catch (e) { return false; }
+          })
+          .sort((a, b) => a.localeCompare(b, 'zh-CN'));
+      } catch (e) {}
       // 主题组数：项目内全部 mov（根目录+任意子文件夹）按名称前缀去重，与右栏真实分组一致
       let themeCount = 0;
       const seenPrefix = new Set();
