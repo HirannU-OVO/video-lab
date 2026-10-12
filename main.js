@@ -2237,10 +2237,11 @@ function registerIpc() {
   // 设置页：检查更新（仅在自动更新启用时生效，UPDATE_ENABLED=false 时返回停用）。
   // 设置页来源不向主窗口弹「发现新版本」（确认弹窗已在设置页内），下载完成后主窗口才弹操作条
   ipcMain.handle('check_update', (e, silent) => {
-    // 三条入口（设置页 / 主窗口 / 托盘）的结果统一由主窗口弹窗告知 —— 设置页是主窗口内的 iframe，
-    // 它自己弹的浮层会被裁切，故这里也 notifyMain，让结果与托盘走同一条路。
+    // 设置页是**自己弹结果**的（软件端为 iframe、浏览器端为独立页面，两端都要能弹），
+    // 故此处不通知主窗口 —— 否则软件端会双弹（设置面板内一个、主窗口一个）。
+    // 托盘入口仍走 notifyMain（见 tray_menu_click），由主窗口弹。
     // ⚠ checkForUpdate 内的三处事件都有 !silent 闸门：后台自动/每日检查不会弹窗打扰。
-    return checkForUpdate({ silent: !!silent, notifyMain: true });
+    return checkForUpdate({ silent: !!silent, notifyMain: false });
   });
   // 设置页：更新源/更新方式即时落盘（检查更新前调用，使界面当前选中值立刻生效）
   ipcMain.handle('apply_update_pref', (e, pref) => applyUpdatePref(pref));

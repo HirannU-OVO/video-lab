@@ -686,29 +686,6 @@
       });
     }
 
-    // 手动检查更新：设置页只负责「发起」+ 按钮进行中态。
-    // 结果（已是最新 / 发现新版 / 失败）统一由**主窗口弹窗**告知 —— 设置页是主窗口内的 iframe，
-    // 自己弹的浮层会被 iframe 裁切看不全；后端已让本入口与托盘同样通知主窗口。
-    var cu = $('btnCheckUpdate');
-    function cuBusy(on) { if (!cu) return; cu.disabled = !!on; cu.textContent = on ? '检查中…' : '检查更新'; }
-    if (cu) cu.addEventListener('click', function () {
-      // 检查更新按界面当前选中值执行：先让「仓库选择 / 更新方式」即时落盘，
-      // 否则切了仓库没保存就点这里，后端仍按旧配置检查，用户看到的与实际的会不一致。
-      var srcNow = document.querySelector('input[name="updateSource"]:checked');
-      var modeNow = document.querySelector('input[name="updateMode"]:checked');
-      var pref = {
-        update_source: srcNow ? srcNow.value : 'gitcode',
-        update_mode: modeNow ? modeNow.value : 'notify'
-      };
-      cuBusy(true);
-      setStatus('正在检查更新…', true);
-      var applyPref = (api && api.apply_update_pref) ? api.apply_update_pref(pref) : Promise.resolve(null);
-      applyPref.catch(function () { return null; }).then(function () {
-        // 结果不在这里处理：主窗口弹窗会给结论；这里只恢复按钮态（catch 兜底避免按钮卡在「检查中…」）
-        api.check_update(false).catch(function () {}).then(function () { cuBusy(false); });
-      });
-    });
-
     // 关闭按钮已移除：退出由外层控制（独立窗口失焦自动关闭；内嵌后面板显隐控制）
     setupMultiTags('batchTxtPrefix', 'batchTxtPrefixTags', function () { return state.batch.txt_prefix; }, onBatchTagsChanged, 'batchTxtPrefixCaret');
     // 后缀/创作者改动需先同步 state 再刷新预览 —— updatePreview 读的是 state，
@@ -740,6 +717,111 @@
     if (gh && api && api.open_external) gh.addEventListener('click', function () {
       api.open_external('https://github.com/HirannU-OVO/video-lab').catch(function () {});
     });
+    // ── 检查更新：结果弹窗 + 按钮绑定 ──
+    // 结果由设置页自己弹：软件端设置页是主窗口内的 iframe，浏览器端更是独立页面
+    // （那里没有主窗口脚本）—— 自己弹才能同时覆盖两种形态。
+    // 按钮用「委托到 document」：不依赖绑定时元素已存在，元素被重建也有效。
+    // 为什么不能只靠主窗口弹：设置页在软件端是主窗口内的 iframe（会被裁切），
+    // 在浏览器端更是独立页面（那里根本没有主窗口的脚本）—— 自己弹才能同时覆盖两种形态。
+    // 托盘入口的结果由主窗口弹（index.html 的 #updateResultMask），两条路互不干扰。
+    // ⚠ 这里刻意**不缓存元素**：缓存的引用一旦为 null（绑定时元素还没到位 / 被重建），
+    //   cuBusy 会「静默什么都不做」，表现为点击后毫无反应且没有任何报错 —— 很难查。
+    //   每次现取，取不到也不抛错。
+    function cuBusy(on) {
+      var b = $('btnCheckUpdate');
+      if (!b) return;
+      b.disabled = !!on;
+      b.textContent = on ? '检查中…' : '检查更新';
+    }
+    var _UR = {
+      none:   { sym: '✓', cls: 'ok',   title: '已是最新版本',     close: '知道了' },
+      update: { sym: '↑', cls: 'new',  title: '发现新版本',       close: '稍后', go: '立即更新' },
+      error:  { sym: '!', cls: 'err',  title: '检查更新失败',     close: '知道了' },
+      busy:   { sym: '…', cls: 'wait', title: '已有更新操作进行中', close: '知道了' }
+    };
+    function showUr(info, kind) {
+      var mask = $('updateResultMask');
+      if (!mask) return;
+      var cfg = _UR[kind] || _UR.error;
+      var ic = $('updateResultIcon'), ti = $('updateResultTitle'), de = $('updateResultDesc');
+      var go = $('updateResultGo'), cl = $('updateResultClose');
+      var cur = (info && info.current) || '';
+      var ver = kind === 'update' ? ((info && info.latest) || '') : (kind === 'none' ? cur : '');
+      if (ic) { ic.textContent = cfg.sym; ic.className = 'update-result__icon update-result__icon--' + cfg.cls; }
+      if (ti) ti.textContent = cfg.title + (ver ? ' v' + ver : '');
+      var desc;
+      if (kind === 'none') {
+        var t0 = new Date();
+        var hm = ('0' + t0.getHours()).slice(-2) + ':' + ('0' + t0.getMinutes()).slice(-2);
+        desc = (info && info.message) || ('当前版本' + (cur ? ' v' + cur : '') + ' 已是最新 · ' + hm + ' 完成检查');
+      } else if (kind === 'update') {
+        desc = '当前版本' + (cur ? ' v' + cur : '') + ' · 是否立即下载更新？下载完成后可在主窗口继续操作。';
+      } else if (kind === 'busy') {
+        desc = (info && (info.message || info.error)) || '请等当前操作结束后再试';
+      } else {
+        desc = (info && (info.message || info.error)) || '未知错误';
+      }
+      if (de) de.textContent = desc;
+      if (go) { if (cfg.go) { go.style.display = ''; go.textContent = cfg.go; } else { go.style.display = 'none'; } }
+      if (cl) cl.textContent = cfg.close || '知道了';
+      mask.style.display = 'flex';
+    }
+    function hideUr() { var m = $('updateResultMask'); if (m) m.style.display = 'none'; }
+    (function initUr() {
+      var mask = $('updateResultMask');
+      if (!mask) return;
+      mask.addEventListener('click', function (e) { if (e.target === mask) hideUr(); });
+      var cl = $('updateResultClose');
+      if (cl) cl.addEventListener('click', hideUr);
+      var go = $('updateResultGo');
+      if (go) go.addEventListener('click', function () {
+        hideUr();
+        if (!api || !api.start_update) { setStatus('更新功能不可用', true); return; }
+        setStatus('正在连接更新服务器…', true);
+        api.start_update().then(function (r) {
+          if (r && r.busy) setStatus('已有更新操作进行中，请稍候', true);
+        }).catch(function () { setStatus('下载更新失败', true); });
+      });
+    })();
+    // 事件委托（放在 bindNav 最前：此位置的绑定实测有效；函数声明会提升，可用后文定义的 showUr/hideUr/cuBusy）
+    document.addEventListener('click', function (e) {
+      var hit = e.target && e.target.closest ? e.target.closest('#btnCheckUpdate') : null;
+      if (!hit) return;
+      // 检查更新按界面当前选中值执行：先让「仓库选择 / 更新方式」即时落盘，
+      // 否则切了仓库没保存就点这里，后端仍按旧配置检查，用户看到的与实际的会不一致。
+      var srcNow = document.querySelector('input[name="updateSource"]:checked');
+      var modeNow = document.querySelector('input[name="updateMode"]:checked');
+      var pref = {
+        update_source: srcNow ? srcNow.value : 'gitcode',
+        update_mode: modeNow ? modeNow.value : 'notify'
+      };
+      var srcLabel = pref.update_source === 'github' ? 'GitHub' : 'GitCode';
+      cuBusy(true);
+      setStatus('正在检查更新…', true);
+      var applyPref = (api && api.apply_update_pref) ? api.apply_update_pref(pref) : Promise.resolve(null);
+      applyPref.catch(function () { return null; }).then(function () {
+        api.check_update(false).then(function (info) {
+          cuBusy(false);
+          if (!info) { showUr(null, 'error'); return; }
+          if (info.busy) { showUr(info, 'busy'); return; }
+          if (info.hasUpdate) {
+            if (info.noAsset) {
+              showUr({ current: info.current, error: '发现新版本 v' + info.latest + '，但这次发布缺少安装文件：可稍后再试，或在设置里换一个更新源（当前' + srcLabel + '）' }, 'error');
+              return;
+            }
+            if (info.autoDownload) {
+              showUr({ current: info.current, message: '发现新版本 v' + info.latest + '，已自动开始下载，进度见主窗口状态栏' }, 'busy');
+              return;
+            }
+            showUr(info, 'update');
+            return;
+          }
+          if (info.ok) showUr(info, 'none');
+          else showUr(info, 'error');
+        }).catch(function () { cuBusy(false); showUr(null, 'error'); });
+      });
+    });
+
     // 「维护」区：重建预检测缓存（低频兜底操作）。两段式确认，避免误触这个耗时动作
     var brp = document.getElementById('btnRebuildPrecheck');
     if (brp && api && api.reset_precheck) brp.addEventListener('click', function () {

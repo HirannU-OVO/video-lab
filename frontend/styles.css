@@ -11003,9 +11003,11 @@ button.is-vl-disabled {
 .opt-check--sm { gap: 5px; font-size: var(--body-sm-font-size); }
 .opt-check:hover .opt-check__box { border-color: var(--brand-500); }
 
-/* ═══ 检查更新结果弹窗（设置页 / 主窗口 / 托盘统一入口）═══ */
+/* ═══ 检查更新结果弹窗（设置页 / 主窗口 / 托盘统一入口）═══
+   ⚠ z-index 必须高于内嵌设置面板（容器 9999 / 遮罩 9998）与主窗口其它浮层（99999），
+     否则在设置页里点「检查更新」会被设置面板压住，看起来像"弹窗没出来"。 */
 .update-result {
-  position: fixed; inset: 0; z-index: 10000;
+  position: fixed; inset: 0; z-index: 100000;
   display: flex; align-items: center; justify-content: center;
   background: var(--bg-overlay, rgba(0, 0, 0, 0.35));
   backdrop-filter: blur(3px);

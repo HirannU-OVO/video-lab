@@ -412,7 +412,7 @@
     <section class="settings-view" id="view-about">
       <!-- 版本卡：关于页第一眼 —— 这是什么版本、按哪个源检查、能不能升级 -->
       <div class="about-hero">
-        <div class="about-hero__mark" aria-hidden="true">VL</div>
+        <div class="about-hero__mark"><img src="../icon/app_icon.svg" alt="Video Lab" draggable="false"></div>
         <div class="about-hero__main">
           <div class="about-hero__name">Video Lab</div>
           <div class="about-hero__ver">
@@ -481,6 +481,23 @@
 
     <!-- 检查更新的结果弹窗已统一到主窗口（设置页是 iframe，自弹浮层会被裁切，见 index.html 的 #updateResultMask） -->
 
+  </div>
+</div>
+
+<!-- 检查更新结果弹窗：**设置页自己弹**。软件端里设置页是主窗口内的 iframe、浏览器端里它是独立页面，
+     两种形态都由设置页弹，用户正看着哪就在哪出结论（iframe 内的弹窗只覆盖设置面板，不会被裁切）。
+     托盘入口的结果由主窗口弹（见 index.html 的 #updateResultMask） -->
+<div class="update-result" id="updateResultMask" style="display:none">
+  <div class="update-result__box">
+    <div class="update-result__icon" id="updateResultIcon">✓</div>
+    <div class="update-result__body">
+      <div class="update-result__title" id="updateResultTitle"></div>
+      <div class="update-result__desc" id="updateResultDesc"></div>
+    </div>
+    <div class="update-result__actions">
+      <button class="btn update-result__btn" id="updateResultClose">知道了</button>
+      <button class="btn update-result__btn update-result__btn--primary" id="updateResultGo" style="display:none">立即更新</button>
+    </div>
   </div>
 </div>
 

@@ -3376,6 +3376,11 @@
   function initUpdateResult() {
     var mask = $('updateResultMask');
     if (!mask) return;
+    // ⚠ 必须提到 <body> 直属：内嵌设置面板（.settings-frame）是 z-index 9999 的覆盖层，
+    //   且它带 transform（自成堆叠上下文）—— 弹窗若留在 #app 里，层级会被限制，
+    //   在设置页里点「检查更新」就看不到弹窗（表现为"弹窗没出来 / 跳回了主窗口"）。
+    //   提到 body 直属 + 更高 z-index，才能保证它盖在设置面板之上。
+    try { if (mask.parentNode !== document.body) document.body.appendChild(mask); } catch (e) {}
     mask.addEventListener('click', function (e) { if (e.target === mask) hideUpdateResult(); });
     var cl = $('updateResultClose');
     if (cl) cl.addEventListener('click', hideUpdateResult);
