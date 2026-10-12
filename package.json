@@ -53,6 +53,10 @@
           "**/*",
           "!tests/**"
         ]
+      },
+      {
+        "from": "../ffmpeg",
+        "to": "ffmpeg"
       }
     ],
     "win": {

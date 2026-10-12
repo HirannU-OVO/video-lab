@@ -2347,6 +2347,12 @@ function registerIpc() {
   // 失败**不弹窗**（只在运行日志留痕），且 7 天内不重复尝试，避免每次启动都去下 140MB。
   function maybeUpgradeFfmpeg() {
     try {
+      // ⚠ A3（内置 FFmpeg · 2026-10-12）：**内置已就位时一律不下载、不升级**。
+      //   旧逻辑读「数据目录\ffmpeg\_meta.json」判断版本过旧 → 触发 310MB 重下；
+      //   内置上线后那份遗留会被「清理数据目录」清掉，届时读不到 _meta.json → 误判成版本过旧/缺失
+      //   → 每次启动静默重下 310MB，正好把用户刚清理的空间又填回去。此闸门即为此设。
+      //   内置是随程序发布的固定版本，不存在"过旧"问题。
+      if (api.ffmpegBuiltinReady && api.ffmpegBuiltinReady()) return;
       const dir = String(config.ffmpeg_dir || path.join(storageDir(), 'ffmpeg'));
       const markPath = path.join(storageDir(), 'ffmpeg', '_upgrade.json');
       let ver = '';
@@ -2378,6 +2384,33 @@ function registerIpc() {
     } catch (e) {}
   }
 
+  // A7（内置 FFmpeg · 2026-10-12）：旧版遗留的**一次性**清理。
+  // 内置组件上线后，数据目录那份 310MB「下载组件」即成为纯遗留 —— 它只增不减，且普通用户无从知晓可以删。
+  // 闸门（**三个都要满足，缺一不动**）：
+  //   ① 内置组件就位（`ffmpegBuiltinReady`）；
+  //   ② 环境探测确认内置**确实可用**（不是"文件在"就算数 —— 缺滤镜/编码器同样不可用）；
+  //   ③ 数据目录那份确实存在，且**不是当前正在用的那一份**（防止把唯一可用组件删掉）。
+  // 清理**走回收站**（可还原，遵循项目硬约束），并落一次性标记，此后不再检查。
+  function cleanupLegacyFfmpegOnce(env) {
+    try {
+      const legacy = path.join(storageDir(), 'ffmpeg');
+      const mark = path.join(storageDir(), '.ffmpeg-legacy-cleaned');
+      if (fs.existsSync(mark)) return;                    // 已做过（无论有无可清项）
+      if (!api.ffmpegBuiltinReady || !api.ffmpegBuiltinReady()) return;
+      if (!env || env.downloadNeeded) return;             // 内置不可用 → 绝不能动那份兜底
+      const active = String(env.ffmpegDir || '').toLowerCase();
+      if (path.resolve(active) === path.resolve(legacy)) return;   // 正在用它 → 不动
+      if (!fs.existsSync(path.join(legacy, 'ffmpeg.exe'))) return; // 没有遗留 → 只落标记
+      let freed = 0;
+      try { freed = fs.readdirSync(legacy).reduce((s, n) => s + (fs.statSync(path.join(legacy, n)).size || 0), 0); } catch (e) {}
+      let ok = false;
+      try { shell.trashItem(legacy); ok = true; } catch (e) { ok = false; }
+      if (!ok) return;                                    // 送站失败：保留现场，下次启动再试（不落标记）
+      try { fs.writeFileSync(mark, JSON.stringify({ at: Date.now(), dir: legacy, freed })); } catch (e) {}
+      try { writeUpdateLog('已自动清理旧版 FFmpeg 组件遗留（' + Math.round(freed / 1048576) + ' MB，进回收站可还原）：' + legacy); } catch (e) {}
+    } catch (e) {}
+  }
+
   runAfterWindowLoad(() => {
     const probe = (allowRetry) => {
       api.checkEnvAsync().then((env) => {
@@ -2385,8 +2418,9 @@ function registerIpc() {
           if (allowRetry) setTimeout(() => probe(false), 10000);
           return;
         }
-        // 组件已就绪 → 再看**版本是否过旧**（旧源 6.1.1 缺 elapsed），过旧则静默升级
-        if (!env.downloadNeeded) { maybeUpgradeFfmpeg(); return; }
+        // 组件已就绪 → 再看**版本是否过旧**（旧源 6.1.1 缺 elapsed），过旧则静默升级；
+        // 同时做 A7 旧版遗留的一次性清理（内置可用才动，见上）
+        if (!env.downloadNeeded) { cleanupLegacyFfmpegOnce(env); maybeUpgradeFfmpeg(); return; }
         api.ensureFfmpeg().then((r) => {
           if (r && r.ok) {
             persistFfmpegDir(r.dir);

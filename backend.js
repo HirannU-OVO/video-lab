@@ -2458,10 +2458,15 @@ class Api {
         if (ok) { removed++; freed += sz; }
       }
     }
-    // 空目录顺手收掉：只收 preview —— txt-snap 里可能还有在跑任务的快照，绝不能整个动
+    // 空目录顺手收掉：只收「整目录都是可清项」的那两个（preview / ffmpeg）——
+    // 否则清完会留下空文件夹，用户看不出到底清没清。**txt-snap 绝不整目录动**：
+    // 里面可能还有在跑/排队任务的快照（它们不在本次可清清单里）。
     try {
-      const pv = path.join(String(this.storageDir || ''), 'preview');
-      if (fs.existsSync(pv) && fs.readdirSync(pv).length === 0) fs.rmdirSync(pv);
+      const base = String(this.storageDir || '');
+      for (const n of ['preview', 'ffmpeg']) {
+        const p = path.join(base, n);
+        if (fs.existsSync(p) && fs.readdirSync(p).length === 0) fs.rmdirSync(p);
+      }
     } catch (e) {}
     try {
       this._lg('SYS', 'datadir.clean',
@@ -7460,23 +7465,50 @@ let themes = [];
   // 检测应用运行所需的外部环境是否可用（ffmpeg / ffprobe / 内置引擎）
   // 项目实际依赖的滤镜清单（三模块 + 视频处理工具的 -filter_complex 全量收集）
   // 精简版/第三方便携构建常缺 colorchannelmixer、signalstats 等 —— 只查存在性拦不住
-  // 解析 ffmpeg / ffprobe 实际路径：**唯一来源 = 设置项 ffmpeg_dir**（启动自动下载落到「数据目录\ffmpeg」）。
-  // ⚠ 不得回退系统 PATH：PATH 依赖会造成「主进程判定正常而引擎实际跑不起来」「PATH 项指向不存在的目录」
-  //   「机内多份 ffmpeg 副本导致行为不可预期」等一连串意外 —— 缺组件一律走启动自动下载（见 main.js 启动探测）。
-  // 纯同步、极快（一次 existsSync），可安全用于启动路径。
+  // 内置组件目录（A1/A2 · 2026-10-12）：打包形态 = `<程序目录>\resources\ffmpeg`。
+  // 由 `package.json` 的 extraResources 从 `Dev\ffmpeg-dist` 落入 —— 放 resources 而非 asar，
+  // 因为引擎要 spawn 真实文件（与 `resources\Engines` 同一套路）。
+  // ⚠ 未打包（开发形态）时返回空：`process.resourcesPath` 指向的是 Electron 自己的 resources，
+  //   不是本应用，照用会解析到一份不相干的目录。开发形态继续走「数据目录\ffmpeg」。
+  _ffmpegBuiltinDir() {
+    try {
+      const el = require('electron');
+      if (!el || !el.app || !el.app.isPackaged) return '';
+      const rp = process.resourcesPath || '';
+      return rp ? path.join(rp, 'ffmpeg') : '';
+    } catch (e) { return ''; }
+  }
+  /** 内置组件是否就位（两个 exe 都在）—— 供启动探测据此**不再自动下载/升级** */
+  ffmpegBuiltinReady() {
+    const d = this._ffmpegBuiltinDir();
+    if (!d) return false;
+    try { return fs.existsSync(path.join(d, 'ffmpeg.exe')) && fs.existsSync(path.join(d, 'ffprobe.exe')); } catch (e) { return false; }
+  }
+  // 解析 ffmpeg / ffprobe 实际路径。**优先级（A2 · 2026-10-12）**：
+  //   ① 内置 `resources\ffmpeg\`（随程序发布，首启离线可用）
+  //   ② 设置项 `ffmpeg_dir`（高级用户自备完整版）
+  //   ③ 数据目录\ffmpeg（历史下载遗留 —— 仅为兼容旧装机保留，不再是默认）
+  // 逐级取**实际存在两个 exe** 的目录，取到即用；这一处即全部真相（环境校验 / 引擎注入 / 产物校验都读它）。
+  // ⚠ 仍不得回退系统 PATH：PATH 依赖会造成「主进程判定正常而引擎实际跑不起来」「PATH 项指向不存在的目录」
+  //   「机内多份 ffmpeg 副本导致行为不可预期」等一连串意外。
+  // 纯同步、极快（几次 existsSync），可安全用于启动路径。
   _resolveFfmpegBin() {
-    // 目录来源：设置项 ffmpeg_dir 优先；**为空则回退默认自愈目录**（数据目录\ffmpeg）。
-    // ⚠ 这不是「外部 PATH 回退」—— 是同一个自愈位置的兜底：组件已下载但配置没落盘时，
-    //   下次启动仍能直接复用（否则会重复下载 60MB）。三处真相因此统一在 _resolveFfmpegBin：
-    //   环境校验 / 引擎注入（_ffmpegBinEnv）/ 校验产物都读它。
-    let cfgDir = String((this.config && this.config.ffmpeg_dir) || '').trim();
-    if (!cfgDir) cfgDir = this._ffmpegTargetDir();
-    const pick = (name) => {
-      if (!cfgDir) return '';
-      const p = path.join(cfgDir, name + '.exe');
-      try { return fs.existsSync(p) ? p : ''; } catch (e) { return ''; }
-    };
-    return { cfgDir, ffmpegPath: pick('ffmpeg'), ffprobePath: pick('ffprobe') };
+    const cands = [];
+    const bi = this._ffmpegBuiltinDir();
+    if (bi) cands.push(bi);
+    const cfgDir = String((this.config && this.config.ffmpeg_dir) || '').trim();
+    if (cfgDir) cands.push(cfgDir);
+    const legacy = this._ffmpegTargetDir();
+    if (legacy) cands.push(legacy);
+    for (const d of cands) {
+      const f = path.join(d, 'ffmpeg.exe'), p = path.join(d, 'ffprobe.exe');
+      let ok = false;
+      try { ok = fs.existsSync(f) && fs.existsSync(p); } catch (e) { ok = false; }
+      if (ok) return { cfgDir: d, ffmpegPath: f, ffprobePath: p };
+    }
+    // 一处都没有：保持旧语义 —— cfgDir 指向「数据目录\ffmpeg」（历史自愈位置），
+    // 路径留空由调用方走「组件缺失」提示与（已就位的）自动下载兜底。
+    return { cfgDir: legacy || (cands[0] || ''), ffmpegPath: '', ffprobePath: '' };
   }
 
   // ── 使用前的轻量环境校验（毫秒级：只做 existsSync + where，不启动 ffmpeg 进程）──
