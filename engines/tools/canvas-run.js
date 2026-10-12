@@ -131,7 +131,14 @@ async function run(spec, ctx, lockUtils) {
       runDir = outplan.resolveRunDir(String(out.dir || '').trim(), stampOf(now));
       if (!runDir.dir) { logger.error('输出目录', runDir.reason || '未指定输出目录'); return 1; }
     }
-    const backupRoot = String(out.backupDir || '').trim() || path.join(storageDir || process.cwd(), 'backup');
+    // 备份根：与「视频处理」（pipeline.js）**同一口径** ——
+    //   ① 任务自带 backupDir 优先，否则回退设置里的默认备份目录 defaultBackupDir；
+    //   ② 用户自选目录时在其下再建「Video Lab 备份」层（设置页显示的也是这一层）；
+    //   ③ 都没设才用数据目录下的 backup。
+    // 此前只读 out.backupDir 且不加层：画布任务从不带 backupDir（cvCollectSpec 未传），
+    // 于是**永远落到数据目录 backup**，与用户在设置里指定的备份目录无关。
+    const customRoot = String(out.backupDir || '').trim() || String(out.defaultBackupDir || '').trim();
+    const backupRoot = customRoot ? path.join(customRoot, 'Video Lab 备份') : path.join(storageDir || process.cwd(), 'backup');
     const backupDir = out.backup === false ? ''
       : outplan.backupDirFor(backupRoot, String(spec.toolName || '画布合成'), now.toISOString().slice(0, 10));
 
@@ -193,7 +200,11 @@ async function run(spec, ctx, lockUtils) {
       if (backupDir && exists(file)) {
         try {
           fs.mkdirSync(backupDir, { recursive: true });
-          fs.copyFileSync(file, path.join(backupDir, isoStampOf(new Date()) + '_' + name));
+          const bDst = path.join(backupDir, isoStampOf(new Date()) + '_' + name);
+          fs.copyFileSync(file, bDst);
+          // ⚠ 同 pipeline：copyFileSync 继承源 mtime，会被"保留 N 天"的过期清理判为旧货当场删掉，
+          //   备份年龄必须从备份时刻算起（详见 pipeline.js 同处注释）。
+          try { const now2 = new Date(); fs.utimesSync(bDst, now2, now2); } catch (e2) {}
         } catch (e) { logger.info('   · 备份失败：' + ((e && e.message) || e)); }
       }
 

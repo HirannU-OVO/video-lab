@@ -7728,6 +7728,27 @@ let themes = [];
     } catch (e) { return 0; }
   }
 
+  // 启动后台：把「数据目录 backup\ 里的存量备份」迁到用户当前设置的备份根。
+  // 为什么需要单独这一步：`migrateBackups` 只在**保存设置时值发生变化**才触发，
+  //   而用户早就设好了自定义根 —— 于是老版本写进数据目录的那批备份（画布合成路径当年不读设置，
+  //   一律落数据目录）在升级后**永远不会被搬走**，一直占着数据目录，用户也看不出该去哪找。
+  // 条件：仅在用户设了自定义根时迁移（没设时数据目录就是正确位置，动它反而错）。
+  // 幂等：源目录不存在时 migrateBackups 直接返回 0；迁移后只删已空目录。
+  async migrateLegacyBackupsAsync() {
+    try {
+      const custom = String(this.config.backup_dir || '').trim();
+      if (!custom) return 0;
+      const n = await this.migrateBackups('', custom);   // rootOf('') = 数据目录 backup
+      if (n > 0) {
+        try {
+          this._lg('SYS', 'backup.migrate.legacy',
+            '已把数据目录下的存量备份迁至当前备份根（' + n + ' 个文件）', { to: this.getBackupRoot(), files: n });
+        } catch (e) {}
+      }
+      return n;
+    } catch (e) { return 0; }
+  }
+
   // 备份目录变更时迁移旧备份：把旧备份根下的内容搬到新根（改了路径，里面的备份一起迁移）。
   // 逐文件移动（rename 优先，跨盘失败退回「复制 + 删源」）；同名文件保留新目录已有内容（不覆盖）。
   // ⚠ 迁移完成后只删除**已空**的旧目录（绝不 rm -rf 有内容的目录），避免中途失败时丢备份。
@@ -7908,11 +7929,28 @@ let themes = [];
     if (!force && !env0.downloadNeeded) return { ok: true, skipped: true, env: env0 };
     this._ffmpegBusy = true;
     const emit = (p) => { try { if (typeof this.onFfmpegProgress === 'function') this.onFfmpegProgress(p); } catch (e) {} };
-    const dir = this._ffmpegTargetDir();
+    // A3'（2026-10-12 用户定案）：**下载落点改为内置目录 `resources\ffmpeg`**。
+    //   内置组件是唯一权威，缺了就地修复即可 —— 不该在数据目录再养一份副本（那正是刚被清掉的 310MB 的来源）。
+    //   仅当内置目录**不可写**（装到受保护位置 / 盘只读）才退回数据目录。
+    // 可写性必须实测：`existsSync` 判不出"目录只读"，要真写一个探测文件再删。
+    const biDir = this._ffmpegBuiltinDir();
+    let dir = this._ffmpegTargetDir();
+    let toBuiltin = false;
+    if (biDir) {
+      try {
+        fs.mkdirSync(biDir, { recursive: true });
+        const probe = path.join(biDir, '.write-probe');
+        fs.writeFileSync(probe, 'x');
+        fs.unlinkSync(probe);
+        dir = biDir; toBuiltin = true;
+      } catch (e) { toBuiltin = false; }
+    }
     const prevDir = String(this.config.ffmpeg_dir || '');
     try {
       fs.mkdirSync(dir, { recursive: true });
-      this.config.ffmpeg_dir = dir;   // 校验与后续引擎运行都按新路径；失败回滚
+      // 落内置目录时**不写** ffmpeg_dir：解析本来就优先内置（见 _resolveFfmpegBin），
+      // 写了反而留下一条指向"数据目录那份"的旧配置；只有退回数据目录时才需要写。
+      if (!toBuiltin) this.config.ffmpeg_dir = dir;
       emit({ phase: 'check' });
       // ── 主源：npmmirror 的 FFmpeg-Builds 镜像（BtbN 构建，国内可直连，版本可达 8.x）──
       // 旧的 ffmpeg-static 镜像**最高只有 6.1.1**，而 6.1.1 的进度行**不含 elapsed（实际耗时）**，
@@ -7972,9 +8010,9 @@ let themes = [];
       this._lg('ENV', 'ffmpeg.ensure', 'FFmpeg 环境就绪 · ' + ver + ' · ' + dir, { dir: dir, version: ver });
       return { ok: true, dir: dir, version: ver, env: env1 };
     } catch (e) {
-      this.config.ffmpeg_dir = prevDir;
+      if (!toBuiltin) this.config.ffmpeg_dir = prevDir;   // 没改过它就不回滚（落内置目录时压根没写）
       emit({ phase: 'error', error: String((e && e.message) || e) });
-      this._lg('ERR', 'ffmpeg.ensure', 'FFmpeg 自动下载失败 · ' + String((e && e.message) || e), { dir: dir });
+      this._lg('ERR', 'ffmpeg.ensure', 'FFmpeg 自动下载失败 · ' + String((e && e.message) || e), { dir: dir, toBuiltin: toBuiltin });
       return { ok: false, error: String((e && e.message) || e) };
     } finally { this._ffmpegBusy = false; }
   }

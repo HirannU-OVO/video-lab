@@ -2391,22 +2391,22 @@ function registerIpc() {
   //   ② 环境探测确认内置**确实可用**（不是"文件在"就算数 —— 缺滤镜/编码器同样不可用）；
   //   ③ 数据目录那份确实存在，且**不是当前正在用的那一份**（防止把唯一可用组件删掉）。
   // 清理**走回收站**（可还原，遵循项目硬约束），并落一次性标记，此后不再检查。
-  function cleanupLegacyFfmpegOnce(env) {
+  function cleanupLegacyFfmpeg(env) {
     try {
       const legacy = path.join(storageDir(), 'ffmpeg');
-      const mark = path.join(storageDir(), '.ffmpeg-legacy-cleaned');
-      if (fs.existsSync(mark)) return;                    // 已做过（无论有无可清项）
-      if (!api.ffmpegBuiltinReady || !api.ffmpegBuiltinReady()) return;
-      if (!env || env.downloadNeeded) return;             // 内置不可用 → 绝不能动那份兜底
-      const active = String(env.ffmpegDir || '').toLowerCase();
-      if (path.resolve(active) === path.resolve(legacy)) return;   // 正在用它 → 不动
-      if (!fs.existsSync(path.join(legacy, 'ffmpeg.exe'))) return; // 没有遗留 → 只落标记
+      // ⚠ 刻意**不留任何标记文件**（用户 2026-10-12：删掉 310MB 却留下一个标记文件，"删一个留一个"很诡异）。
+      //   本操作天然幂等 —— 下面第二句就是「没有遗留就直接返回」，成本一次 existsSync；
+      //   不留标记反而更正确：将来若又冒出遗留（例如回装旧版再升级），照样能被清掉 ——
+      //   有了"一次性"标记，那种情况就永远不会再清，反倒留坑。
+      if (!api.ffmpegBuiltinReady || !api.ffmpegBuiltinReady()) return;   // 内置不在 → 绝不动那份兜底
+      if (!env || env.downloadNeeded) return;                            // 内置不可用 → 同上
+      if (!fs.existsSync(path.join(legacy, 'ffmpeg.exe'))) return;       // 没有遗留 → 直接返回
+      const active = String(env.ffmpegDir || '');
+      // 正在用它 → 不动（判不出来时也按"在用"处理：宁可少清，不能把唯一可用的组件清掉）
+      try { if (!active || path.resolve(active) === path.resolve(legacy)) return; } catch (e) { return; }
       let freed = 0;
       try { freed = fs.readdirSync(legacy).reduce((s, n) => s + (fs.statSync(path.join(legacy, n)).size || 0), 0); } catch (e) {}
-      let ok = false;
-      try { shell.trashItem(legacy); ok = true; } catch (e) { ok = false; }
-      if (!ok) return;                                    // 送站失败：保留现场，下次启动再试（不落标记）
-      try { fs.writeFileSync(mark, JSON.stringify({ at: Date.now(), dir: legacy, freed })); } catch (e) {}
+      try { shell.trashItem(legacy); } catch (e) { return; }             // 送站失败：保留现场，下次启动再试
       try { writeUpdateLog('已自动清理旧版 FFmpeg 组件遗留（' + Math.round(freed / 1048576) + ' MB，进回收站可还原）：' + legacy); } catch (e) {}
     } catch (e) {}
   }
@@ -2420,7 +2420,7 @@ function registerIpc() {
         }
         // 组件已就绪 → 再看**版本是否过旧**（旧源 6.1.1 缺 elapsed），过旧则静默升级；
         // 同时做 A7 旧版遗留的一次性清理（内置可用才动，见上）
-        if (!env.downloadNeeded) { cleanupLegacyFfmpegOnce(env); maybeUpgradeFfmpeg(); return; }
+        if (!env.downloadNeeded) { cleanupLegacyFfmpeg(env); maybeUpgradeFfmpeg(); return; }
         api.ensureFfmpeg().then((r) => {
           if (r && r.ok) {
             persistFfmpegDir(r.dir);
@@ -2788,9 +2788,11 @@ app.whenReady().then(async () => {
       const _t = process.hrtime.bigint();
       try { api.restoreTasks(); } catch (e) {}
       logTiming('窗口加载后：任务恢复同步段完成（耗时 ' + Math.round(Number(process.hrtime.bigint() - _t) / 1e6) + 'ms · 输出目录校验已转异步）');
-      // 过期备份清理：后台异步跑。同步版只在「视频处理任务结束后」触发，用户此后不跑该任务
-      // 就永远不会清理（实测保留 3 天、6 天前的备份仍在），故在启动时补一次。
-      try { api._cleanupBackupsAsync(); } catch (e) {}
+      // 存量备份迁移（先迁后清）：老版本（画布合成路径不读设置）把备份写进了数据目录，
+      // 用户早已设好自定义根 → migrateBackups 那种"值变化才触发"的时机永远不会到，得在启动时补一次。
+      // 必须**先迁后清**：否则"保留 N 天"的清理可能先把数据目录里那些旧备份删掉，用户等于白丢。
+      try { api.migrateLegacyBackupsAsync().then(() => { try { api._cleanupBackupsAsync(); } catch (e) {} }); }
+      catch (e) { try { api._cleanupBackupsAsync(); } catch (e2) {} }
     }, 0);
   });
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
