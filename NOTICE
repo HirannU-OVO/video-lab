@@ -39,4 +39,4 @@ FFmpeg / FFprobe（内置组件，位于安装目录的 resources\ffmpeg\）
   依 GPL 要求随包提供本声明与来源信息；FFmpeg 的完整对应源码可自上述构建项目获取
   （构建项目为其发布源，含与该二进制对应的源码与构建脚本）。
 - 组件清单（版本 / 来源 / sha256，供核对用的是哪一份）：随包的
-  resources\ffmpeg\_meta.json（由 `取内置组件.ps1` 固定登记）
+  resources\ffmpeg\_meta.json
