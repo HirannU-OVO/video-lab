@@ -88,7 +88,7 @@ npm run build:dir      # 构建可直接运行的程序（产出 dist\win-unpack
 
 > 构建产物是**可直接运行的目录** `dist\win-unpacked\`：双击里面的 `Video Lab.exe` 即可使用，无需安装。
 
-> FFmpeg 不在构建产物内，应用启动会自动下载；如需离线使用：把自备的 `ffmpeg.exe` 与 `ffprobe.exe` 放进**程序目录的 `resources\ffmpeg`**，或在设置页指定 FFmpeg 目录（适合自备完整版）。**不会回退系统 PATH**。
+> FFmpeg 不在构建产物内，应用启动会自动下载；如需离线使用：把自备的 `ffmpeg.exe` 与 `ffprobe.exe` 放进**程序目录的 `resources\ffmpeg`**。
 
 ## 皮肤素材来源与许可
 
