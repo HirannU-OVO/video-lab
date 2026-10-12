@@ -3788,13 +3788,15 @@ body[data-preview-collapsed] .center-global-search .ds-input {
   box-shadow: 0 18px 48px color-mix(in srgb, #000 42%, transparent);
   overflow: hidden;
 }
-/* 内嵌引导面板：尺寸沿用原独立引导窗口的 620×420 */
+/* 内嵌引导面板：内容只有"标题 + 一个路径选择 + 操作行"，尺寸按内容紧凑取值；
+   宽度以提示文字「选好后点右下角『保存并开始』。也可以直接关闭本窗口，之后在设置页里设置。」不换行为准；
+   卡片居中（与设置面板一致） */
 .guide-frame {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 620px;
-  height: 420px;
+  width: 500px;
+  height: 242px;
   transform: translate(-50%, -50%);
   border: 1px solid var(--border-neutral-l2);
   border-radius: 10px;
@@ -9264,13 +9266,15 @@ body[data-preview-collapsed] .center-global-search .ds-input {
   box-shadow: 0 18px 48px color-mix(in srgb, #000 42%, transparent);
   overflow: hidden;
 }
-/* 内嵌引导面板：尺寸沿用原独立引导窗口的 620×420 */
+/* 内嵌引导面板：内容只有"标题 + 一个路径选择 + 操作行"，尺寸按内容紧凑取值；
+   宽度以提示文字「选好后点右下角『保存并开始』。也可以直接关闭本窗口，之后在设置页里设置。」不换行为准；
+   卡片居中（与设置面板一致） */
 .guide-frame {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 620px;
-  height: 420px;
+  width: 500px;
+  height: 242px;
   transform: translate(-50%, -50%);
   border: 1px solid var(--border-neutral-l2);
   border-radius: 10px;
