@@ -7466,8 +7466,8 @@ let themes = [];
   // 项目实际依赖的滤镜清单（三模块 + 视频处理工具的 -filter_complex 全量收集）
   // 精简版/第三方便携构建常缺 colorchannelmixer、signalstats 等 —— 只查存在性拦不住
   // 内置组件目录（A1/A2 · 2026-10-12）：打包形态 = `<程序目录>\resources\ffmpeg`。
-  // 由 `package.json` 的 extraResources 从 `Dev\ffmpeg-dist` 落入 —— 放 resources 而非 asar，
-  // 因为引擎要 spawn 真实文件（与 `resources\Engines` 同一套路）。
+  // 由打包配置的 extraResources 随包落入 —— 放 resources 而非 asar，因为引擎要 spawn 真实文件
+  //（与 `resources\Engines` 同一套路）。
   // ⚠ 未打包（开发形态）时返回空：`process.resourcesPath` 指向的是 Electron 自己的 resources，
   //   不是本应用，照用会解析到一份不相干的目录。开发形态继续走「数据目录\ffmpeg」。
   _ffmpegBuiltinDir() {
