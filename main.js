@@ -148,7 +148,19 @@ function resolveEnginesDir() {
 }
 function configFilePath() { return configFile; }
 function programConfigPath() { return path.join(projectDir(), 'config.json'); }
-function appdataConfigPath() { return path.join(app.getPath('appData'), 'Video Lab', 'config.json'); }
+// ⚠ %APPDATA% 的解析必须容错：app.getPath('appData') 在 APPDATA 缺失/无效时（企业环境、
+//   便携启动器清理环境、被外部工具改坏）会【抛异常】，而本函数在模块顶层就被
+//   resolveConfigLocation() 调用（见下方 let configFile = ...）—— 异常一旦冒泡即为
+//   “主进程未捕获异常”，直接弹框崩溃、应用完全无法启动（实测复现过）。
+//   回退链：appData → $APPDATA → home → userData（userData 已在文件顶部显式固定，必定可用）。
+function appdataConfigPath() {
+  let base = '';
+  try { base = app.getPath('appData'); } catch (e) {}
+  if (!base) { try { base = process.env.APPDATA || ''; } catch (e) {} }
+  if (!base) { try { base = app.getPath('home'); } catch (e) {} }
+  if (!base) { try { base = app.getPath('userData'); } catch (e) {} }
+  return path.join(base, 'Video Lab', 'config.json');
+}
 // 启动时自动仲裁「配置和数据」的保存位置：
 //  1) 两侧都无配置 → 默认程序目录（随后由 ensureConfig 打开启动引导窗口）
 //  2) 两侧各有一份 → 取修改时间较新的一份生效，并删除旧的一份（防双份残留复发）

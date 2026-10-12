@@ -730,6 +730,12 @@
       b.disabled = !!on;
       b.textContent = on ? '检查中…' : '检查更新';
     }
+    // ── 结果弹窗：分两种运行形态 ──
+    //  · 软件端：设置页是主窗口内的 iframe（.settings-frame 是 z-index 9999 的覆盖层且带 transform），
+    //    自弹浮层会被裁切 —— 结果统一由主窗口弹（index.html 的 #updateResultMask + app.js 的 showUpdateResult）。
+    //  · 浏览器端：设置页是独立页面（server.js 单独提供），没有主窗口可弹，且 txapi 的 SSE 事件表里
+    //    不含 update_*（后端事件只发往主窗口）—— 此时必须自己弹，否则点完「检查更新」毫无反应。
+    var IN_APP_IFRAME = (function () { try { return window.self !== window.top; } catch (e) { return true; } })();
     var _UR = {
       none:   { sym: '✓', cls: 'ok',   title: '已是最新版本',     close: '知道了' },
       update: { sym: '↑', cls: 'new',  title: '发现新版本',       close: '稍后', go: '立即更新' },
@@ -737,6 +743,7 @@
       busy:   { sym: '…', cls: 'wait', title: '已有更新操作进行中', close: '知道了' }
     };
     function showUr(info, kind) {
+      if (IN_APP_IFRAME) return; // 软件端交给主窗口，见上
       var mask = $('updateResultMask');
       if (!mask) return;
       var cfg = _UR[kind] || _UR.error;
@@ -815,7 +822,12 @@
           }
           if (info.ok) showUr(info, 'none');
           else showUr(info, 'error');
-        }).catch(function () { cuBusy(false); showUr(null, 'error'); });
+          // 软件端（iframe）里 showUr 静默不弹，结果由主窗口呈现；但「检查本身失败」这一支
+          // 后端不会发 update_error（它只在抛错时发），不补一条状态栏提示就会毫无反应。
+          if (IN_APP_IFRAME && !info.ok && !info.hasUpdate && !info.busy) {
+            setStatus('检查更新失败：' + ((info.message || info.error) || '网络或更新源不可达'), false);
+          }
+        }).catch(function () { cuBusy(false); showUr(null, 'error'); if (IN_APP_IFRAME) setStatus('检查更新失败：请检查网络后重试', false); });
       });
     });
 
