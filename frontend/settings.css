@@ -416,61 +416,6 @@ body {
    窄窗口（App 设置 680 宽）不再出现「占用」拆字 / 释放数值断行 */
 #view-general .opt-row .form-group__label { flex-shrink: 0; white-space: nowrap; }
 
-/* ─── 检查更新二次确认弹窗（居中模态） ─── */
-.update-confirm-mask {
-  position: fixed;
-  inset: 0;
-  z-index: 200;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg-overlay-l3);
-  animation: update-confirm-fade 0.15s ease-out;
-}
-@keyframes update-confirm-fade {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-.update-confirm-pop {
-  min-width: 300px;
-  max-width: 420px;
-  padding: 18px 18px 16px;
-  background: var(--bg-base-default);
-  border: 1px solid var(--border-neutral-l2);
-  border-radius: 12px;
-  box-shadow: 0 16px 40px color-mix(in srgb, var(--text-default) 18%, transparent);
-  animation: update-confirm-pop-in 0.16s ease-out;
-}
-@keyframes update-confirm-pop-in {
-  from { opacity: 0; transform: translateY(8px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-.update-confirm-pop__title {
-  font-family: var(--font-family-default);
-  font-size: 15px;
-  font-weight: var(--font-weight-strong);
-  color: var(--text-default);
-}
-.update-confirm-pop__desc {
-  margin-top: 6px;
-  font-family: var(--font-family-default);
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--text-secondary);
-}
-.update-confirm-pop__actions {
-  display: flex;
-  gap: 10px;
-  justify-content: flex-end;
-  margin-top: 16px;
-}
-.update-confirm-pop__btn { padding: 6px 16px; font-size: 13px; }
-.update-confirm-pop__btn--primary {
-  background: var(--brand-500);
-  border-color: var(--brand-500);
-  color: var(--text-onaccent, #fff);
-}
-.update-confirm-pop__btn--primary:hover { background: var(--brand-600); }
 
 /* ═══ 更新日志视图 ═══ */
 /* 直接随右侧视图自然流动，由 .settings-view 整体滚动，不留底部空档 */
@@ -537,6 +482,40 @@ body {
 .changelog-box blockquote { margin: 8px 0; padding: 6px 12px; border-left: 3px solid var(--brand-500); background: var(--bg-overlay-l1); border-radius: 0 6px 6px 0; }
 .changelog-box blockquote p { margin: 2px 0; }
 .changelog-box hr { border: none; border-top: 1px solid var(--border-neutral-l1); margin: 14px 0; }
+
+/* 关于页 · 版本卡（版本号 / 更新源 / 检查更新）：一屏内看清「这是哪版、能不能升」 */
+.about-hero {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 14px;
+  padding: 16px 18px; margin: 2px 0 6px;
+  background: var(--bg-overlay-l1, var(--bg-base-secondary));
+  border: 1px solid var(--border-neutral-l1);
+  border-radius: var(--radius-8, 10px);
+}
+.about-hero__mark {
+  flex: 0 0 auto; width: 46px; height: 46px; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; font-weight: 700; letter-spacing: .5px;
+  color: var(--text-onaccent, #fff);
+  background: linear-gradient(135deg, var(--brand-500), var(--brand-600));
+  user-select: none;
+}
+.about-hero__main { flex: 1 1 auto; min-width: 0; }
+.about-hero__name { font-size: 15px; font-weight: 600; color: var(--text-default); }
+.about-hero__ver { display: flex; align-items: baseline; gap: 10px; margin-top: 1px; flex-wrap: wrap; }
+.about-hero__v {
+  font-size: 22px; font-weight: 700; line-height: 1.2;
+  color: var(--text-default); font-variant-numeric: tabular-nums;
+}
+.about-hero__src { font-size: 12px; color: var(--text-tertiary); }
+.about-hero__act { flex: 0 0 auto; }
+.about-hero__act .btn[disabled] { opacity: .6; cursor: default; }
+.about-hero__result {
+  flex: 1 1 100%; font-size: 12.5px; line-height: 1.5;
+  color: var(--text-tertiary); word-break: break-all;
+}
+.about-hero__result:empty { display: none; }
+.about-hero__result--ok { color: var(--text-secondary); }
+.about-hero__result--err { color: var(--danger-500, #c9484a); }
 
 /* 关于页 · 运行环境与组件（版本号 / 来源 / 目录）：键值行，值过长自动换行 */
 .about-info { font-size: var(--body-sm-font-size); }

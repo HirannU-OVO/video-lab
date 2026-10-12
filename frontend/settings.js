@@ -524,8 +524,15 @@
         if (hint) hint.textContent = '更新日志加载失败：' + e.message;
       });
     }
-    var aboutLoaded = false;
-    var aboutLoading = false;
+    /** 版本卡上的「更新源」：必须与「检查更新」实际使用的源一致（后者按界面选中值执行） */
+    function renderAboutSrc() {
+      var el = $('aboutSrc'); if (!el) return;
+      var r = document.querySelector('input[name="updateSource"]:checked');
+      el.textContent = '检查更新源：' + (r && r.value === 'github' ? 'GitHub' : 'GitCode');
+    }
+    document.querySelectorAll('input[name="updateSource"]').forEach(function (r) {
+      r.addEventListener('change', renderAboutSrc);
+    });
     /** 关于页 · 运行环境与组件信息：组件是自动下载的，把版本号 / 来源 / 目录显式摆出来便于核对 */
     function loadAboutInfo() {
       var box = $('aboutInfo');
@@ -534,8 +541,10 @@
       api.get_about_info().then(function (r) {
         if (!r || !r.ok) { box.textContent = '读取失败：' + ((r && r.error) || '未知错误'); return; }
         var c = r.component || {}, ap = r.app || {}, rt = r.runtime || {}, ev = r.env || {};
+        // 版本号放到顶部版本卡（大号字），表格里不再重复
+        var vEl = $('aboutVer'); if (vEl) vEl.textContent = 'v' + (ap.version || '—');
+        renderAboutSrc();
         var rows = [
-          ['应用版本', ap.version || '—'],
           ['数据目录', ap.storageDir || '—'],
           ['运行环境', [rt.platform, rt.electron ? ('Electron ' + rt.electron) : '', rt.chrome ? ('Chrome ' + rt.chrome) : '', rt.node ? ('Node ' + rt.node) : ''].filter(Boolean).join(' · ')],
           ['FFmpeg', (c.ffmpegVersion || c.version || '—') + (c.source ? ('（源：' + c.source + '）') : '')],
@@ -554,25 +563,9 @@
     }
 
     function loadAbout() {
-      loadAboutInfo();   // 运行环境与组件（与 README 内容同页展示）
-      if (aboutLoaded || aboutLoading) return;
-      aboutLoading = true;
-      var hint = $('aboutHint');
-      if (hint) hint.textContent = '正在加载…';
-      api.get_readme().then(function (r) {
-        aboutLoading = false;
-        if (!r || !r.ok) {
-          if (hint) hint.textContent = '内容加载失败：' + ((r && r.error) || '未知错误');
-          return;
-        }
-        aboutLoaded = true;
-        var box = $('aboutBox');
-        if (box) { box.innerHTML = ''; var frag = document.createElement('div'); frag.innerHTML = renderMd(r.content || ''); box.appendChild(frag); }
-        if (hint) hint.parentNode && hint.parentNode.removeChild(hint);
-      }).catch(function (e) {
-        aboutLoading = false;
-        if (hint) hint.textContent = '内容加载失败：' + e.message;
-      });
+      // 关于页只展示运行环境与组件；版本号与更新入口在顶部版本卡。
+      // （README 曾在此按 Markdown 渲染 —— 它面向仓库读者，混进关于页既冗长又与实际版本无关）
+      loadAboutInfo();
     }
     document.querySelectorAll('.settings-nav__item').forEach(function (btn) {
       btn.addEventListener('click', function () {
@@ -693,18 +686,11 @@
       });
     }
 
-    // 手动检查更新：发现新版本时在设置页内弹二次确认（是否下载）；下载进度/完成在主窗口体现
+    // 手动检查更新：设置页只负责「发起」+ 按钮进行中态。
+    // 结果（已是最新 / 发现新版 / 失败）统一由**主窗口弹窗**告知 —— 设置页是主窗口内的 iframe，
+    // 自己弹的浮层会被 iframe 裁切看不全；后端已让本入口与托盘同样通知主窗口。
     var cu = $('btnCheckUpdate');
-    var _confirmInfo = null;
-    function showUpdateConfirm(info) {
-      _confirmInfo = info;
-      var t = $('updateConfirmTitle'), d = $('updateConfirmDesc');
-      if (t) t.textContent = '发现新版本 v' + ((info && info.latest) || '');
-      if (d) d.textContent = '是否立即下载更新？下载完成后可在主窗口继续操作。';
-      var m = $('updateConfirmMask');
-      if (m) m.style.display = 'flex';
-    }
-    function hideUpdateConfirm() { var m = $('updateConfirmMask'); if (m) m.style.display = 'none'; }
+    function cuBusy(on) { if (!cu) return; cu.disabled = !!on; cu.textContent = on ? '检查中…' : '检查更新'; }
     if (cu) cu.addEventListener('click', function () {
       // 检查更新按界面当前选中值执行：先让「仓库选择 / 更新方式」即时落盘，
       // 否则切了仓库没保存就点这里，后端仍按旧配置检查，用户看到的与实际的会不一致。
@@ -714,36 +700,14 @@
         update_source: srcNow ? srcNow.value : 'gitcode',
         update_mode: modeNow ? modeNow.value : 'notify'
       };
-      var srcLabel = pref.update_source === 'github' ? 'GitHub' : 'GitCode';
+      cuBusy(true);
       setStatus('正在检查更新…', true);
       var applyPref = (api && api.apply_update_pref) ? api.apply_update_pref(pref) : Promise.resolve(null);
       applyPref.catch(function () { return null; }).then(function () {
-        api.check_update(false).then(function (info) {
-          if (!info) { setStatus('检查更新失败', false); return; }
-          if (info.busy) { setStatus('已有更新操作进行中，请稍候', true); return; }
-          if (info.hasUpdate) {
-            if (info.noAsset) { setStatus('发现新版本 v' + info.latest + '，但这次发布缺少安装文件：可稍后再试，或在设置里换一个更新源（当前' + (pref.update_source === 'github' ? 'GitHub' : 'GitCode') + '）', false); return; }
-            if (info.autoDownload) setStatus('发现新版本 v' + info.latest + '，已自动开始下载，进度见主窗口状态栏', true);
-            else showUpdateConfirm(info);
-          }
-          else if (info.ok) setStatus('已是最新版本 v' + info.current + '（' + srcLabel + '源）', true);
-          else setStatus('检查更新失败：' + (info.error || '未知错误'), false);
-        }).catch(function () { setStatus('检查更新失败', false); });
+        // 结果不在这里处理：主窗口弹窗会给结论；这里只恢复按钮态（catch 兜底避免按钮卡在「检查中…」）
+        api.check_update(false).catch(function () {}).then(function () { cuBusy(false); });
       });
     });
-    var mCancel = $('updateConfirmCancel');
-    if (mCancel) mCancel.addEventListener('click', function () { hideUpdateConfirm(); setStatus('已取消更新', true); });
-    var mGo = $('updateConfirmGo');
-    if (mGo) mGo.addEventListener('click', function () {
-      hideUpdateConfirm();
-      setStatus('已开始下载更新，进度见主窗口状态栏', true);
-      if (api && api.start_update) api.start_update().then(function (r) {
-        if (r && r.busy) { setStatus('已有更新操作进行中，请稍候', true); return; }
-        if (r && !r.ok) setStatus((r.error) || '启动更新失败', false);
-      }).catch(function () { setStatus('下载更新失败', false); });
-    });
-    var mConfirmMask = $('updateConfirmMask');
-    if (mConfirmMask) mConfirmMask.addEventListener('click', function (e) { if (e.target === mConfirmMask) hideUpdateConfirm(); });
 
     // 关闭按钮已移除：退出由外层控制（独立窗口失焦自动关闭；内嵌后面板显隐控制）
     setupMultiTags('batchTxtPrefix', 'batchTxtPrefixTags', function () { return state.batch.txt_prefix; }, onBatchTagsChanged, 'batchTxtPrefixCaret');

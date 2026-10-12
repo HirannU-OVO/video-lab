@@ -259,6 +259,23 @@
       </div>
     </div>
 
+    <!-- ═══ 检查更新结果（统一弹窗）═══ 设置页 / 主窗口 / 托盘三条入口的结果都走这里：
+         设置页是主窗口内的 iframe，它自己弹的浮层会被裁切，故统一由主窗口出；
+         后台静默检查不会触发（main 侧三处事件都有 !silent 闸门）。 -->
+    <div class="update-result" id="updateResultMask" style="display:none">
+      <div class="update-result__box">
+        <div class="update-result__icon" id="updateResultIcon">✓</div>
+        <div class="update-result__body">
+          <div class="update-result__title" id="updateResultTitle"></div>
+          <div class="update-result__desc" id="updateResultDesc"></div>
+        </div>
+        <div class="update-result__actions">
+          <button class="update-banner__btn update-banner__btn--ghost" id="updateResultClose">知道了</button>
+          <button class="update-banner__btn update-banner__btn--primary" id="updateResultGo" style="display:none">立即更新</button>
+        </div>
+      </div>
+    </div>
+
   </div>
 
   <!-- ═══ 未配置工作路径时的引导态：项目列表为空，列表内居中指引选择路径 ═══ -->

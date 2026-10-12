@@ -426,7 +426,7 @@ class Api {
     this.taskSeq = 0;
     this.onTasksChanged = null; // 由 main 进程注入，用于向渲染进程推送任务快照
     this.onVersionsChanged = null; // 由 main 进程注入：配置文件写操作后广播，供前端即时自愈
-    // 排队调度：同一时刻仅运行一个任务，其余按创建顺序排队（软件安排制作顺序，替代脚本抢互斥锁）
+    // 排队调度：同一时刻仅运行一个任务，其余按创建顺序排队（由软件安排制作顺序，不再依赖抢锁）
     this._taskQueue = [];
     this._runningTaskId = null;
     // 计划序号：新建任务入队时递增分配，暂停任务保留、启动任务移除、拖拽/置顶重排后重算。
@@ -4610,7 +4610,7 @@ class Api {
           // 引擎先写临时名、编码成功才原子改名，故正式名成片的 mtime 必然落在 [startedAt, endedAt] 内；
           // 容差仅取 ±2 秒（时钟/边界抖动），**不可放大** —— 容差一大，相邻同目录任务的时间窗就会重叠，
           // 「删 17:50 不误删后续任务」的保证随之失效。
-          // 同目录串行执行由引擎互斥锁保证：任一时刻只有一个任务在产出，故时间窗天然互斥。
+          // 同目录串行执行由引擎的执行权控制保证：任一时刻只有一个任务在产出，故时间窗天然互斥。
           const winFrom = Number(t.startedAt || 0);
           const winTo = Number(t.endedAt || 0);
           if (owned.size === 0 && mp4s.length && winFrom > 0 && winTo > 0) {
@@ -5073,9 +5073,11 @@ class Api {
             task._lastFrameLine = null;
             task.progress.liveLine = null; // 清除实时行，避免与固化行重复显示
           }
-          if (/等待获取互斥锁/.test(s)) task.lockState = 'waiting';
-          else if (/已获取互斥锁/.test(s)) task.lockState = 'locked';
-          else if (/互斥锁已释放|任务完成/.test(s)) { task.lockState = 'released'; task.progress.liveLine = null; }
+          // 新旧文案都要认：历史任务的日志里写的是旧句（「互斥锁」），去掉旧分支会让「重开旧任务」
+          // 的状态显示失效。引擎现行文案见 engines/base/logger.js 的三行协议。
+          if (/等待前面的任务完成|等待获取互斥锁/.test(s)) task.lockState = 'waiting';
+          else if (/开始处理本任务|已获取互斥锁/.test(s)) task.lockState = 'locked';
+          else if (/本任务处理结束|互斥锁已释放|任务完成/.test(s)) { task.lockState = 'released'; task.progress.liveLine = null; }
           // 产物记录进任务标记：成片完成路径 / batch 专属输出目录（重开时据此精确删除）
           const outpM = s.match(/✅ 成片完成：(.+)$/);
           if (outpM) {

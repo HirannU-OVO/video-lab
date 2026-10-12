@@ -11,7 +11,7 @@ const USER_HINTS = [
   { re: /水印/, who: '素材或配置', how: '确认水印图片存在且格式受支持' },
   { re: /参数|配置|未选择|缺失|校验/, who: '配置', how: '按提示补全界面上缺的必填项后重试' },
   { re: /TXT输入|REPLICA_TXT|TXT 文件/, who: '配置', how: '配置 TXT 未找到：确认配置页的素材 TXT 存在、路径有效；若是续跑/软暂停后「继续」失败，可先「停止」再用「继续制作」补做缺失成片' },
-  { re: /互斥锁|锁/, who: '环境', how: '多半是还有其它任务在跑，等它结束后重试' },
+  { re: /互斥锁|锁|执行权/, who: '环境', how: '多半是还有其它任务在跑，等它结束后重试' },
   { re: /时长|组合|片段/, who: '素材或配置', how: '可用片段不足：给素材目录补素材，或放宽时长上限 / 允许超出比例后重试' },
   { re: /输出目录|磁盘|空间|权限|占用/, who: '环境', how: '检查输出目录是否可写、磁盘空间是否足够、文件是否被其它程序占用' },
   { re: /编码|ffmpeg|合成|预处理/, who: '程序或素材', how: '这一片已跳过、不影响其它成片；可点「继续制作」补做，若反复失败请把运行日志反馈' },
@@ -133,12 +133,14 @@ class Logger {
     this.raw('❌ 失败成片：' + name + '|' + clean);
   }
 
-  // 锁状态
-  // suffix 用于对齐各脚本原文（如 batch 的「等待获取互斥锁，准备拼接...」）；
-  // backend 用 /等待获取互斥锁/ 匹配，故三模块统一走本方法、仅 suffix 不同
-  lockWaiting(suffix) { this.raw('等待获取互斥锁' + (suffix ? '，' + suffix : '')); }
-  lockAcquired(msg) { this.raw('🔒 已获取互斥锁' + (msg ? '，' + msg : '')); }
-  lockReleased() { this.raw('🔓 互斥锁已释放'); }
+  // 执行权状态（原「互斥锁」措辞：用户不知道在等什么，改说人话）
+  // suffix 用于对齐各模块原文（如 batch 的「准备拼接...」）；
+  // ⚠ 这三句是**协议行**：backend 与 frontend/task.js 都按文本匹配，改文案必须三处同步
+  //   （见 backend.js 的 lockState 判定与 task.js 的日志过滤正则）。
+  //   各行尾的「本任务」不是赘语 —— 它是让匹配不误伤其它日志行的判别词。
+  lockWaiting(suffix) { this.raw('等待前面的任务完成' + (suffix ? '，' + suffix : '')); }
+  lockAcquired(msg) { this.raw('▶ 开始处理本任务' + (msg ? '，' + msg : '')); }
+  lockReleased() { this.raw('■ 本任务处理结束'); }
 
   // 错误块（对齐 PS1 Invoke-ErrorAction 输出）
   // ① 出错误块时自动附带过程诊断（后端据此拿到「怎么走到这个错误」）；

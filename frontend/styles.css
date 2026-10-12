@@ -11003,6 +11003,38 @@ button.is-vl-disabled {
 .opt-check--sm { gap: 5px; font-size: var(--body-sm-font-size); }
 .opt-check:hover .opt-check__box { border-color: var(--brand-500); }
 
+/* ═══ 检查更新结果弹窗（设置页 / 主窗口 / 托盘统一入口）═══ */
+.update-result {
+  position: fixed; inset: 0; z-index: 10000;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-overlay, rgba(0, 0, 0, 0.35));
+  backdrop-filter: blur(3px);
+}
+.update-result__box {
+  display: flex; align-items: flex-start; flex-wrap: wrap; gap: 14px;
+  width: min(420px, calc(100vw - 64px));
+  padding: 20px 22px;
+  border-radius: 12px;
+  background: var(--bg-base-default, #fff);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.22);
+}
+.update-result__icon {
+  flex: 0 0 auto; width: 34px; height: 34px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 17px; font-weight: 700; color: #fff;
+  background: var(--brand-500, #3b82f6);
+}
+.update-result__icon--ok { background: var(--success-500, #16a34a); }
+.update-result__icon--err { background: var(--danger-500, #dc2626); }
+.update-result__icon--wait { background: var(--text-tertiary, #8a8a8a); }
+.update-result__body { flex: 1 1 0; min-width: 0; }
+.update-result__title { font-size: 15px; font-weight: 600; color: var(--text-default, #222); }
+.update-result__desc {
+  margin-top: 4px; font-size: 13px; line-height: 1.55;
+  color: var(--text-secondary, #666); word-break: break-word;
+}
+.update-result__actions { flex: 1 1 100%; display: flex; gap: 8px; justify-content: flex-end; }
+
 /* 模式切换（批量 ↔ 遮罩叠加）的中间过渡：两种模式的中栏 / 侧栏结构完全不同，切换必然整片重建；
    重建在遮罩之下进行，用户看到的是一次干净的切换，而非重建过程的中间态 */
 .mode-mask {

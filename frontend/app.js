@@ -3333,6 +3333,63 @@
     var el = $('updateMini');
     if (el) el.style.display = 'none';
   }
+  // ── 检查更新结果弹窗：三条入口（设置页 / 主窗口 / 托盘）的结果统一走这里 ──
+  // 统一口径：结论一律弹窗（此前设置页弹 iframe 内浮层、主窗口写状态栏、托盘又走提示条，
+  // 同一件事三种表现，且 iframe 内的浮层会被裁切看不全）。
+  var _UPDATE_RESULT = {
+    none:   { sym: '✓', cls: 'ok',   title: '已是最新版本',     close: '知道了' },
+    update: { sym: '↑', cls: 'new',  title: '发现新版本',       close: '稍后', go: '立即更新' },
+    error:  { sym: '!', cls: 'err',  title: '检查更新失败',     close: '知道了' },
+    busy:   { sym: '…', cls: 'wait', title: '已有更新操作进行中', close: '知道了' }
+  };
+  function showUpdateResult(info, kind) {
+    var mask = $('updateResultMask');
+    if (!mask) return;
+    var cfg = _UPDATE_RESULT[kind] || _UPDATE_RESULT.error;
+    var ic = $('updateResultIcon'), ti = $('updateResultTitle'), de = $('updateResultDesc');
+    var go = $('updateResultGo'), cl = $('updateResultClose');
+    var cur = (info && info.current) || '';
+    if (ic) { ic.textContent = cfg.sym; ic.className = 'update-result__icon update-result__icon--' + cfg.cls; }
+    if (ti) ti.textContent = cfg.title
+      + ((kind === 'update' || kind === 'none') && (kind === 'update' ? (info && info.latest) : cur) ? ' v' + (kind === 'update' ? info.latest : cur) : '');
+    var desc = '';
+    if (kind === 'none') {
+      var t0 = new Date();
+      var hm = ('0' + t0.getHours()).slice(-2) + ':' + ('0' + t0.getMinutes()).slice(-2);
+      desc = (info && info.message) || ('当前版本' + (cur ? ' v' + cur : '') + ' 已是最新 · ' + hm + ' 完成检查');
+    } else if (kind === 'update') {
+      desc = '当前版本' + (cur ? ' v' + cur : '') + ' · 是否立即下载更新？下载完成后可在主窗口继续操作。';
+    } else if (kind === 'busy') {
+      desc = (info && (info.message || info.error)) || '请等当前操作结束后再试';
+    } else {
+      desc = (info && (info.message || info.error)) || '未知错误';
+    }
+    if (de) de.textContent = desc;
+    if (go) { if (cfg.go) { go.style.display = ''; go.textContent = cfg.go; } else { go.style.display = 'none'; } }
+    if (cl) cl.textContent = cfg.close || '知道了';
+    mask.style.display = 'flex';
+  }
+  function hideUpdateResult() {
+    var m = $('updateResultMask');
+    if (m) m.style.display = 'none';
+  }
+  function initUpdateResult() {
+    var mask = $('updateResultMask');
+    if (!mask) return;
+    mask.addEventListener('click', function (e) { if (e.target === mask) hideUpdateResult(); });
+    var cl = $('updateResultClose');
+    if (cl) cl.addEventListener('click', hideUpdateResult);
+    var go = $('updateResultGo');
+    if (go) go.addEventListener('click', function () {
+      hideUpdateResult();
+      var gp = getApi();
+      if (!gp || !gp.start_update) { setStatus('更新功能不可用'); return; }
+      setStatus('正在连接更新服务器…');
+      gp.start_update().then(function (r) {
+        if (r && r.busy) setStatus('已有更新操作进行中，请稍候');
+      }).catch(function () { setStatus('下载更新失败'); });
+    });
+  }
   function initUpdateBanner() {
     var banner = $('updateBanner');
     if (!banner) return;
@@ -3380,7 +3437,8 @@
     });
     var upd = getApi();
     if (!upd) return;
-    if (upd.on_update_available) upd.on_update_available(function (info) { showUpdateBanner(info, 'available'); });
+    // 主动检查发现新版本 → 结果弹窗（后台静默检查走的是别的路径，不会到这里）
+    if (upd.on_update_available) upd.on_update_available(function (info) { showUpdateResult(info, 'update'); });
     if (upd.on_update_progress) upd.on_update_progress(function (info) {
       // 下载进行中：提示条最小化到状态栏（任务按钮左侧显示文字与进度条），左下角状态栏同步更新
       hideUpdateBanner();
@@ -3400,13 +3458,11 @@
     });
     if (upd.on_update_none) upd.on_update_none(function (info) {
       hideUpdateMini();
-      if (info && info.message) setStatus(info.message);
-      else setStatus('已是最新版本 v' + ((info && info.current) || ''));
+      showUpdateResult(info, 'none');
     });
     if (upd.on_update_error) upd.on_update_error(function (info) {
       hideUpdateMini();
-      if (info && info.busy) { setStatus('已有更新操作进行中，请稍候'); return; }
-      setStatus('更新失败：' + ((info && (info.message || info.error)) || '未知错误'));
+      showUpdateResult(info, info && info.busy ? 'busy' : 'error');
     });
     if (upd.on_update_ready) upd.on_update_ready(function () {
       hideUpdateMini();
@@ -3588,6 +3644,7 @@
     buildAzIndex();
     updateSortButtons();
     initUpdateBanner();
+    initUpdateResult();
     // 启动弹更新日志（当前每次启动弹出以确认样式，后续改为更新后首次弹出）
     showStartupChangelog();
     // 状态栏左下角常驻版本号
