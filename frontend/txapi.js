@@ -116,6 +116,8 @@
     save_config: function (p, folders, excludes, watermark) { return invokeArgs('save_config', p, folders, excludes, watermark); },
     save_config_today: function (project, name, configName, folders, excludes, watermark) { return invokeArgs('save_config_today', project, name, configName, folders, excludes, watermark); },
     new_empty_config: function (project) { return invokeArgs('new_empty_config', project); },
+  create_project: function (name, kind) { return invokeArgs('create_project', name, kind); },
+  rename_project: function (oldName, newName, kind) { return invokeArgs('rename_project', oldName, newName, kind); },
     remove_branch: function (p, scope) { return invokeArgs('remove_branch', p, scope); },
     branch_other_txt: function (p) { return invokeArgs('branch_other_txt', p); },
     precheck: function (paths, excludes) { return invokeArgs('precheck', paths, excludes); },

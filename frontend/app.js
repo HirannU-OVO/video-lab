@@ -293,8 +293,35 @@
     });
   }
   // 主流水印设置弹窗：启用判定复选框 + 主流水印行（样式照搬水印 PNG 行）+ 保存/保存并更改/取消
-  function openProjectWatermarkDialog(project) {
-    call('get_project_watermark', project).then(function (r) {
+  // ── 项目名工具（批量与遮罩两处项目设置弹窗共用）──
+  // 名称合法性：与后端 backend.js 的 _validProjectName 用同一套规则。
+  // 在软件侧先校验一次 —— 用户在弹窗里就得到反馈，不必等后端往返；后端另有兜底。
+  function validateProjectName(name) {
+    var n = String(name == null ? "" : name).trim();
+    if (!n) return "名称不能为空";
+    if (n === "." || n === "..") return "名称不能是「.」或「..」";
+    if (n.length > 64) return "名称过长（最多 64 个字符）";
+    if (/[\\/:*?"<>|]/.test(n)) return "名称不能包含 \\ / : * ? \" < > | 这些字符";
+    if (/[\u0000-\u001f]/.test(n)) return "名称不能包含控制字符";
+    if (/[. ]$/.test(n)) return "名称不能以点或空格结尾";
+    if (/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i.test(n)) return "「" + n + "」是系统保留名，请换一个";
+    return "";
+  }
+  // 项目设置弹窗顶部那一行「项目名」（新建态标题不同）
+  function projectNameRowHtml(curName, isNew) {
+    return '<div class="wm-section-title">' + (isNew ? "新建项目" : "项目") + '</div>' +
+      '<div class="wm-row"><span class="wm-row__label">项目名</span><div class="wm-row__ops">' +
+      '<input type="text" class="wm-row__input" id="projNameInput" style="flex:1; min-width:0" maxlength="64" spellcheck="false" placeholder="项目名称" value="' + escapeHtml(curName || "") + '">' +
+      '</div></div>';
+  }
+
+  function openProjectWatermarkDialog(project, opts) {
+    var isNew = !!(opts && opts.isNew);
+    var kind = (opts && opts.kind) || "batch";
+    var preRead = isNew
+      ? Promise.resolve({ ok: true, main: "", enabled: false, group: 0, groupEnabled: false })
+      : call('get_project_watermark', project);
+    preRead.then(function (r) {
       if (!r || !r.ok) { toast('读取项目设置失败：' + ((r && r.error) || '未知错误'), true); return; }
       var curWm0 = String(r.main || '').trim();
       var curWm = curWm0;
@@ -307,8 +334,9 @@
       card.className = 'modal-card modal-card--wm';
       card.innerHTML =
         '<button type="button" class="modal-close" title="关闭">✕</button>' +
-        '<div class="modal__title">项目设置</div>' +
+        '<div class="modal__title">' + (isNew ? "新建项目" : "项目设置") + '</div>' +
         '<div class="modal__wm-body">' +
+        projectNameRowHtml(project, isNew) +
         '<div class="wm-section-title">默认分组数</div>' +
         '<div class="wm-row"><span class="wm-row__label">启用默认分组数</span><div class="wm-row__ops"><label class="wm-check"><input type="checkbox" id="groupToggle"' + (curGroupEn ? ' checked' : '') + '><span class="wm-check__box"></span></label></div></div>' +
         '<div class="wm-row"><span class="wm-row__label">默认分组数</span><div class="wm-row__ops"><input type="number" class="wm-row__input" id="groupInput" min="1" max="99" placeholder="不分组" value="' + (curGroup > 0 ? curGroup : '') + '"></div></div>' +
@@ -343,7 +371,12 @@
       renderRow();
       var closed = false;
       function closeDialog() { overlay.remove(); closed = true; }
-      function afterSave() { closeDialog(); if (state.activeProject === project) assertWatermark(); }
+      function afterSave(useName) {
+        closeDialog();
+        // 新建或改名都要重扫列表，否则侧栏不会出现新项目 / 仍显示旧名
+        if (isNew || useName !== project) { try { refreshData(true); } catch (e) {} }
+        if (state.activeProject === useName) assertWatermark();
+      }
       function collectGroup() {
         var en = card.querySelector('#groupToggle').checked;
         var v = parseInt(card.querySelector('#groupInput').value, 10) || 0;
@@ -352,14 +385,27 @@
       function doSave(applyToAll) {
         var g = collectGroup();
         var en = card.querySelector('#wmToggle').checked;
-        call('set_project_watermark', project, curWm, en, applyToAll, g.group, g.groupEnabled).then(function (res) {
-          if (res && res.ok) {
-            setStatus(applyToAll ? ('已保存项目设置，并将 ' + (res.replaced || 0) + ' 个 TXT 的水印行更改为新水印') : '已保存项目设置');
-            if (applyToAll) refreshData();
-            afterSave();
-          }
-          else toast('保存失败：' + ((res && res.error) || '未知错误'), true);
-        }).catch(function (err) { toast('保存失败：' + err.message, true); });
+        var nmEl = card.querySelector('#projNameInput');
+        var nm = String((nmEl && nmEl.value) || '').trim();
+        var bad = validateProjectName(nm);
+        if (bad) { toast(bad, true); if (nmEl) nmEl.focus(); return; }
+        // 先落「新建 / 改名」，再用（新）名字保存设置 —— 顺序不能反：设置键按项目名存
+        var nameStep;
+        if (isNew) nameStep = call('create_project', nm, kind);
+        else if (nm !== project) nameStep = call('rename_project', project, nm, kind);
+        else nameStep = Promise.resolve({ ok: true, name: nm });
+        nameStep.then(function (nr) {
+          if (!nr || !nr.ok) { toast((nr && nr.error) || '操作失败', true); return; }
+          var useName = (nr && nr.name) || nm;
+          return call('set_project_watermark', useName, curWm, en, applyToAll, g.group, g.groupEnabled).then(function (res) {
+            if (res && res.ok) {
+              setStatus(applyToAll ? ('已保存项目设置，并将 ' + (res.replaced || 0) + ' 个 TXT 的水印行更改为新水印') : '已保存项目设置');
+              if (applyToAll) refreshData();
+              afterSave(useName);
+            }
+            else toast('保存失败：' + ((res && res.error) || '未知错误'), true);
+          });
+        }).catch(function (err) { toast('保存失败：' + (err && err.message || err), true); });
       }
       overlay.addEventListener('click', function (e) { if (e.target === overlay) closeDialog(); });
       card.querySelector('.modal-close').addEventListener('click', closeDialog);
@@ -2840,7 +2886,23 @@
     // 右键项目名：打开项目文件夹 / 项目设置（复刻虚拟项目无配置水印，不提供）
     $('sidebarTree').addEventListener('contextmenu', function (e) {
       var ph = e.target.closest('.tree-project__name');
-      if (!ph) return;
+      // ⚠ 配置行（配置项 .tree-txt-item 与分组标签 .tree-txt-group）不算「空白处」：
+      //   它们在展开的项目内部，右键应保持无菜单，否则会冒出「添加新项目」。
+      if (!ph && e.target.closest('.tree-txt-item, .tree-txt-group')) return;
+      if (!ph) {
+        // 空白处右键：按当前模式提供「添加新项目」。
+        // 遮罩模式的项目行各自绑了 handler 且 stopPropagation，所以这里收到的必然是空白区；
+        // 批量模式的项目行落在下面的分支里（含「复刻」虚拟项目，不给菜单）。
+        var addKind = maskOn() ? 'mask' : 'batch';
+        e.preventDefault();
+        showMenu(e.clientX, e.clientY, [
+          { label: '添加新项目', action: function () {
+            if (addKind === 'mask') openMaskProjectSettings('', '', { isNew: true });
+            else openProjectWatermarkDialog('', { isNew: true, kind: 'batch' });
+          } }
+        ]);
+        return;
+      }
       var pname = ph.getAttribute('data-project');
       if (!pname || pname === REPLICA_PROJECT) return;
       e.preventDefault();
@@ -4316,8 +4378,10 @@
     });
   }
   // 遮罩项目设置弹窗（样式参考批量模式的 wm 弹窗）：默认输出目录，供底栏占位符与选择初始路径
-  function openMaskProjectSettings(projectName, projPath) {
-    call('get_mask_default_dir', projectName).then(function (curDir) {
+  function openMaskProjectSettings(projectName, projPath, opts) {
+    var isNew = !!(opts && opts.isNew);
+    var preRead = isNew ? Promise.resolve('') : call('get_mask_default_dir', projectName);
+    preRead.then(function (curDir) {
       curDir = String(curDir || '').trim();
       var overlay = document.createElement('div');
       overlay.className = 'modal-overlay';
@@ -4325,8 +4389,9 @@
       card.className = 'modal-card modal-card--wm';
       card.innerHTML =
         '<button type="button" class="modal-close" title="关闭">✕</button>' +
-        '<div class="modal__title">项目设置</div>' +
+        '<div class="modal__title">' + (isNew ? "新建项目" : "项目设置") + '</div>' +
         '<div class="modal__wm-body">' +
+        projectNameRowHtml(projectName, isNew) +
         '<div class="wm-section-title">默认输出文件夹</div>' +
         '<div class="wm-row"><span class="wm-row__label">输出路径</span><div class="wm-row__ops">' +
         '<input type="text" class="wm-row__input" id="maskDefaultOutInput" style="flex:1; min-width:0" placeholder="' + escapeHtml(projPath) + '" value="' + escapeHtml(curDir) + '" spellcheck="false">' +
@@ -4350,16 +4415,30 @@
       card.querySelector('[data-mp2-act="cancel"]').addEventListener('click', closeDlg);
       card.querySelector('[data-mp2-act="save"]').addEventListener('click', function () {
         var v = inp.value.trim();
-        call('set_mask_default_dir', projectName, v).then(function (r) {
-          if (!r || !r.ok) { toast('保存失败：' + ((r && r.error) || '未知错误'), true); return; }
-          toast('已保存项目设置', 'ok');
-          closeDlg();
-          // 正在编辑该项目时刷新底栏占位符
-          if (maskState.project && maskState.project.name === projectName) {
-            maskState.defaultOutDir = v;
-            buildMaskConfigBar();
-          }
-        }).catch(function (err) { toast('保存失败：' + err.message, true); });
+        var nmEl = card.querySelector('#projNameInput');
+        var nm = String((nmEl && nmEl.value) || '').trim();
+        var bad = validateProjectName(nm);
+        if (bad) { toast(bad, true); if (nmEl) nmEl.focus(); return; }
+        // 先落「新建 / 改名」，再用（新）名字保存设置 —— 设置键按项目名存，顺序不能反
+        var nameStep;
+        if (isNew) nameStep = call('create_project', nm, 'mask');
+        else if (nm !== projectName) nameStep = call('rename_project', projectName, nm, 'mask');
+        else nameStep = Promise.resolve({ ok: true, name: nm });
+        nameStep.then(function (nr) {
+          if (!nr || !nr.ok) { toast((nr && nr.error) || '操作失败', true); return; }
+          var useName = (nr && nr.name) || nm;
+          return call('set_mask_default_dir', useName, v).then(function (r) {
+            if (!r || !r.ok) { toast('保存失败：' + ((r && r.error) || '未知错误'), true); return; }
+            toast(isNew ? '项目已创建' : '已保存项目设置', 'ok');
+            closeDlg();
+            // 正在编辑该项目时刷新底栏占位符（改名后按新名比对）
+            if (maskState.project && maskState.project.name === projectName) {
+              maskState.defaultOutDir = v;
+              buildMaskConfigBar();
+            }
+            if (typeof refreshMaskProjects === 'function') { try { refreshMaskProjects(); } catch (e) {} }
+          });
+        }).catch(function (err) { toast('保存失败：' + ((err && err.message) || err), true); });
       });
     }).catch(function (err) { toast('读取项目设置失败：' + err.message, true); });
   }

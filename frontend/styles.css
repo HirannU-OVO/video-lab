@@ -4247,6 +4247,9 @@ body[data-preview-collapsed] .center-global-search .ds-input {
 .wm-check input:checked + .wm-check__box { background: var(--brand-500); border-color: var(--brand-500); }
 .wm-check input:checked + .wm-check__box::after {
   content: ''; width: 8px; height: 8px;
+  /* ⚠ 必须显式 block + 绝对定位：伪元素默认 display:inline，而 inline 元素的 width/height 会被
+     忽略 —— 那会让这个 8×8 的勾塌成 0 宽高、只剩父级品牌色底，表现为「勾没了」。 */
+  display: block; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
   background: var(--text-onbrand);
   -webkit-mask: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / contain no-repeat;
   mask: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / contain no-repeat;
@@ -9725,6 +9728,9 @@ body[data-preview-collapsed] .center-global-search .ds-input {
 .wm-check input:checked + .wm-check__box { background: var(--brand-500); border-color: var(--brand-500); }
 .wm-check input:checked + .wm-check__box::after {
   content: ''; width: 8px; height: 8px;
+  /* ⚠ 必须显式 block + 绝对定位：伪元素默认 display:inline，而 inline 元素的 width/height 会被
+     忽略 —— 那会让这个 8×8 的勾塌成 0 宽高、只剩父级品牌色底，表现为「勾没了」。 */
+  display: block; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
   background: var(--text-onbrand);
   -webkit-mask: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / contain no-repeat;
   mask: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / contain no-repeat;

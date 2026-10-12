@@ -1262,6 +1262,64 @@ class Api {
     return data;
   }
 
+  // ── 项目登记表：软件内新建、但还没有任何 TXT 配置的项目 ──
+  // 为什么需要：项目列表由「扫描到的 TXT」按 pdir 反推（见 _buildProjectsData），
+  //   从软件新建的项目在用户放素材前没有任何 TXT，靠扫描永远不出现；而用户点完
+  //   「添加新项目」就该立刻看到它 —— 故把这类项目登记进 cache_kv（键 proj_reg:<工作根>）。
+  // 自愈：外部把目录删了（手动清理 / 换工作路径 / 盘符变动），下次重建列表时用 existsSync
+  //   核验登记项，目录不在即摘除登记（与缓存 GC 里 txt_tree 的处理同一思路）。
+  // ⚠ 只登记「名字」，路径一律由对应的根现拼 —— 换工作路径后登记表不会张冠李戴。
+  // ⚠ batch 与 mask 是【两套不同的工作根】，登记表必须按 kind 分开存：
+  //   键 = proj_reg:<kind>:<工作根>（kind = batch | mask）
+  _projRegKey(root, kind) { return root ? ('proj_reg:' + (kind || 'batch') + ':' + root) : ''; }
+  _loadProjReg(root, kind) {
+    const k = this._projRegKey(root, kind);
+    if (!k) return [];
+    if (!this._projRegMem) this._projRegMem = {};
+    if (!this._useDbCache()) return this._projRegMem[k] || [];
+    try {
+      const raw = this._cacheStore.getKv(k);
+      const o = raw ? JSON.parse(raw) : null;
+      return (o && Array.isArray(o.names)) ? o.names.map(String).filter(Boolean) : (this._projRegMem[k] || []);
+    } catch (e) { return this._projRegMem[k] || []; }
+  }
+  _saveProjReg(root, kind, names) {
+    const uniq = Array.from(new Set((names || []).map((x) => String(x || '').trim()).filter(Boolean)));
+    const k = this._projRegKey(root, kind);
+    if (!k) return;
+    if (!this._projRegMem) this._projRegMem = {};
+    this._projRegMem[k] = uniq;                 // 内存兜底：库缓存不可用时本会话内仍生效
+    if (!this._useDbCache()) return;
+    try { this._cacheStore.setKv(k, JSON.stringify({ names: uniq })); } catch (e) {}
+  }
+  _addProjReg(root, kind, name) {
+    const n = String(name || '').trim();
+    if (!n) return;
+    const cur = this._loadProjReg(root, kind);
+    if (!cur.includes(n)) { cur.push(n); this._saveProjReg(root, kind, cur); }
+  }
+  _removeProjReg(root, kind, name) {
+    const n = String(name || '').trim();
+    if (!n) return;
+    const cur = this._loadProjReg(root, kind);
+    if (cur.includes(n)) this._saveProjReg(root, kind, cur.filter((x) => x !== n));
+  }
+  // 核验登记项（批量侧）：目录仍在 → 保留登记（并回报其中「扫描结果里没有的」= 待合并的新建项目）；
+  // 目录已消失 → 就地摘除（自愈）。
+  _survivingProjReg(scannedNames) {
+    const reg = this._loadProjReg(this.root, 'batch');
+    if (!reg.length) return [];
+    const scanned = scannedNames || new Set();
+    const alive = [], keep = [];
+    for (const n of reg) {
+      let ok = false;
+      try { ok = fs.existsSync(path.join(this.root, n)); } catch (e) { ok = false; }
+      if (ok) { keep.push(n); if (!scanned.has(n)) alive.push(n); }
+    }
+    if (keep.length !== reg.length) this._saveProjReg(this.root, 'batch', keep);
+    return alive;
+  }
+
   _buildProjectsData(force) {
     // 未配置工作路径：项目列表为空（连"复刻"虚拟项目也不显示），交给前端引导态
     if (!this.root) return [];
@@ -1302,6 +1360,13 @@ class Api {
       // **不 stat 项目目录** —— 列表渲染路径保持零磁盘访问，与是否"启动期"无关。
       for (const t of txs) mtime = Math.max(mtime, Number(t.mtimeMs) || 0);
       projects.push({ name: path.basename(pdir), mtime, txts });
+    }
+    projects.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+    // 合并「软件内新建、尚无 TXT」的项目（项目登记表）：扫描结果里已有的同名项跳过，
+    // 其余作为空项目加入 —— 用户从软件新建后立刻可见（登记表方法见上方说明）
+    const _scannedNames = new Set(projects.map((p) => p.name));
+    for (const nm of this._survivingProjReg(_scannedNames)) {
+      projects.push({ name: nm, mtime: 0, txts: [], isEmptyProject: true });
     }
     projects.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
     // 追加“复刻”虚拟项目：其下两个配置名对应两种复刻模式，仅含日志无配置
@@ -2256,11 +2321,15 @@ class Api {
       if (del.length) removed += store.deleteScans(del);
     } catch (e) {}
     // ④ cache_kv：txt_tree:<root> / log_index:<root> 等指向的 root 已不存在 → 删（含历史异写法与错位残留）
+    //    proj_reg 同理 —— 工作根消失后，它登记的项目名已无意义（各项目目录的存在性
+    //    由 _survivingProjReg / listMaskProjects 在每次重建列表时单独核验）
     try {
       const kv = store.listKv('');
       for (const k of Object.keys(kv)) {
         const m = /^(txt_tree|log_index|replica_logs|scan_index):(.+)$/.exec(k);
-        if (m && !exists(m[2])) removed += store.deleteKvPrefix(k);
+        // proj_reg 的键是 proj_reg:<kind>:<工作根>（kind = batch|mask），根路径要从第二个冒号后取
+        const mReg = /^proj_reg:(?:batch|mask):(.+)$/.exec(k);
+        if ((m && !exists(m[2])) || (mReg && !exists(mReg[1]))) removed += store.deleteKvPrefix(k);
       }
     } catch (e) {}
     // ⑤ video_cache 的失效条目沿用既有 GC（missing_since 超期回收）
@@ -5638,6 +5707,130 @@ class Api {
   }
 
   // ══════════════════════════════════════════════════════════════════════
+  // 项目增删改（软件侧新建 / 改名）
+  // ══════════════════════════════════════════════════════════════════════
+  // 项目名合法性：Windows 文件名约束。前端 validateProjectName 用同一套规则先校验一次，
+  // 这里再做一次 —— 接口也可能被 HTTP 侧直接调用，不能只靠前端把关。
+  _validProjectName(name) {
+    const n = String(name == null ? '' : name).trim();
+    if (!n) return '名称不能为空';
+    if (n === '.' || n === '..') return '名称不能是「.」或「..」';
+    if (n.length > 64) return '名称过长（最多 64 个字符）';
+    if (/[\\/:*?"<>|]/.test(n)) return '名称不能包含 \\ / : * ? " < > | 这些字符';
+    // eslint-disable-next-line no-control-regex
+    if (/[\u0000-\u001f]/.test(n)) return '名称不能包含控制字符';
+    if (/[. ]$/.test(n)) return '名称不能以点或空格结尾';
+    if (/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i.test(n)) return '「' + n + '」是系统保留名，请换一个';
+    return '';
+  }
+  _projectRootOf(kind) {
+    return (kind === 'mask')
+      ? String((this.config && this.config.mask && this.config.mask.root) || '').trim()
+      : String(this.root || '').trim();
+  }
+  // 从软件新建项目：在工作根下建目录 + 登记（登记后无需先放素材/TXT 即可在列表里看到）
+  createProject(name, kind) {
+    const k = (kind === 'mask') ? 'mask' : 'batch';
+    const root = this._projectRootOf(k);
+    if (!root) return { ok: false, error: (k === 'mask' ? '尚未设置遮罩工作路径' : '尚未设置工作路径') };
+    const bad = this._validProjectName(name);
+    if (bad) return { ok: false, error: bad };
+    const n = String(name).trim();
+    const dir = path.join(root, n);
+    // 越权双保险：拼接后必须仍在工作根下（名字里的路径分隔符已被 _validProjectName 拦掉）
+    const rel = path.relative(root, dir);
+    if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return { ok: false, error: '名称非法' };
+    let exists = false;
+    try { exists = fs.existsSync(dir); } catch (e) { exists = false; }
+    if (exists) return { ok: false, error: '同名项目已存在' };
+    try { fs.mkdirSync(dir, { recursive: true }); }
+    catch (e) { return { ok: false, error: '创建目录失败：' + ((e && e.message) || e) }; }
+    this._addProjReg(root, k, n);
+    this._invalidateCaches();   // 列表缓存作废，下次读取即含新项目
+    try { console.log('[project] 新建项目 ' + n + ' @ ' + root); } catch (e) {}
+    return { ok: true, name: n, path: dir };
+  }
+  // 项目改名：改目录名 + 迁移一切以「项目名」为键的设置/缓存（否则设置会凭空丢失）
+  renameProject(oldName, newName, kind) {
+    const k = (kind === 'mask') ? 'mask' : 'batch';
+    const root = this._projectRootOf(k);
+    if (!root) return { ok: false, error: (k === 'mask' ? '尚未设置遮罩工作路径' : '尚未设置工作路径') };
+    const oldN = String(oldName == null ? '' : oldName).trim();
+    const newN = String(newName == null ? '' : newName).trim();
+    if (!oldN) return { ok: false, error: '原项目名缺失' };
+    if (oldN === newN) return { ok: true, name: newN, unchanged: true };
+    const bad = this._validProjectName(newN);
+    if (bad) return { ok: false, error: bad };
+    const oldDir = path.join(root, oldN);
+    const newDir = path.join(root, newN);
+    const rel = path.relative(root, newDir);
+    if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return { ok: false, error: '名称非法' };
+    let oldOk = false, newExists = false;
+    try { oldOk = fs.existsSync(oldDir); } catch (e) { oldOk = false; }
+    if (!oldOk) return { ok: false, error: '原项目目录不存在（可能已被外部删除）' };
+    try { newExists = fs.existsSync(newDir); } catch (e) { newExists = false; }
+    if (newExists) return { ok: false, error: '同名项目已存在' };
+    // 有任务在跑/排队时拒绝改目录名：任务持有路径，改完会写错位置
+    try {
+      const busy = [...(this.tasks || new Map()).values()]
+        .filter((t) => t && (t.status === 'running' || t.status === 'queued' || t.status === 'paused'));
+      if (busy.length) return { ok: false, error: '有任务正在运行或排队，请等结束后再改名' };
+    } catch (e) {}
+    try { fs.renameSync(oldDir, newDir); }
+    catch (e) { return { ok: false, error: '重命名目录失败：' + ((e && e.message) || e) }; }
+    // ① 设置键迁移
+    try {
+      if (k === 'batch') {
+        const oldKey = root + '\u0000' + oldN;
+        const newKey = root + '\u0000' + newN;
+        if (this._useSettings()) {
+          const all = this._settingsStore.all('batch');
+          this._settingsStore.transaction(() => {
+            for (const kind2 of ['watermarks', 'enabled', 'groupCounts', 'groupEnabled']) {
+              const src = all[kind2];
+              if (!src || typeof src !== 'object' || Array.isArray(src)) continue;
+              if (!Object.prototype.hasOwnProperty.call(src, oldKey)) continue;
+              const obj = Object.assign({}, src);
+              obj[newKey] = obj[oldKey];
+              delete obj[oldKey];
+              this._settingsStore.set('batch', kind2, obj);
+            }
+          });
+        }
+      } else if (this._useSettings()) {
+        const cur = String(this._settingsStore.get('mask', oldN, '') || '');
+        if (cur) {
+          this._settingsStore.set('mask', newN, cur);
+          this._settingsStore.remove('mask', oldN);
+        }
+      }
+    } catch (e) {}
+    // ② 遮罩会话缓存键（cache_kv: mask_session:<项目名>）
+    if (k === 'mask' && this._useDbCache()) {
+      try {
+        const raw = this._cacheStore.getKv('mask_session:' + oldN);
+        if (raw) {
+          this._cacheStore.setKv('mask_session:' + newN, raw);
+          this._cacheStore.removeKv('mask_session:' + oldN);
+        }
+      } catch (e) {}
+    }
+    // ③ 项目登记表：把登记项从旧名换成新名（新建后改名的情况）
+    try {
+      const reg = this._loadProjReg(root, k);
+      if (reg.includes(oldN)) this._saveProjReg(root, k, reg.map((x) => (x === oldN ? newN : x)));
+    } catch (e) {}
+    // ④ 项目设置的内存缓存按 root 一次性重载（键已变，简单可靠）
+    try {
+      this._wmCacheLoadedRoot = null;
+      this._loadWatermarkCache();
+    } catch (e) {}
+    this._invalidateCaches();   // 列表/版本/日志缓存全部作废 → 前端刷新即见新名
+    try { console.log('[project] 改名 ' + oldN + ' → ' + newN + ' @ ' + root); } catch (e) {}
+    return { ok: true, name: newN, oldName: oldN, path: newDir };
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
   // 视频处理工具（第 4 个模块）
   //
   // 与三个成片模块同构：建任务 → 入同一队列 → 引擎子进程（module=tool）
@@ -6875,6 +7068,15 @@ class Api {
     const out = [];
     let entries = [];
     try { entries = fs.readdirSync(root, { withFileTypes: true }); } catch (e) { return []; }
+    // 一级目录名集合（含空目录）—— 供核验项目登记表：遮罩列表本来就遍历了目录，
+    // 所以「登记项是否还存在」的核验在这里是零额外 IO 的（外部删除 → 下次即摘除）
+    const dirNames = new Set();
+    for (const en of entries) if (en.isDirectory()) dirNames.add(en.name);
+    // 遮罩侧的项目登记表：软件内新建、暂无素材的项目（详见 _projRegKey 上方说明）
+    const regNames = this._loadProjReg(root, 'mask');
+    const regAlive = regNames.filter((n) => dirNames.has(n));
+    if (regAlive.length !== regNames.length) this._saveProjReg(root, 'mask', regAlive);
+    const regSet = new Set(regAlive);
     for (const en of entries) {
       if (!en.isDirectory()) continue;
       const pdir = path.join(root, en.name);
@@ -6906,8 +7108,10 @@ let themes = [];
       };
       walkMasks(pdir);
       themeCount = seenPrefix.size;
-      // 纳入条件：项目内有遮罩主题子文件夹，或任意位置（含根目录）存在 .mov 主题素材
-      if (themes.length || themeCount > 0) out.push({ name: en.name, path: pdir, themes, themeCount });
+      // 纳入条件：项目内有遮罩主题子文件夹，或任意位置（含根目录）存在 .mov 主题素材；
+      // 或者它是软件内新建并登记过的空项目（保证「添加新项目」后立刻可见）
+      const isEmptyProject = !themes.length && themeCount === 0;
+      if (!isEmptyProject || regSet.has(en.name)) out.push({ name: en.name, path: pdir, themes, themeCount, isEmptyProject });
     }
     out.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
     return out;
