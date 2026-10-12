@@ -524,15 +524,7 @@
         if (hint) hint.textContent = '更新日志加载失败：' + e.message;
       });
     }
-    /** 版本卡上的「更新源」：必须与「检查更新」实际使用的源一致（后者按界面选中值执行） */
-    function renderAboutSrc() {
-      var el = $('aboutSrc'); if (!el) return;
-      var r = document.querySelector('input[name="updateSource"]:checked');
-      el.textContent = '检查更新源：' + (r && r.value === 'github' ? 'GitHub' : 'GitCode');
-    }
-    document.querySelectorAll('input[name="updateSource"]').forEach(function (r) {
-      r.addEventListener('change', renderAboutSrc);
-    });
+    // 更新源不再需要单独渲染文字：名片栏里的 radio 自身就显示当前选中项（见 settings.html）
     /** 关于页 · 运行环境与组件信息：组件是自动下载的，把版本号 / 来源 / 目录显式摆出来便于核对 */
     function loadAboutInfo() {
       var box = $('aboutInfo');
@@ -543,7 +535,6 @@
         var c = r.component || {}, ap = r.app || {}, rt = r.runtime || {}, ev = r.env || {};
         // 版本号放到顶部版本卡（大号字），表格里不再重复
         var vEl = $('aboutVer'); if (vEl) vEl.textContent = 'v' + (ap.version || '—');
-        renderAboutSrc();
         var rows = [
           ['数据目录', ap.storageDir || '—'],
           ['运行环境', [rt.platform, rt.electron ? ('Electron ' + rt.electron) : '', rt.chrome ? ('Chrome ' + rt.chrome) : '', rt.node ? ('Node ' + rt.node) : ''].filter(Boolean).join(' · ')],
@@ -559,6 +550,17 @@
           return '<div class="about-info__row"><span class="about-info__k">' + esc(it[0]) + '</span>'
             + '<span class="about-info__v">' + esc(it[1]) + '</span></div>';
         }).join('');
+        // 项目仓库也放进同一容器、用同一行结构 —— 样式与上面各行完全一致（含末行无分隔线）。
+        // 单独起一个 .about-info 容器会让字体/间距与其它行对不齐（曾被一眼看出不统一）。
+        var repo = document.createElement('div');
+        repo.className = 'about-info__row';
+        repo.innerHTML = '<span class="about-info__k">项目仓库</span>'
+          + '<span class="about-info__v">'
+          + '<a href="https://github.com/HirannU-OVO/video-lab" target="_blank" rel="noopener">GitHub</a>'
+          + '<span class="about-info__sep"> · </span>'
+          + '<a href="https://gitcode.com/HirannU-OVO/video-lab" target="_blank" rel="noopener">GitCode</a>'
+          + '</span>';
+        box.appendChild(repo);
       }).catch(function (e) { box.textContent = '读取失败：' + String((e && e.message) || e); });
     }
 
@@ -712,11 +714,6 @@
     });
     buildThemeRow();
     bindNav();
-    // 右上角 GitHub 按钮：打开主仓库主页
-    var gh = document.getElementById('btnGitHub');
-    if (gh && api && api.open_external) gh.addEventListener('click', function () {
-      api.open_external('https://github.com/HirannU-OVO/video-lab').catch(function () {});
-    });
     // ── 检查更新：结果弹窗 + 按钮绑定 ──
     // 结果由设置页自己弹：软件端设置页是主窗口内的 iframe，浏览器端更是独立页面
     // （那里没有主窗口脚本）—— 自己弹才能同时覆盖两种形态。
