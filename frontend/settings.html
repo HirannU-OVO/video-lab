@@ -410,7 +410,7 @@
 
     <!-- ═══ 关于 ═══ -->
     <section class="settings-view" id="view-about">
-      <!-- 版本卡：关于页第一眼 —— 这是什么版本、按哪个源检查、能不能升级 -->
+      <!-- ① 名片栏：这是什么版本、按哪个源检查、能不能升级 -->
       <div class="about-hero">
         <div class="about-hero__mark"><img src="../icon/app_icon.svg" alt="Video Lab" draggable="false"></div>
         <div class="about-hero__main">
@@ -424,16 +424,27 @@
           <button class="btn" id="btnCheckUpdate" title="立即检查所选更新源（GitCode/GitHub）是否有新版本">检查更新</button>
         </div>
       </div>
-      <!-- 运行环境与组件：组件是自动下载的，把版本 / 来源 / 目录 / 校验结果显式摆出来，
-           便于核对"实际跑的是哪一份" -->
-      <div class="settings-group"><span class="settings-group__title">运行环境与组件</span></div>
+
+      <!-- ② 仓库选择：决定「检查更新」去哪查（与名片栏上的检查更新按钮配套，故紧随其后） -->
+      <div class="settings-group"><span class="settings-group__title">仓库选择</span></div>
       <div class="form-group">
-        <div class="about-info" id="aboutInfo"><div class="changelog-hint">正在读取…</div></div>
+        <div class="opt-row opt-row--spaced" title="更新源：发现新版本时从所选仓库检查并下载更新">
+          <label class="opt-radio">
+            <input type="radio" name="updateSource" value="gitcode">
+            <span class="opt-radio__dot"></span>
+            <span class="opt-radio__label">GitCode<span class="opt-path">gitcode.com/HirannU-OVO/video-lab</span></span>
+          </label>
+          <label class="opt-radio">
+            <input type="radio" name="updateSource" value="github">
+            <span class="opt-radio__dot"></span>
+            <span class="opt-radio__label">GitHub<span class="opt-path">github.com/HirannU-OVO/video-lab</span></span>
+          </label>
+        </div>
       </div>
-      <!-- 软件更新：与版本号同页 —— 看到版本就能顺手检查/切换更新源 -->
-      <div class="settings-group"><span class="settings-group__title">软件更新</span></div>
+
+      <!-- ③ 自动更新：什么时候查、查到新版怎么办 -->
+      <div class="settings-group"><span class="settings-group__title">自动更新</span></div>
       <div class="form-group">
-        <label class="form-group__label">更新</label>
         <div class="opt-row">
           <label class="opt-check">
             <input type="checkbox" id="autoCheckUpdate">
@@ -462,20 +473,12 @@
           </label>
         </div>
       </div>
+
+      <!-- ④ 环境与组件：组件是自动下载的，把版本 / 来源 / 目录 / 校验结果显式摆出来，
+           便于核对"实际跑的是哪一份"（排查用，故排在最后） -->
+      <div class="settings-group"><span class="settings-group__title">环境与组件</span></div>
       <div class="form-group">
-        <label class="form-group__label">仓库选择</label>
-        <div class="opt-row opt-row--spaced" title="更新源：发现新版本时从所选仓库检查并下载更新">
-          <label class="opt-radio">
-            <input type="radio" name="updateSource" value="gitcode">
-            <span class="opt-radio__dot"></span>
-            <span class="opt-radio__label">GitCode<span class="opt-path">gitcode.com/HirannU-OVO/video-lab</span></span>
-          </label>
-          <label class="opt-radio">
-            <input type="radio" name="updateSource" value="github">
-            <span class="opt-radio__dot"></span>
-            <span class="opt-radio__label">GitHub<span class="opt-path">github.com/HirannU-OVO/video-lab</span></span>
-          </label>
-        </div>
+        <div class="about-info" id="aboutInfo"><div class="changelog-hint">正在读取…</div></div>
       </div>
     </section>
 
