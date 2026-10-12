@@ -461,7 +461,7 @@
     tasks: ['任务记录', false],
     task_logs: ['任务日志', false],
     task_marks: ['任务标记', false],
-    meta: ['内部状态', false],
+    meta: ['其他数据', false],
   };
 
   // 轻量角落提示（toast）：仅告知、无需操作，自动消失。type：ok/error/info/warn
@@ -530,7 +530,7 @@
     function loadAboutInfo() {
       var box = $('aboutInfo');
       if (!box) return;
-      if (!api || !api.get_about_info) { box.textContent = '（当前通道不支持）'; return; }
+      if (!api || !api.get_about_info) { box.textContent = '（当前版本不支持）'; return; }
       api.get_about_info().then(function (r) {
         if (!r || !r.ok) { box.textContent = '读取失败：' + ((r && r.error) || '未知错误'); return; }
         var c = r.component || {}, ap = r.app || {}, rt = r.runtime || {}, ev = r.env || {};
@@ -827,7 +827,7 @@
         var clean = [], keep = [];
         (st.tables || []).forEach(function (t) {
           if (!t || !t.rows) return;
-          var info = CACHE_TABLE_INFO[t.table] || [t.table, false];
+          var info = CACHE_TABLE_INFO[t.table] || ['其他', false];
           var line = '　' + info[0] + '　' + fmtNum(t.rows) + ' 条 · ' + fmtSize(t.bytes);
           (info[1] ? clean : keep).push(line);
         });

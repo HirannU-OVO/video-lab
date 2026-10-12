@@ -18,12 +18,12 @@
   function call(method) {
     var args = Array.prototype.slice.call(arguments, 1);
     var api = getApi();
-    if (!api || typeof api[method] !== 'function') return Promise.reject(new Error('后端接口不可用: ' + method));
+    if (!api || typeof api[method] !== 'function') return Promise.reject(new Error('功能暂不可用'));
     return Promise.resolve().then(function () { return api[method].apply(api, args); });
   }
 
   var STATUS_TEXT = { queued: '排队中', paused: '已暂停', running: '运行中', done: '已完成', error: '失败', stopped: '已停止', interrupted: '已中断' };
-  var LOCK_TEXT = { unknown: '', waiting: '等待互斥锁', locked: '已获取锁', released: '' };
+  var LOCK_TEXT = { unknown: '', waiting: '等待前面的任务完成', locked: '开始处理', released: '' };
   var TYPE_TEXT = { batch: '批量拼接', replica: '视频复刻', mask: '遮罩叠加', tool: '视频处理' };
 
   // 任务卡片右键菜单（置顶 / 暂停继续 / 打开成片文件夹），样式复用 styles.css 的 .ctx-menu

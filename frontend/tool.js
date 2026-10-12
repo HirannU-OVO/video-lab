@@ -515,7 +515,7 @@
       if (el) el.addEventListener(id === 'outConflict' ? 'change' : 'input', outCollect);
     });
     $('btnPickDir').addEventListener('click', function () {
-      if (!api || !api.pick_directory) { toast('后端不支持文件夹选择', 'error'); return; }
+      if (!api || !api.pick_directory) { toast('当前环境不支持文件夹选择', 'error'); return; }
       api.pick_directory('选择要处理的文件夹', state.root || undefined).then(function (p) {
         if (p) { state.root = p; state.files = []; $('inRoot').value = p; renderInputHint(); }
       });
@@ -550,20 +550,20 @@
     });
     $('inRecursive').addEventListener('change', function () { state.recursive = !!$('inRecursive').checked; renderInputHint(); });
     $('btnPickOutDir').addEventListener('click', function () {
-      if (!api || !api.pick_directory) { toast('后端不支持文件夹选择', 'error'); return; }
+      if (!api || !api.pick_directory) { toast('当前环境不支持文件夹选择', 'error'); return; }
       api.pick_directory('选择输出文件夹', $('outDir').value || state.root || undefined).then(function (p) {
         if (p) $('outDir').value = p;
       });
     });
     $('btnPickBackupDir').addEventListener('click', function () {
-      if (!api || !api.pick_directory) { toast('后端不支持文件夹选择', 'error'); return; }
+      if (!api || !api.pick_directory) { toast('当前环境不支持文件夹选择', 'error'); return; }
       api.pick_directory('选择备份文件夹', $('outBackupDir').value || state.defaultBackupDir || undefined).then(function (p) {
         if (p) $('outBackupDir').value = p;
       });
     });
     var obb = $('btnOpenBackupDir');
     if (obb) obb.addEventListener('click', function () {
-      if (!api || !api.open_folder_select) { toast('后端不支持打开文件夹', 'error'); return; }
+      if (!api || !api.open_folder_select) { toast('当前环境不支持打开文件夹', 'error'); return; }
       api.open_folder_select($('outBackupDir').value.trim() || state.defaultBackupDir).then(function (r) {
         if (r && r.ok === false) { toast('打开备份文件夹失败：' + (r.error || '未知错误'), 'error'); return; }
         // 浏览器端由本体代开：explorer 可能被 Windows 前台锁压到后台，只在任务栏出现 —— 明确告知去哪看
@@ -996,7 +996,7 @@
   }
 
   function cvDoPreview() {
-    if (!api || !api.canvas_preview_frame) { cvSetBadge('接口不可用', 'err'); return; }
+    if (!api || !api.canvas_preview_frame) { cvSetBadge('暂不可用', 'err'); return; }
     var contentPath = cvContentPath();
     if (!contentPath) {
       cvSetBadge('未选择视频', 'err');
@@ -1692,7 +1692,7 @@
     cvInit();
     bindFormEvents();
     bindOutputEvents();
-    if (!api || !api.list_tools) { setRunEnabled(false, '后端接口不可用'); toast('后端接口不可用', 'error'); return; }
+    if (!api || !api.list_tools) { setRunEnabled(false, '功能暂不可用（请重启软件）'); toast('功能暂不可用（请重启软件）', 'error'); return; }
     api.list_tools().then(function (info) {
       if (!info || !info.ok) {
         setRunEnabled(false, '读取处理能力失败');

@@ -446,7 +446,7 @@
   function call(method) {
     var args = Array.prototype.slice.call(arguments, 1);
     var api = getApi();
-    if (!api || typeof api[method] !== 'function') return Promise.reject(new Error('后端接口不可用: ' + method));
+    if (!api || typeof api[method] !== 'function') return Promise.reject(new Error('功能暂不可用'));
     return Promise.resolve().then(function () { return api[method].apply(api, args); });
   }
   // 左下角菜单关闭（全局可用，供 initMaskMode 等独立函数调用）
@@ -1197,7 +1197,7 @@
         call('run_replica', it.path, mode, it.video, opts).then(function (r) {
           done++;
           if (!(r && r.ok)) setStatus('启动失败：' + ((r && r.error) || '未知错误'));
-          else if (done === cnt) { toast('已全部启动 ' + cnt + ' 个批量复刻脚本', 'ok'); }
+          else if (done === cnt) { toast('已全部启动 ' + cnt + ' 个复刻任务', 'ok'); }
         }).catch(function () { done++; });
       });
       // ⚠ 必须确认启动后才退出选择模式：弹窗前就清空会导致再点另一个按钮无反应
@@ -1850,7 +1850,7 @@
         html += '<span class="log-entry__arrow">' + icon('chevron-right', 14) + '</span>' + icon('video', 14);
         html += '<span class="log-entry__video-name" title="' + escapeHtml(entry.video) + '">' + escapeHtml(entry.video || '（未命名成片）') + '</span>';
         html += '<span class="log-entry__clip-count">' + clips.length + ' 片段</span>';
-        html += '<button class="log-entry__replica" title="调用复刻脚本处理该日志">' + icon('repeat', 13) + '复刻</button>';
+        html += '<button class="log-entry__replica" title="用该日志发起复刻">' + icon('repeat', 13) + '复刻</button>';
         html += '</div>';
         html += '<div class="log-entry__clips" style="display:none">';
         clips.forEach(function (clip) { html += '<div class="log-entry__clip" data-path="' + escapeHtml(clip) + '">' + icon('video', 12) + '<span class="log-entry__clip-path" title="' + escapeHtml(clip) + '">' + escapeHtml(clip) + '</span></div>'; });
@@ -1925,7 +1925,7 @@
         replicaModeDialog().then(function (sel) {
           if (!sel) { setStatus('已取消复刻'); return; }
           // 仅复刻该单个成片（传入成片名，脚本精确处理该成片）
-          call('run_replica', logPath, sel.mode, entryVideo, sel.opts).then(function (r) { setStatus(r && r.ok ? '已启动该成片复刻脚本' : '启动失败：' + ((r && r.error) || '')); });
+          call('run_replica', logPath, sel.mode, entryVideo, sel.opts).then(function (r) { setStatus(r && r.ok ? '已启动该成片的复刻任务' : '启动失败：' + ((r && r.error) || '')); });
         });
         return;
       }
@@ -3605,7 +3605,7 @@
         state.isPortable = !!(r && r.is_portable);
       }).catch(function () { state.portableDist = true; state.isPortable = true; });
     }
-    if (!getApi()) { $('statusLeft').textContent = '后端不可用（未检测到桥接 API）'; return; }
+    if (!getApi()) { $('statusLeft').textContent = '通信组件未就绪，请重启软件'; return; }
     checkEnv(); buildDateBranches(); buildCenterBottom(); buildRightPanel(); refreshData(false, '正在检测工作路径文件，请稍候…');
     initBootGuide();
     bindCloseBehavior();
