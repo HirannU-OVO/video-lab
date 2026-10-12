@@ -2256,13 +2256,14 @@ function registerIpc() {
     return url ? { ok: true, url } : { ok: false, error: 'HTTP 服务未就绪' };
   });
   // 设置页：检查更新（仅在自动更新启用时生效，UPDATE_ENABLED=false 时返回停用）。
-  // 设置页来源不向主窗口弹「发现新版本」（确认弹窗已在设置页内），下载完成后主窗口才弹操作条
+  // ⚠ notifyMain 必须为 true（默认）：三条入口的结果统一由主窗口弹（index.html 的 #updateResultMask
+  //   + app.js 的 showUpdateResult）。设置页在软件端是主窗口内的 iframe，自弹浮层会被
+  //   .settings-frame（z-index 9999 且带 transform）裁切，所以 settings.js 的 showUr 内有
+  //   IN_APP_IFRAME 闸门 —— 软件端不弹、交给主窗口；浏览器端设置页是独立页面（txapi 的 SSE
+  //   事件表不含 update_*）才由它自己弹。此处若传 notifyMain:false，软件端就会【两边都不弹】。
+  // ⚠ checkForUpdate 内的三处事件都有 !silent 闸门：后台自动/每日检查不会弹窗打扰。
   ipcMain.handle('check_update', (e, silent) => {
-    // 设置页是**自己弹结果**的（软件端为 iframe、浏览器端为独立页面，两端都要能弹），
-    // 故此处不通知主窗口 —— 否则软件端会双弹（设置面板内一个、主窗口一个）。
-    // 托盘入口仍走 notifyMain（见 tray_menu_click），由主窗口弹。
-    // ⚠ checkForUpdate 内的三处事件都有 !silent 闸门：后台自动/每日检查不会弹窗打扰。
-    return checkForUpdate({ silent: !!silent, notifyMain: false });   // 结果由设置页自己弹（见 settings.js 的 showUr）
+    return checkForUpdate({ silent: !!silent });
   });
   // 设置页：更新源/更新方式即时落盘（检查更新前调用，使界面当前选中值立刻生效）
   ipcMain.handle('apply_update_pref', (e, pref) => applyUpdatePref(pref));
