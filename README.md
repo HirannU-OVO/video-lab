@@ -92,7 +92,7 @@ Video Lab/
 ```bash
 npm install            # 安装依赖（含 electron / electron-builder 开发依赖）
 npm start              # 开发运行
-npx electron-builder --win --x64   # 打包（产出 win-unpacked 与 Setup 安装包）
+npm run build:dir      # 构建可直接运行的程序（产出 dist\win-unpacked，双击其中的 Video Lab.exe 即可使用）
 ```
 
 > 任务引擎（`engines/`）随构建内置，复制为产物 `resources\Engines`。任务执行全部由内置 Node 引擎完成，不依赖系统安装 PowerShell。

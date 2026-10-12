@@ -6,7 +6,8 @@
   "license": "MIT",
   "main": "main.js",
   "scripts": {
-    "start": "node run.js"
+    "start": "node run.js",
+    "build:dir": "electron-builder --win --x64 --dir"
   },
   "build": {
     "appId": "com.videolab.manager",
@@ -23,7 +24,7 @@
       }
     ],
     "directories": {
-      "output": "../../../Setup"
+      "output": "dist"
     },
     "afterPack": "build/afterPack.js",
     "files": [
