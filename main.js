@@ -176,7 +176,6 @@ const CACHE_DB = 'cache.db';
 const storageDir = () => path.dirname(configFilePath());
 
 // ═══ 过渡版 2.5.1：便携数据静默搬迁 + 留线索 + 接管标记 ═══
-// 见《弃用便携包与旧仓库-过渡方案》§3.1 与 §九 A1~A3。
 // 目的：把「数据位置」与「用户用哪个版本」解耦 —— 数据迁到 %APPDATA% 后，无论下次启动便携版还是安装版，
 //       resolveConfigLocation() 的 mtime 仲裁都会选 appdata。
 // ⚠ 复核补充 1（关键）：复制完成后必须把源侧三库改名 `*.migrated` —— 否则本次会话继续读写源侧，
@@ -249,9 +248,9 @@ function _writePortableOrigin(migrated) {
     }, null, 2), 'utf8');
   } catch (e) { _migLog('线索写入失败（不影响使用）：' + ((e && e.message) || e)); }
 }
-// ⚠ 闸门判据修正（2026-10-10 实测）：**便携包是"安装形态原料（win-unpacked）原样压 zip"**，
+// ⚠ 闸门判据修正：**便携包是"安装形态原料（win-unpacked）原样压 zip"**，
 // 它带着 resources\app-update.yml → `IS_PORTABLE` 恒为 false（走安装形态分支）。
-// 若用 IS_PORTABLE 当闸门，真实便携用户的搬迁**永不触发**（我此前的人造测试掩盖了这一点）。
+// 若用 IS_PORTABLE 当闸门，真实便携用户的搬迁**永不触发**（早期的人造测试曾掩盖这一点）。
 // 可靠区分点 = **安装痕迹**：setup(NSIS) 安装会在程序目录放 Uninstall*.exe，zip 解压出来的没有。
 // 故闸门为「数据落在程序目录 + 该目录无 Uninstall*.exe」——零注册表开销、不误伤 setup 用户。
 function _looksLikeUninstalledCopy(dir) {
@@ -520,7 +519,7 @@ function loadConfig() {
   if (app) {
     // ③ 一次性迁移：旧顶层 root → batch.root。
     //    ⚠ **必须在取值循环之前**完成 —— 否则首阶段 `resolveRoot()` 取不到工作目录，
-    //    会回退成程序目录的上一级（实测工作目录变成 D:\Tools，冷启动全量扫描 29.7 秒）。
+    //    会回退成程序目录的上一级（实测工作目录会落到上级目录，冷启动全量扫描 29.7 秒）。
     //    这里只改内存（api 尚未构造、无法落库）；落库在 applySettingsFromDb 完成。
     const legacyRoot = typeof app.root === 'string' ? app.root.trim() : '';
     const batchObj = (app.batch && typeof app.batch === 'object') ? app.batch : {};
@@ -1268,7 +1267,7 @@ async function checkForUpdate(opts) {
     const assets = Array.isArray(data.assets) ? data.assets : [];
     // GitCode / GitHub 均会自动附带源码归档（如 v1.4.6.zip），须排除以免误下载源码包。
     //
-    // A4（2026-10-10「弃用便携包与旧仓库·过渡方案」§九）：**便携分发形态改为下载 Setup 安装包**
+    // 便携分发形态改为下载 Setup 安装包
     //   —— 2.5.1 起不再把便携包当作升级目标，便携版用户升级即改用安装版（设置与数据由静默搬迁保留）。
     //   形态判定用 isPortableDistribution()（== 程序目录无 Uninstall*.exe），不用 IS_PORTABLE（见其注释）。
     //   非便携分发形态保持旧规则找便携包，以免影响既有发布兼容期行为。
@@ -1299,7 +1298,7 @@ async function checkForUpdate(opts) {
     // release 资产的 digest 为 sha256:<hex>，作为下载完整性校验依据（分卷组一般无 digest）
     const sha256 = (asset && asset.digest && String(asset.digest).replace(/^sha256:/i, '')) || '';
     const hasUpdate = cmpVersion(tag, APP_VERSION) > 0;
-    // assetName：资产原名，下载落地即用它（A5 需据此定位 Setup 安装程序并拉起）
+    // assetName：资产原名，下载落地即用它
     const assetName = asset ? String(asset.name || '') : '';
     const info = {
       ok: true, current: APP_VERSION, latest: tag || '', hasUpdate,
@@ -1307,11 +1306,11 @@ async function checkForUpdate(opts) {
       size: asset ? asset.size : parts.reduce((s, p) => s + (p.size || 0), 0),
       parts, sha256, sha512: '', assetName, error: ''
     };
-    // 完整性校验依据补齐：GitCode 的 release 资产不带 digest / size（实测 2026-10-10）→
+    // 完整性校验依据补齐：GitCode 的 release 资产不带 digest / size →
     // **便携分发**（唯一走自研下载的形态：下 Setup.exe）从**同 release 的 latest.yml** 取 sha512。
-    // ⚠ 不再自造 update-info.yml —— Setup 的校验依据 latest.yml 里本来就有（用户 2026-10-10 指出）；
+    // ⚠ 不再自造 update-info.yml —— Setup 的校验依据 latest.yml 里本来就有；
     //   它缺的 size 由下载层兜底：netDownload 用响应头 Content-Length 作总长度，进度不受影响。
-    // ⚠ 也不再读 portable-info.yml（2.5.1 开发期间临时引入）：它当初是为「便携版下载便携包」补依据，
+    // ⚠ 也不再读 portable-info.yml：它当初是为「便携版下载便携包」补依据，
     //   而 A4 起便携分发改下 Setup、非便携分发直接走 electron-updater（不来自研下载），该分支已无消费者。
     // ⚠ 两源地址形式不同：GitHub 用 releases/latest/download；**GitCode 必须带 tag**
     //   （实测 GitCode 的 latest/download 会返回 HTML 页面而非文件）。
@@ -1681,7 +1680,7 @@ async function startUpdate() {
     updateBusy = false;
   }
 }
-// A5（2026-10-10「弃用便携包与旧仓库·过渡方案」§九）：便携分发形态的「下载并安装」。
+// 便携分发形态的「下载并安装」。
 // 时序不可颠倒：① 确保搬迁完成（复制到 appdata + 源侧三库改名 .migrated 防 mtime 反超）
 //   → ② 写线索 → ③ 应用退出 → ④ 拉起已校验的 Setup.exe（便携用户借此平稳转成安装版）。
 // 这样无论安装程序是否走完整流程，用户数据都已在新位置：装完打开新版即见旧设置（零操作无感）。
@@ -2343,7 +2342,7 @@ function registerIpc() {
   // ⚠ 冷启动首次加载 ffmpeg 可能超时 → probeFailed：此时**不下载也不弹窗**，延后 10 秒重探一次 ——
   //   ⚠ 不要把「超时」当成「缺滤镜」：否则冷启动必然误报「FFmpeg 组件不完整」（热态重跑却正常）
   // 组件「能用但版本过旧」时**静默升级**：旧源（ffmpeg-static）最高 6.1.1，其进度行**不含 elapsed（实际耗时）**，
-  // 界面那一行永远为空。这是我们换源留下的历史包袱，不该让用户承担 → 启动空闲期自动升到 FFmpeg-Builds（国内镜像）。
+  // 界面那一行永远为空。这是换源留下的历史包袱，不该让用户承担 → 启动空闲期自动升到 FFmpeg-Builds（国内镜像）。
   // 失败**不弹窗**（只在运行日志留痕），且 7 天内不重复尝试，避免每次启动都去下 140MB。
   function maybeUpgradeFfmpeg() {
     try {
@@ -2394,7 +2393,7 @@ function registerIpc() {
   function cleanupLegacyFfmpeg(env) {
     try {
       const legacy = path.join(storageDir(), 'ffmpeg');
-      // ⚠ 刻意**不留任何标记文件**（用户 2026-10-12：删掉 310MB 却留下一个标记文件，"删一个留一个"很诡异）。
+      // ⚠ 刻意**不留任何标记文件**。
       //   本操作天然幂等 —— 下面第二句就是「没有遗留就直接返回」，成本一次 existsSync；
       //   不留标记反而更正确：将来若又冒出遗留（例如回装旧版再升级），照样能被清掉 ——
       //   有了"一次性"标记，那种情况就永远不会再清，反倒留坑。

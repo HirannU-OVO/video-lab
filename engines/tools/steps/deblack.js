@@ -1,6 +1,6 @@
 // 步骤 · 去黑屏
 //
-// 原脚本做法（scripts-archive/视频工具/去黑屏.ps1）：
+// 原脚本做法（既有工具口径）：
 //   用 `signalstats,metadata=print:key=lavfi.signalstats.YAVG` **逐帧**输出平均亮度，
 //   从结尾向前找连续暗帧（Y < PixTh），确定裁剪点后重编码。
 //   ★ 刻意不用 blackdetect —— 原脚本注释说明：blackdetect 对"结尾黑屏"不可靠

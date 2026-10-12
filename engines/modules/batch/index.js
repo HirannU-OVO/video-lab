@@ -1,4 +1,4 @@
-// engines/modules/batch/index.js —— 批量拼接（迁移自 video_batch.ps1，行为等价优先）
+// engines/modules/batch/index.js —— 批量拼接（迁移自旧版脚本，行为等价优先）
 // 解析 TXT 配置 → 扫描素材（含 .lnk 展开、索引自动修复、1080×1920 合规过滤）→ 选片状态机
 // （Round/RoundUsed/SubRound/SubUsedInRound/SubUsageCount）→ 渐进替换重试 → ffmpeg 拼接 → 命名/分组/日志。
 'use strict';

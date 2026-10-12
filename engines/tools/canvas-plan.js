@@ -22,7 +22,7 @@
 
 'use strict';
 
-/** 参数默认值（与《竖转横-实施计划》§四 对齐：0.74 等比 + 居中 + Y 偏移 160） */
+/** 参数默认值 */
 const DEFAULTS = {
   bgMode: 'dir',          // dir=背景目录随机 | image | video | color=纯色
   bgDir: '',              // 背景目录（bgMode=dir 时用于枚举候选）

@@ -859,7 +859,7 @@
         toast('清理失败：' + ((e && e.message) || e), true);
       });
     });
-    // 「数据目录」清理（A6）：扫描 → 勾选 → 清理。
+    // 「数据目录」清理：扫描 → 勾选 → 清理。
     // 不可清项照样列出来（灰显 + 原因）—— 让用户知道它们为什么还在，免得以为「没清干净」。
     var ddList = document.getElementById('dataDirList');
     var bDDScan = document.getElementById('btnDataDirScan');

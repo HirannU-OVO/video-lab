@@ -1,7 +1,7 @@
 // .lnk 快捷方式解析（底座能力）：替代 COM（WScript.Shell），纯 Node 读二进制、不起子进程。
 // LinkInfo 段按官方偏移字段取路径：LocalBasePathOffset(0x10) 与 CommonPathSuffixOffset(0x18)，
 // 完整目标 = 两段拼接（不能按结构长度硬算 —— VolumeID 长度可变会导致错位）。
-// 解析不出时扫描文件中的 UTF-16LE 盘符路径兜底。供 backend 与 batch 模块共用，两侧语义必须一致。
+// 解析不出时扫描文件中的 UTF-16L磁盘符路径兜底。供 backend 与 batch 模块共用，两侧语义必须一致。
 'use strict';
 
 const fs = require('node:fs');

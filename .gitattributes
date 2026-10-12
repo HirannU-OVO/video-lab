@@ -1,7 +1,6 @@
-# 行尾统一 LF、二进制不转换（改动缘由见开发日志，不在本文件重复）
 * text=auto eol=lf
 
-# 二进制/资源类不做行尾转换（避免损坏）
+# 二进制
 *.png binary
 *.jpg binary
 *.jpeg binary

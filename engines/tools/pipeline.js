@@ -150,7 +150,7 @@ async function processFile(file, steps, opts) {
       fs.copyFileSync(file, dst);
       // ⚠ copyFileSync 会**继承源文件的 mtime**（Windows CopyFile 行为；实测素材的 8 月时间戳被原样带过来），
       //   而「备份自动清理」按 mtime 判过期（保留 N 天）—— 于是**刚写下的备份被当成几个月前的旧货当场清掉**，
-      //   表现为"备份目录建了却是空的"（用户 2026-10-12 实报）。备份的年龄应从**备份时刻**算起，故显式写入当前时间。
+      //   表现为"备份目录建了却是空的"。备份的年龄应从**备份时刻**算起，故显式写入当前时间。
       try { const now = new Date(); fs.utimesSync(dst, now, now); } catch (e2) { /* 时间戳写失败不影响备份本身 */ }
     }
   } catch (e) { pushNote('备份失败：' + e.message); }
@@ -325,7 +325,7 @@ async function runPipeline(opts) {
   // ⚠ 层级必须是 `output.defaultBackupDir`（= spec.output.defaultBackupDir，后端 runTool 填的设置项）。
   //   此前写成顶层的 `o.defaultBackupDir` —— 而调用方（engines/tools/module.js）只传 output、不传顶层，
   //   该值**恒为 undefined** → 视频处理从未用过设置里的默认备份目录，任务没带 backupDir 就一律落到
-  //   数据目录 backup（用户 2026-10-12 实报"明明设了 backup 路径，还是落在数据目录"的根因）。
+  //   数据目录 backup（这就是"设了备份路径却仍落在数据目录"的根因）。
   const customRoot = String(output.backupDir || '').trim() || String(output.defaultBackupDir || '').trim();
   const backupRoot = customRoot ? path.join(customRoot, 'Video Lab 备份') : path.join(storageDir, 'backup');
   // ⚠ 开关语义：`output.backup === true` 表示**用户勾选了「处理前备份」**（见 tool.js outCollect：

@@ -1,6 +1,6 @@
 // 步骤 · 变速（时长控制）
 //
-// 原脚本做法（已核实，scripts-archive/视频工具/加速3分钟.ps1）：
+// 原脚本做法（已核实，既有工具口径）：
 //   probe 时长 → 超目标则算倍率（不超过上限）→
 //   `-filter_complex "[0:v]setpts=(1/ratio)*PTS,format=yuv420p[v];[0:a]atempo=ratio[a]"`
 //

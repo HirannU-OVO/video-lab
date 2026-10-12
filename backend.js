@@ -19,7 +19,7 @@ const EXCLUDED_TOP_DIRS = new Set([
 const LOG_NAME_RE = /(拼接日志|复刻日志)/;
 // 引擎写在成片目录里的源配置留档（复刻侧）：属产物附件而非可执行配置，配置索引须排除
 const BACKUP_NAME_RE = /^配置备份-/;
-// 复刻模式名称，按 video_replica.ps1 的 mode 映射；两种模式在侧栏各作一个配置名，仅含日志无配置
+// 复刻模式名称，按 旧版脚本 的 mode 映射；两种模式在侧栏各作一个配置名，仅含日志无配置
 const REPLICA_MODES = ['原片复刻', '去重复刻'];
 const REPLICA_PROJECT = '复刻'; // 侧栏中的虚拟项目名（仅含日志，无配置）
 const REPLICA_MARK = 'REPLICA:'; // 复刻项目虚拟版本的 path 前缀，用于路由 list_logs / logContent
@@ -46,7 +46,7 @@ const ENV_PROBE_TIMEOUT_MS = Math.max(1, Number(process.env.VL_ENV_PROBE_TIMEOUT
 // 成片存在性判定的内存缓存有效期（毫秒）：启动预热写入后，期内 snapshotTasks 纯内存判定、
 // 不再逐任务碰磁盘；超期回退实时探测（用户在资源管理器手动删掉成片后仍能纠正）。
 
-// 启动保护期：启动后这段时间内空闲队列不消费任务（首屏渲染与首次操作期间零 E 盘竞争）。
+// 启动保护期：启动后这段时间内空闲队列不消费任务（首屏渲染与首次操作期间零 磁盘竞争）。
 // 20 秒足够覆盖「窗口出现 → 项目列表渲染 → 用户第一眼扫过」，之后后台才开始慢慢校验。
 const IDLE_BOOT_GRACE_MS = 20000;
 
@@ -61,7 +61,7 @@ const IDLE_FOREGROUND_HOLD_MS = 3000;
 // 这里只兜底**外部**对素材盘的改（用户手动增删改文件、别的程序写入）——
 // 原始设计就是「外部删改 / 任务迁移 → 低频轮询兜底」（见前端 refreshActiveVersions 的 4 秒轮询，
 // 它每次都会重拉项目列表，因此只要这里的重扫把缓存刷新，界面就会在下一轮自动跟上）。
-// 取值权衡：一次全量要遍历整个工作根（本机实测约 3000 次 readdir），机械盘上不能按秒做，
+// 取值权衡：一次全量要遍历整个工作根（实测约 3000 次 readdir），机械盘上不能按秒做，
 // 但也不能长到让外部改动迟迟不出现 —— 60 秒 + 队列的前台/任务让路（只在真空闲时跑）是可接受的平衡。
 const SCAN_FULL_MIN_INTERVAL_MS = 60 * 1000;
 // 成片存在性结论的**持久化**有效期（verify_cache）：命中则连热启动也省掉重复核验。
@@ -94,7 +94,7 @@ const DEFAULT_CONFIG = {
   update_mode: 'notify',      // 更新方式：notify=有新版本仅提醒（默认）/ auto=自动检查并下载
   config_storage: 'program',  // 配置文件保存位置：program=程序所在目录 / appdata=%APPDATA%\Video Lab
   http_port: 9527,            // 浏览器访问端口（0-65535，默认 9527）
-  // video_batch.ps1 顶部全局参数（文件内同名常量被顶部读环境变量 BATCH_* 覆盖）
+  // 旧版脚本 顶部全局参数（文件内同名常量被顶部读环境变量 BATCH_* 覆盖）
   batch: {
     // 工作路径：批量拼接模式自己的工作目录（存放各项目文件夹及 TXT 配置）。
     // 归属放在 batch（与 mask.root 对称）—— 各模式的工作目录由各模式自己承接；
@@ -107,7 +107,7 @@ const DEFAULT_CONFIG = {
     producer: '',      // 成片名固定品牌名（设置页-批量拼接 配置）
     suffix_mark: '',     // 序号后缀（成片名中的序号标识），可留空 = 无任何后缀
   },
-  // video_replica.ps1 顶部全局参数（文件内同名常量被顶部读环境变量 REPLICA_* 覆盖）
+  // 旧版脚本 顶部全局参数（文件内同名常量被顶部读环境变量 REPLICA_* 覆盖）
   replica: {
     max_duration: 179,   // MaxTotalDurationSec
     speed_limit: 1.2,    // SpeedThreshold
@@ -379,7 +379,7 @@ class Api {
     this._idleStats = { done: 0, slow: 0, fast: 0, maxMs: 0 };
     // 启动保护期（「不要冻结窗口，前端全部用缓存渲染，预检测都能后台检测释放，
     // 这些地方也可以做到」）——照预检测那套「后台检测不冻前台」的模式：
-    // 队列在启动后这段时间内**不消费任何任务**，保证首屏渲染与用户首次操作期间完全不与前台争 E 盘 IO；
+    // 队列在启动后这段时间内**不消费任何任务**，保证首屏渲染与用户首次操作期间完全不与前台争 磁盘 IO；
     // 到期后按自适应节流开工，并在有任务运行/前台刚有活动时继续让路。
     this._idleStartAt = Date.now() + IDLE_BOOT_GRACE_MS;
     this._lastForegroundAt = 0;
@@ -988,8 +988,8 @@ class Api {
     } catch (e) {}
   }
 
-  // ── 启动期只读缓存（「直接用缓存里的内容渲染前端，不要动 E 盘，
-  //    哪怕 E 盘里的内容全没了，也是之后再自愈/重新检测的事」）──
+  // ── 启动期只读缓存（「直接用缓存里的内容渲染前端，不要动 磁盘，
+  //    哪怕 磁盘里的内容全没了，也是之后再自愈/重新检测的事」）──
   // 缓存命中 → 立即返回；**缓存没有 → 返回 null，由调用方按空列表渲染**，绝不回退到扫描。
   // 扫描一律走空闲队列（后台、串行、节流），完成后刷新界面 —— 不引入任何"等待/静默期"冻结。
   _cachedTxtTree() {
@@ -2160,7 +2160,7 @@ class Api {
     // 到期回收**不依赖本次核验**：missing_since 已经把「文件不在了」记在库里，
     // 到期与否纯看时间，无需再 stat。原实现写成 `gone ∩ expired` 是建立在
     // 「每次都会重验所有 missing 条目」的前提上 —— TTL 免重验后那个前提不成立，
-    // 结果就是到期条目永远删不掉（verify-gc-perf ④ 抓到的正是这个）。
+    // 结果就是到期条目永远删不掉（内部回归用例 抓到的正是这个）。
     const remove = Array.from(expired);
     let removed = 0;
     try {
@@ -2305,7 +2305,7 @@ class Api {
   // ── A6（「内置FFmpeg与数据目录自维护·方案」§五）：数据目录清理 ──
   // 口径：**宁少勿多，绝不误伤**。
   //   · 只清「可再生的内部产物」与「历史残留」；成片、备份、日志一律不碰；
-  //   · 日志是事后唯一证据（见《日志体系方案》）→ 只展示体积、永不清理，按各自保留期自清；
+  //   · 日志是事后唯一证据→ 只展示体积、永不清理，按各自保留期自清；
   //   · ⚠ **在跑 / 排队 / 暂停 / 失败 / 停止的任务，其 TXT 快照是「启动前还原配置」与「续跑」的
   //     唯一依据 —— 必须保留**。这是本功能最容易踩的坑：一键清理若把排队任务的快照清掉，
   //     那些任务启动时就拿不到自己的配置了。
@@ -2336,7 +2336,7 @@ class Api {
       { key: '', label: '', count: 0, bytes: 0, files: [], cleanable: true, reason: '', desc: '' }, o));
     const abs = (n) => path.join(dir, n);
 
-    // ① 画布预览中间产物（A4 起改为生成后即删；此处清历史遗留）
+    // ① 画布预览中间产物
     try {
       const pv = abs('preview');
       const files = fs.existsSync(pv)
@@ -3314,7 +3314,7 @@ class Api {
     return info;
   }
 
-  // 复刻任务的输出目录推算：与 video_replica.ps1 的 Get-TaskDate + baseDir 规则完全一致——
+  // 复刻任务的输出目录推算：与 旧版脚本 的 Get-TaskDate + baseDir 规则完全一致——
   // 日期用提交时刻（REPLICA_SUBMIT_TS，续跑亦注入），层级 月份/MMdd/模式名；
   // baseDir 取源日志路径中首个月份/MMdd 段之前，无日期段时回退日志所在目录
   _replicaOutInfo(t) {
@@ -4418,7 +4418,7 @@ class Api {
   _removeTaskArtifacts(task) {
     // 产物即将被移除 → 让成片存在性结论立即失效（内存 + verify_cache；否则界面仍按旧结论显示）
     this._invalidateHasOutput(task && task.id);
-    // A5（数据目录自维护）：快照是「任务专属 TXT 副本」，只在任务启动前用于还原配置。
+    // 快照是「任务专属 TXT 副本」，只在任务启动前用于还原配置。
     // 产物既已移除、任务记录即将消失，快照即成孤儿 → 直接删除（无用户价值，不必进回收站）。
     try { fs.unlinkSync(this._txtSnapPath(task && task.id)); } catch (e2) { /* 无快照或已清都无妨 */ }
     // 一律移入回收站（可还原），不做永久删除
@@ -4481,7 +4481,7 @@ class Api {
     return false;
   }
 
-  // batch 专属输出目录推算：目录名规则 MMdd-HH时mm分-配置名-成片（与 video_batch.ps1 一致）
+  // batch 专属输出目录推算：目录名规则 MMdd-HH时mm分-配置名-成片（与 旧版脚本 一致）
   _batchTaskOutDetail(task, allowFallback) {
     const src = (task.env && task.env.REPLICA_TXT) ? String(task.env.REPLICA_TXT) : '';
     if (!src) return null;
@@ -4706,7 +4706,7 @@ class Api {
     return { ok: true, removed: targets.length, errors };
   }
 
-  // 已完成批量任务重分组：修复分组数错误 / 忘记分组。规则与 video_batch.ps1 完全一致——
+  // 已完成批量任务重分组：修复分组数错误 / 忘记分组。规则与 旧版脚本 完全一致——
   // 按日志记录顺序（即生成顺序）1..N 均匀分成 n 组（前 remainder 组各多 1 个），组后缀依次大写字母 A/B/C…；
   // 已有旧分组后缀（末尾单个大写字母）会先剥除再补新后缀；同时把拼接日志中每个成片名行同步改为新名。
   regroupTask(id, groupCount) {
@@ -5167,7 +5167,7 @@ class Api {
           }
           task.status = status;
           task.paused = false;
-          // A5（数据目录自维护）：任务到终态且**全部成功**时，提交快照已无用 ——
+          // 任务到终态且**全部成功**时，提交快照已无用 ——
           // 它只在任务「启动前」用于还原 TXT（解决排队期配置被覆盖/被同目录任务搬走）。
           // 失败 / 停止 / 暂停 / 中断一律保留：它们还要「继续制作」，届时仍需按快照还原配置。
           if (status === 'done') {
@@ -5923,7 +5923,7 @@ class Api {
       const toData = (f) => {
         try { return 'data:image/png;base64,' + fs.readFileSync(f).toString('base64'); } catch (e) { return ''; }
       };
-      // A4（数据目录自维护）：三张 PNG 是「生成 base64 的中间产物」，不是需要留存的缓存 ——
+      // 三张 PNG 是「生成 base64 的中间产物」，不是需要留存的缓存 ——
       // 前端拿 base64 渲染（tool.js 用它赋 img.src），从不读文件路径（原 files 字段前端零使用）；
       // 唯一的“缓存”是下方内存 Map（重启即空、存的是 base64 而非路径）。
       // 故**读完即删**（finally 统一清理，成功与失败路径都不留残留），目录永不增长。
@@ -5965,7 +5965,7 @@ class Api {
       return { ok: false, error: '预览渲染失败：' + msg };
     } finally {
       this._canvasPreviewRunning = Math.max(0, (this._canvasPreviewRunning || 1) - 1);
-      // A4：读完 base64 即删（成功与失败路径都不留残留；文件不存在/已被清也无妨）
+      // 读完 base64 即删（成功与失败路径都不留残留；文件不存在/已被清也无妨）
       for (const f of previewFiles) { try { fs.unlinkSync(f); } catch (e) { /* 忽略 */ } }
     }
   }
@@ -7465,7 +7465,7 @@ let themes = [];
   // 检测应用运行所需的外部环境是否可用（ffmpeg / ffprobe / 内置引擎）
   // 项目实际依赖的滤镜清单（三模块 + 视频处理工具的 -filter_complex 全量收集）
   // 精简版/第三方便携构建常缺 colorchannelmixer、signalstats 等 —— 只查存在性拦不住
-  // 内置组件目录（A1/A2 · 2026-10-12）：打包形态 = `<程序目录>\resources\ffmpeg`。
+  // 内置组件目录：打包形态 = `<程序目录>\resources\ffmpeg`。
   // 由打包配置的 extraResources 随包落入 —— 放 resources 而非 asar，因为引擎要 spawn 真实文件
   //（与 `resources\Engines` 同一套路）。
   // ⚠ 未打包（开发形态）时返回空：`process.resourcesPath` 指向的是 Electron 自己的 resources，
@@ -7484,7 +7484,7 @@ let themes = [];
     if (!d) return false;
     try { return fs.existsSync(path.join(d, 'ffmpeg.exe')) && fs.existsSync(path.join(d, 'ffprobe.exe')); } catch (e) { return false; }
   }
-  // 解析 ffmpeg / ffprobe 实际路径。**优先级（A2 · 2026-10-12）**：
+  // 解析 ffmpeg / ffprobe 实际路径。**优先级**：
   //   ① 内置 `resources\ffmpeg\`（随程序发布，首启离线可用）
   //   ② 设置项 `ffmpeg_dir`（高级用户自备完整版）
   //   ③ 数据目录\ffmpeg（历史下载遗留 —— 仅为兼容旧装机保留，不再是默认）
@@ -7929,7 +7929,7 @@ let themes = [];
     if (!force && !env0.downloadNeeded) return { ok: true, skipped: true, env: env0 };
     this._ffmpegBusy = true;
     const emit = (p) => { try { if (typeof this.onFfmpegProgress === 'function') this.onFfmpegProgress(p); } catch (e) {} };
-    // A3'（2026-10-12 用户定案）：**下载落点改为内置目录 `resources\ffmpeg`**。
+    // A3'：**下载落点改为内置目录 `resources\ffmpeg`**。
     //   内置组件是唯一权威，缺了就地修复即可 —— 不该在数据目录再养一份副本（那正是刚被清掉的 310MB 的来源）。
     //   仅当内置目录**不可写**（装到受保护位置 / 盘只读）才退回数据目录。
     // 可写性必须实测：`existsSync` 判不出"目录只读"，要真写一个探测文件再删。

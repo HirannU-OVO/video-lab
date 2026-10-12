@@ -1,4 +1,4 @@
-// engines/modules/mask/index.js —— 遮罩叠加（迁移自 video_mask.ps1，行为等价优先）
+// engines/modules/mask/index.js —— 遮罩叠加（迁移自旧版脚本，行为等价优先）
 // 模式1=遮罩+水印（预处理预合成）/ 模式2=仅水印 / 模式3=仅遮罩；多原片×多遮罩全组合。
 'use strict';
 

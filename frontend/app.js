@@ -3292,7 +3292,7 @@
       if (later) later.textContent = custom.later || '取消';
       if (now) now.textContent = custom.now || '确定';
     } else if (_bannerState === 'downloaded') {
-      // A7：两种形态都走「安装并重启」—— 后端 apply_update 按形态分流：
+      // 两种形态都走「安装并重启」—— 后端 apply_update 按形态分流：
       //   便携分发 → 搬迁 + 线索 + 退出 + 拉起安装程序（改用安装版，设置与数据自动保留）
       //   安装版   → electron-updater 静默升级安装并重启
       var portableDist = state.portableDist === true;
@@ -3360,7 +3360,7 @@
       }
       now.disabled = true;
       if (_bannerState === 'downloaded') {
-        // A7：两种形态统一走 apply_update —— 后端按形态分流：
+        // 两种形态统一走 apply_update —— 后端按形态分流：
         //   便携分发 → 搬迁 + 线索 + 退出 + 拉起安装程序（改用安装版，设置与数据自动保留）
         //   安装版   → electron-updater 静默升级安装并重启
         // （旧版便携形态此处仅打开资源管理器、让用户自行解压覆盖，已废弃）

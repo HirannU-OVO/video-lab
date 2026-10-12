@@ -1,4 +1,4 @@
-// engines/modules/replica/index.js —— 日志复刻（迁移自 video_replica.ps1，行为等价优先）
+// engines/modules/replica/index.js —— 日志复刻（迁移自旧版脚本，行为等价优先）
 // 模式1=原片复刻 / 模式2=去重复刻（尾部替换 + 渐进压时长）
 // 硬约束：片段以「文件名」为身份（同名即同一片段，成片内不得重复）；缺失片段三路修复，
 //         任一缺失且修复失败 → 该成片不生成；成片内重复最终校验；GPU 编码 h264_nvenc。
@@ -503,7 +503,7 @@ function resolveFromVideoCache(oldPath, { exclude = [], excludeNames = [], index
  * 分母 = 修复+替换后**实际播放列表**的时长和（观众看到的成片）；
  * 分子 = 「与原版不同且非等效修复」位的实际播放时长。
  * ⚠ 不得改回「对 origVideos 逐位 probe」的旧口径：原文件可能已不存在（info 返回 duration=0），
- *   缺失位时长会从分母蒸发（实测 YX54B：190.83s → 101.53s），造成「选位账 37.2% / 校验账 33.2%」
+ *   缺失位时长会从分母蒸发（实测：190.83s → 101.53s），造成「选位账 37.2% / 校验账 33.2%」
  *   两套账打架、「下限设得高能过、设得低反而失败」的悖论。
  */
 async function calcDedupRatio(videos, origVideos, equivalentIndices, info) {
@@ -812,7 +812,7 @@ async function run(ctx, env = process.env) {
   } catch (e) {}
 
   // ── 互斥锁（PS 用 Global\VideoBatchMutex；Node 用文件锁，协议行保持一致） ──
-  // 顺序对齐 PS1：先输出锁行，再输出总数行（video_replica.ps1 为「已获取互斥锁」→「开始日志复刻，共 N 个成片」）
+  // 顺序对齐 PS1：先输出锁行，再输出总数行（旧版脚本为「已获取互斥锁」→「开始日志复刻，共 N 个成片」）
   // 等待行：PS1 的 replica 缺此态，但 batch/mask 均有，backend 也用 /等待获取互斥锁/ 显示排队中；
   // 三脚本行为保持一致，按「无实质理由即统一」补齐
   logger.lockWaiting();
