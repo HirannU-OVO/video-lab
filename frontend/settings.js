@@ -758,16 +758,25 @@
       if (ic) { ic.textContent = cfg.sym; ic.className = 'update-result__icon update-result__icon--' + cfg.cls; }
       if (ti) ti.textContent = cfg.title + (ver ? ' v' + ver : '');
       var desc;
+      // 回执要能说明**实际走的是哪个仓库**：优先用后端回传的 source（它就是本次实际使用的），
+      // 后端未带时按界面当前勾选兜底 —— 切了源没保存也要看得到真实去向。
+      var srcLabel = (info && info.source) ? (info.source === 'github' ? 'GitHub' : 'GitCode') : '';
+      if (!srcLabel) {
+        var srcEl = document.querySelector('input[name="updateSource"]:checked');
+        srcLabel = ((srcEl ? srcEl.value : 'gitcode') === 'github') ? 'GitHub' : 'GitCode';
+      }
+      var srcTag = ' · ' + srcLabel + ' 源';
       if (kind === 'none') {
         var t0 = new Date();
         var hm = ('0' + t0.getHours()).slice(-2) + ':' + ('0' + t0.getMinutes()).slice(-2);
-        desc = (info && info.message) || ('当前版本' + (cur ? ' v' + cur : '') + ' 已是最新 · ' + hm + ' 完成检查');
+        desc = (info && info.message) || ('当前版本' + (cur ? ' v' + cur : '') + ' 已是最新 · ' + hm + ' 完成检查' + srcTag);
       } else if (kind === 'update') {
         desc = '当前版本' + (cur ? ' v' + cur : '') + ' · 是否立即下载更新？下载完成后可在主窗口继续操作。';
       } else if (kind === 'busy') {
         desc = (info && (info.message || info.error)) || '请等当前操作结束后再试';
       } else {
-        desc = (info && (info.message || info.error)) || '未知错误';
+        // 失败时更要指明实际走的源：换个源就能通的场景，用户得先知道刚才走的是哪个
+        desc = ((info && (info.message || info.error)) || '未知错误') + srcTag;
       }
       if (de) de.textContent = desc;
       if (go) { if (cfg.go) { go.style.display = ''; go.textContent = cfg.go; } else { go.style.display = 'none'; } }

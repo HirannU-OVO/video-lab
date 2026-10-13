@@ -1491,7 +1491,7 @@
           onConflict: o.onConflict,
           backup: !!o.backup,
           // ⚠ 必须一并传：画布侧漏了这一项，导致用户在页面选的备份目录丢失，
-          //   引擎只能回退（此前还回退到数据目录 backup，见 canvas-run.js 备份根注释）
+          //   引擎只能回退（备份根口径见 canvas-run.js）
           backupDir: o.backupDir || '',
         },
       },

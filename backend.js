@@ -6161,7 +6161,7 @@ class Api {
     } finally {
       this._canvasPreviewRunning = Math.max(0, (this._canvasPreviewRunning || 1) - 1);
       // 读完 base64 即删（成功与失败路径都不留残留；文件不存在/已被清也无妨）
-      for (const f of previewFiles) { try { fs.unlinkSync(f); } catch (e) { /* 忽略 */ } }
+      for (const previewFile of previewFiles) { try { fs.unlinkSync(previewFile); } catch (e) { /* 忽略 */ } }
     }
   }
 

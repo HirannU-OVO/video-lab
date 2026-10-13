@@ -1112,7 +1112,7 @@ const GITHUB_REPO = 'HirannU-OVO/video-lab';
 const GITCODE_REPO = 'HirannU-OVO/video-lab';
 const UPDATE_API_URL = 'https://api.github.com/repos/' + GITHUB_REPO + '/releases/latest';
 // GitCode release 检查地址（与 Gitee 同款 API 结构：tag_name + assets[]；
-// 读接口匿名可用、无需令牌，实测 2026-10-10；⚠ assets 无 size 字段，大小为 0 时须走兜底）
+// 读接口匿名可用、无需令牌；⚠ assets 无 size 字段，大小为 0 时须走兜底）
 const GITCODE_API_URL = 'https://api.gitcode.com/api/v5/repos/' + GITCODE_REPO + '/releases/latest';
 // 当前更新源（跟随设置 update_source，动态切换 GitHub / GitCode）
 // ⚠ 历史配置里的 'gitee' 一律按 'gitcode' 处理 —— Gitee 已停止更新（最后一版停在 2.5.0），
@@ -1255,11 +1255,11 @@ function netDownload(url, dst, onProgress, expectedSize) {
 }
 // 检查更新：silent=true 时不打扰（启动自动检查）；notifyMain=false 表示来源为设置页（主窗口不弹「发现新版本」，下载完成后才弹操作条）
 async function checkForUpdate(opts) {
-  if (!UPDATE_ENABLED) return { ok: false, current: APP_VERSION, latest: '', hasUpdate: false, url: '', size: 0, error: '自动更新已停用' };
+  if (!UPDATE_ENABLED) return { ok: false, current: APP_VERSION, latest: '', hasUpdate: false, url: '', size: 0, error: '自动更新已停用', source: currentUpdateSource() };
   const silent = !!(opts && opts.silent);
   const notifyMain = !opts || opts.notifyMain !== false;
   if (updateBusy) {
-    const busyInfo = { ok: false, busy: true, current: APP_VERSION, latest: '', hasUpdate: false, url: '', size: 0, error: '已有更新操作进行中，请稍候' };
+    const busyInfo = { ok: false, busy: true, current: APP_VERSION, latest: '', hasUpdate: false, url: '', size: 0, error: '已有更新操作进行中，请稍候', source: currentUpdateSource() };
     // 托盘等非静默入口：把「进行中」提示发到主窗口状态栏
     if (!silent && notifyMain) sendToMain('update_error', busyInfo);
     return busyInfo;
@@ -1323,7 +1323,10 @@ async function checkForUpdate(opts) {
       ok: true, current: APP_VERSION, latest: tag || '', hasUpdate,
       url: asset ? asset.browser_download_url : (parts.length ? parts[0].url : ''),
       size: asset ? asset.size : parts.reduce((s, p) => s + (p.size || 0), 0),
-      parts, sha256, sha512: '', assetName, error: ''
+      parts, sha256, sha512: '', assetName, error: '',
+      // 回执要标明**实际用的**仓库：用户切了源没保存就点检查，界面值已被 applyUpdatePref 落盘，
+      // 这里回传它就是"实际走的那个"；不带这个字段，用户无从确认，只能看到一句结论
+      source: currentUpdateSource()
     };
     // 完整性校验依据补齐：GitCode 的 release 资产不带 digest / size →
     // **便携分发**（唯一走自研下载的形态：下 Setup.exe）从**同 release 的 latest.yml** 取 sha512。
@@ -1376,7 +1379,7 @@ async function checkForUpdate(opts) {
   } catch (e) {
     const msg = e.message || String(e);
     writeUpdateLog('检查失败：' + msg + ' (' + (Date.now() - t0) + 'ms)');
-    const info = { ok: false, current: APP_VERSION, latest: '', hasUpdate: false, url: '', size: 0, error: msg, silent };
+    const info = { ok: false, current: APP_VERSION, latest: '', hasUpdate: false, url: '', size: 0, error: msg, silent, source: currentUpdateSource() };
     lastUpdateInfo = info;
     if (!silent && notifyMain) { sendToMain('update_error', info); sendToSettings('check_update_result', info); }
     else if (!silent) sendToSettings('check_update_result', info);
@@ -2373,11 +2376,9 @@ function registerIpc() {
   // 失败**不弹窗**（只在运行日志留痕），且 7 天内不重复尝试，避免每次启动都去下 140MB。
   function maybeUpgradeFfmpeg() {
     try {
-      // ⚠ A3（内置 FFmpeg · 2026-10-12）：**内置已就位时一律不下载、不升级**。
-      //   旧逻辑读「数据目录\ffmpeg\_meta.json」判断版本过旧 → 触发 310MB 重下；
-      //   内置上线后那份遗留会被「清理数据目录」清掉，届时读不到 _meta.json → 误判成版本过旧/缺失
-      //   → 每次启动静默重下 310MB，正好把用户刚清理的空间又填回去。此闸门即为此设。
-      //   内置是随程序发布的固定版本，不存在"过旧"问题。
+      // ⚠ 内置已就位时一律不下载、不升级：内置是随程序发布的固定版本，不存在「过旧」问题；
+      //   而数据目录那份遗留会被「清理数据目录」清掉，读不到 _meta.json 会被误判成版本过旧/缺失，
+      //   于是每次启动静默重下 310MB —— 正好把用户刚清理的空间又填回去。
       if (api.ffmpegBuiltinReady && api.ffmpegBuiltinReady()) return;
       const dir = String(config.ffmpeg_dir || path.join(storageDir(), 'ffmpeg'));
       const markPath = path.join(storageDir(), 'ffmpeg', '_upgrade.json');
@@ -2410,8 +2411,8 @@ function registerIpc() {
     } catch (e) {}
   }
 
-  // A7（内置 FFmpeg · 2026-10-12）：旧版遗留的**一次性**清理。
-  // 内置组件上线后，数据目录那份 310MB「下载组件」即成为纯遗留 —— 它只增不减，且普通用户无从知晓可以删。
+  // 旧版遗留的**一次性**清理：内置组件就位后，数据目录那份 310MB「下载组件」即成为纯遗留 ——
+  // 它只增不减，且普通用户无从知晓可以删。
   // 闸门（**三个都要满足，缺一不动**）：
   //   ① 内置组件就位（`ffmpegBuiltinReady`）；
   //   ② 环境探测确认内置**确实可用**（不是"文件在"就算数 —— 缺滤镜/编码器同样不可用）；

@@ -3396,8 +3396,8 @@
     if (el) el.style.display = 'none';
   }
   // ── 检查更新结果弹窗：三条入口（设置页 / 主窗口 / 托盘）的结果统一走这里 ──
-  // 统一口径：结论一律弹窗（此前设置页弹 iframe 内浮层、主窗口写状态栏、托盘又走提示条，
-  // 同一件事三种表现，且 iframe 内的浮层会被裁切看不全）。
+  // 统一口径：结论一律弹窗。设置页自弹的浮层会被 .settings-frame 裁切看不全，
+  // 主窗口状态栏与托盘提示条又各说各话 —— 同一件事只能有一种表现。
   var _UPDATE_RESULT = {
     none:   { sym: '✓', cls: 'ok',   title: '已是最新版本',     close: '知道了' },
     update: { sym: '↑', cls: 'new',  title: '发现新版本',       close: '稍后', go: '立即更新' },
@@ -3415,16 +3415,20 @@
     if (ti) ti.textContent = cfg.title
       + ((kind === 'update' || kind === 'none') && (kind === 'update' ? (info && info.latest) : cur) ? ' v' + (kind === 'update' ? info.latest : cur) : '');
     var desc = '';
+    // 回执带「实际走的源」：后端回传的 source 就是本次实际使用的仓库（切了源没保存也按界面当前值执行）
+    var srcTag = (info && info.source)
+      ? (' · ' + (info.source === 'github' ? 'GitHub' : 'GitCode') + ' 源')
+      : '';
     if (kind === 'none') {
       var t0 = new Date();
       var hm = ('0' + t0.getHours()).slice(-2) + ':' + ('0' + t0.getMinutes()).slice(-2);
-      desc = (info && info.message) || ('当前版本' + (cur ? ' v' + cur : '') + ' 已是最新 · ' + hm + ' 完成检查');
+      desc = (info && info.message) || ('当前版本' + (cur ? ' v' + cur : '') + ' 已是最新 · ' + hm + ' 完成检查' + srcTag);
     } else if (kind === 'update') {
-      desc = '当前版本' + (cur ? ' v' + cur : '') + ' · 是否立即下载更新？下载完成后可在主窗口继续操作。';
+      desc = '当前版本' + (cur ? ' v' + cur : '') + ' · 是否立即下载更新？下载完成后可在主窗口继续操作。' + srcTag;
     } else if (kind === 'busy') {
       desc = (info && (info.message || info.error)) || '请等当前操作结束后再试';
     } else {
-      desc = (info && (info.message || info.error)) || '未知错误';
+      desc = ((info && (info.message || info.error)) || '未知错误') + srcTag;
     }
     if (de) de.textContent = desc;
     if (go) { if (cfg.go) { go.style.display = ''; go.textContent = cfg.go; } else { go.style.display = 'none'; } }

@@ -150,6 +150,26 @@ function parseJobs(allLines) {
 }
 
 // ───────────────────────── 候选与替换（Select-ReplacementVideo） ─────────────────────────
+/**
+ * 配置排除项（`-` 前缀）命中判定 —— 与批量引擎同语义：路径（小写）含任一排除词即拒用。
+ * ⚠ 这是**全流程硬约束**，不只是"配置素材池"自己的过滤：用户把素材刻意挪走或删除，
+ *   往往正是靠配置里的排除项表达"这个不要用"；替换候选若不看排除项，就会把这些素材
+ *   又换回来（甚至是正被排除的那一个），等于把排除白做。
+ */
+function deniedByConfig(p, deny) {
+  if (!deny || !deny.length) return false;
+  const s = String(p || '').toLowerCase();
+  for (const d of deny) { if (d && s.includes(d)) return true; }
+  return false;
+}
+
+/** 归一化排除项：trim + 小写 + 去空（大小写不敏感，对齐批量引擎） */
+function normDeny(list) {
+  return (Array.isArray(list) ? list : [])
+    .map((x) => String(x == null ? '' : x).trim().toLowerCase())
+    .filter(Boolean);
+}
+
 function sameDirCandidates(videoPath) {
   // 候选目录：优先原目录；**原目录不存在时退回上一级** ——
   // 素材常被「改名 + 上移」（如 260723-示例A-xxx 整理成 260924-示例B-xxx 后直接放在父目录下），
@@ -200,7 +220,10 @@ function directVideos(dir) {
  * 语法与批量引擎完全一致：普通行 = 素材目录（递归）、`=` 前缀 = 不轮询子目录、`-` 前缀 = 排除、
  * 末行为水印（此处忽略）。
  */
-function loadConfigPool(logTxtPath, logger) {
+function loadConfigPool(logTxtPath, logger, opts) {
+  // skipScan：只要排除项时跳过素材目录扫描 —— 递归扫描几十个大目录很重，
+  // 而排除项是**全流程硬约束**（原片复刻模式也要用），必须能在建池之前单独廉价拿到。
+  const skipScan = !!(opts && opts.skipScan);
   const empty = { pools: [], exclude: [], src: '' };
   const dir = path.dirname(logTxtPath);
   let names = [];
@@ -232,6 +255,7 @@ function loadConfigPool(logTxtPath, logger) {
       if (d) pools.push({ dir: d, recursive: true });
     }
   }
+  if (skipScan) return { pools: [], exclude, src };
   for (const p of pools) {
     let vids = p.recursive ? recursiveVideos(p.dir) : directVideos(p.dir);
     if (exclude.length) {
@@ -277,7 +301,13 @@ function buildReplicaPools({ txtPath, jobs, logger }) {
   const cfgp = loadConfigPool(txtPath, logger);
   const logPools = poolsFromJobs(jobs);
   const seen = new Set(cfgp.pools.map((p) => String(p.dir).toLowerCase()));
-  const extra = logPools.filter((p) => !seen.has(String(p.dir).toLowerCase()));
+  const denyList = normDeny(cfgp.exclude);
+  // 日志补充池（配置未声明的目录）同样要过排除项：它们来自"原成片用过的片段所在目录"，
+  // 其中可能就含已被排除的素材 —— 不能因为"日志里出现过"就放行。
+  const extra = logPools
+    .filter((p) => !seen.has(String(p.dir).toLowerCase()))
+    .map((p) => ({ dir: p.dir, recursive: p.recursive, videos: (p.videos || []).filter((v) => !deniedByConfig(v, denyList)) }))
+    .filter((p) => p.videos.length);
   const pools = cfgp.pools.concat(extra);
   if (logger) {
     if (!cfgp.pools.length && extra.length) {
@@ -286,7 +316,8 @@ function buildReplicaPools({ txtPath, jobs, logger }) {
       logger.info(`📚 候选池：配置 ${cfgp.pools.length} 个目录 + 日志补充 ${extra.length} 个目录`);
     }
   }
-  return { pools, src: cfgp.src, fromConfig: cfgp.pools.length, fromLog: extra.length };
+  // exclude 一并返回：调用方（缺失修复 / 主动替换）要把它传给各个候选来源做统一过滤
+  return { pools, src: cfgp.src, exclude: cfgp.exclude, fromConfig: cfgp.pools.length, fromLog: extra.length };
 }
 
 /** 某个片段属于哪个配置素材目录（最长前缀匹配）→ 返回该目录的候选列表 */
@@ -337,16 +368,20 @@ async function sortByValidThenDuration(list, info) {
  * 选替换候选：返回 { path, equivalent } 或 { path: null }
  * - exclude     完整路径排除（triedSubs / 成片内其它位置）
  * - excludeNames 文件名排除（同名即同一片段，成片内不得重复）
+ * - deny        配置排除项（`-` 前缀，小写）；命中即拒用，**对所有候选来源都生效**
  * - shorterThan >0 时只接受严格更短的候选（无更短 → 返回空，由调用方标记该段耗尽）
  */
-async function selectReplacementVideo({ originalPath, exclude = [], preferShort = false, shorterThan = 0, excludeNames = [], info, targetDurMax = 0, pool = null, noSameSuffix = false, stillNeed = false }) {
+async function selectReplacementVideo({ originalPath, exclude = [], preferShort = false, shorterThan = 0, excludeNames = [], info, targetDurMax = 0, pool = null, noSameSuffix = false, stillNeed = false, deny = [] }) {
   const excludeSet = new Set(exclude);
   const nameSet = new Set(excludeNames);
+  const denyList = normDeny(deny);
   // 候选来源：优先「原配置素材池」（配置声明的目录，递归），池不可用时退回同目录 + 父目录兜底
   // 候选必须排除「原片段自身」：配置池（递归）可能只包含它自己，若选中自己就是"表面替换成功"
   //（生成时计入占比 → 占比虚高 → 提前停止替换），而最终校验发现片段没变 → 不达标不出片。
+  // 配置排除项在**这里**统一兜一道：池本身已过滤，但同目录兜底路径（sameDirCandidates）没有。
   let cands = (Array.isArray(pool) && pool.length ? pool.slice() : sameDirCandidates(originalPath))
-    .filter((p) => !excludeSet.has(p) && !nameSet.has(path.basename(p)) && p !== originalPath);
+    .filter((p) => !excludeSet.has(p) && !nameSet.has(path.basename(p)) && p !== originalPath
+      && !deniedByConfig(p, denyList));
   if (shorterThan > 0) {
     const keep = [];
     for (const c of cands) { const i = await info(c); if ((i.duration || 0) < shorterThan) keep.push(c); }
@@ -432,12 +467,14 @@ async function selectReplacementVideo({ originalPath, exclude = [], preferShort 
 }
 
 /** 备用目录候选（Get-VideoFromDirectory：递归、同后缀优先） */
-async function videoFromDirectory({ directory, originalPath = '', exclude = [], excludeNames = [] }) {
+async function videoFromDirectory({ directory, originalPath = '', exclude = [], excludeNames = [], deny = [] }) {
   let ok = false; try { ok = fs.statSync(directory).isDirectory(); } catch (e) { ok = false; }
   if (!ok) return { path: null, equivalent: false };
   const excludeSet = new Set(exclude);
   const nameSet = new Set(excludeNames);
-  const vids = recursiveVideos(directory).filter((p) => !excludeSet.has(p) && !nameSet.has(path.basename(p)));
+  const denyList = normDeny(deny);
+  const vids = recursiveVideos(directory)
+    .filter((p) => !excludeSet.has(p) && !nameSet.has(path.basename(p)) && !deniedByConfig(p, denyList));
   if (!vids.length) return { path: null, equivalent: false };
   const origSuffix = originalPath ? getNumberSuffix(originalPath) : '';
   const sameSuffix = origSuffix ? vids.filter((v) => getNumberSuffix(v) === origSuffix) : [];
@@ -466,7 +503,7 @@ function buildCacheByNameIndex(cache) {
  * - exclude      完整路径排除（成片内其它位置）
  * - excludeNames 文件名排除：同名副本即同一片段，成片内已用则本位置不可再用
  */
-function resolveFromVideoCache(oldPath, { exclude = [], excludeNames = [], index }) {
+function resolveFromVideoCache(oldPath, { exclude = [], excludeNames = [], index, deny = [] }) {
   let p = stripQuotes(oldPath).replace(/\\\\/g, '\\');
   if (!p) return null;
   const leaf = path.basename(p);
@@ -475,8 +512,10 @@ function resolveFromVideoCache(oldPath, { exclude = [], excludeNames = [], index
   const nameSet = new Set(excludeNames);
   if (nameSet.has(leaf)) return null;
   const excludeSet = new Set(exclude);
+  const denyList = normDeny(deny);
   const list = index.get(fnKey) || [];
-  let cands = Array.from(new Set(list)).filter((c) => exists(c) && !excludeSet.has(c));
+  let cands = Array.from(new Set(list))
+    .filter((c) => exists(c) && !excludeSet.has(c) && !deniedByConfig(c, denyList));
   if (cands.length) {
     const sameDir = cands.filter((c) => path.dirname(c).toLowerCase() === origDir.toLowerCase());
     return sameDir.length ? sameDir[0] : cands[0];
@@ -521,7 +560,7 @@ async function calcDedupRatio(videos, origVideos, equivalentIndices, info) {
 async function selectVariancePaths({
   originalPaths, alreadyChangedIndices = [], alreadyEquivalentIndices = [],
   triedSubs = new Map(), preferShort = false, dedupRatio, info, logger, durationCap = 0,
-  dedupMax = 0, dedupMaxOn = false, pools = null,
+  dedupMax = 0, dedupMaxOn = false, pools = null, deny = [],
 }) {
   const origDurations = [];
   let totalOrig = 0;
@@ -580,6 +619,7 @@ async function selectVariancePaths({
       targetDurMax: budget > 0 ? budget : 0,
       pool: pools ? poolForPath(pools, originalPaths[i]) : null,
       noSameSuffix: true,   // 主动替换：换新内容，不走"同后缀等效"
+      deny,
     });
     if (!sel.path) continue;
     newPaths[i] = sel.path;
@@ -611,6 +651,7 @@ async function selectVariancePaths({
         originalPath: originalPaths[i], exclude: excludeAll2, excludeNames: usedNames2, preferShort, info,
         pool: pools ? poolForPath(pools, originalPaths[i]) : null,
         noSameSuffix: true,
+        deny,
       });
       if (!sel2.path) continue;
       newPaths[i] = sel2.path;
@@ -706,6 +747,29 @@ async function run(ctx, env = process.env) {
   const cacheByName = buildCacheByNameIndex(cache);
   const info = makeVideoInfo(cache);
 
+  // ── 模式与候选池 ──
+  // ⚠ 必须在「缺失片段修复」之前构建：缺失片段同样应当从**原配置声明的素材目录**里换新片段。
+  //   曾经的写法把这段放在缺失修复之后，导致缺失修复只能退回"缺失片段的同目录"—— 而素材被
+  //   整理（文件移入子目录/改名）后那一层往往是空的，于是明明配置里的素材目录还有大量可用片段，
+  //   却直接判定"无法自动修复"把整条成片跳过（实测：16 个成片因 1 个片段被判死）。
+  let mode = 0;
+  if (cfg.mode === '1') mode = 1;
+  else if (cfg.mode === '2') mode = 2;
+  else return fail('未选择复刻模式：请在主窗口选择原片复刻或去重复刻后重新开始制作', '复刻模式');
+  const modeName = mode === 1 ? '原片复刻' : '去重复刻';
+  // 去重复刻：候选池 = 原配置素材池（+ 日志中片段目录补充）。第 1 段恒定不动，其余段**原位**
+  // 换新片段（顺序不变），候选优先来自配置声明的素材目录。
+  const configPool = (mode === 2)
+    ? buildReplicaPools({ txtPath, jobs, logger })
+    : { pools: [], exclude: [], src: '', fromConfig: 0, fromLog: 0 };
+  // 配置排除项（`-` 前缀）是**与模式无关的硬约束**：原片复刻模式不建候选池，但缺失修复
+  // 仍会从缓存 / 同目录 / 备用目录找候选 —— 那里同样不得使用被排除的素材。
+  // 用户刻意把素材挪走或删除，往往正是靠排除项表达"这个不要用"，替换时找回来等于白排除。
+  const deny = normDeny((configPool.exclude && configPool.exclude.length)
+    ? configPool.exclude
+    : loadConfigPool(txtPath, null, { skipScan: true }).exclude);
+  if (deny.length) logger.info(`🚫 配置排除项 ${deny.length} 条（所有替换候选一律排除）：${deny.join('、')}`);
+
   // ── 缺失片段修复（三路） ──
   // 先冻结「原始片段列表」：缺失修复会就地改写 job.videos，而最终的不一致占比校验必须
   // 以**原始**为基准 —— 否则缺失修复带来的改动量会被自己抹掉（表现为：生成时按 24.7% 判定
@@ -732,7 +796,7 @@ async function run(ctx, env = process.env) {
       const otherNames = otherInJob.map((v) => path.basename(v));
 
       // 首选：缓存按文件名反查
-      newPath = resolveFromVideoCache(orig, { exclude: otherInJob, excludeNames: otherNames, index: cacheByName });
+      newPath = resolveFromVideoCache(orig, { exclude: otherInJob, excludeNames: otherNames, index: cacheByName, deny });
       if (newPath && otherInJob.includes(newPath)) {
         logger.info(`   ⚠️ 缓存命中与本成片其它片段重复，改用其它候选：${path.basename(newPath)}`);
         newPath = null;
@@ -741,14 +805,20 @@ async function run(ctx, env = process.env) {
         isEquivalent = true;
         logger.info(`   🔎 缓存命中：${path.basename(orig)} -> ${path.basename(newPath)}（等效，不进入30%）`);
       }
-      // 其次：同目录优先相同数字后缀，否则随机
+      // 其次：**原配置素材池**优先（与主替换同源，才是真正的换新内容）；
+      // 池不可用（原片复刻模式 / 配置正本缺失）时才退回"同目录同数字后缀"。
+      // ⚠ 缺失修复的语义同样是「从原配置声明的目录里换一个片段」，不是"把文件放回原处"。
       if (!newPath) {
-        const sel = await selectReplacementVideo({ originalPath: orig, exclude: otherInJob, excludeNames: otherNames, info });
+        const sel = await selectReplacementVideo({
+          originalPath: orig, exclude: otherInJob, excludeNames: otherNames, info,
+          pool: (configPool.pools && configPool.pools.length) ? poolForPath(configPool.pools, orig) : null,
+          deny,
+        });
         newPath = sel.path; isEquivalent = sel.equivalent;
       }
       // 再试：全局备用目录
       if (!newPath && cfg.fallbackDir) {
-        const sel = await videoFromDirectory({ directory: cfg.fallbackDir, originalPath: orig, exclude: otherInJob, excludeNames: otherNames });
+        const sel = await videoFromDirectory({ directory: cfg.fallbackDir, originalPath: orig, exclude: otherInJob, excludeNames: otherNames, deny });
         newPath = sel.path; isEquivalent = sel.equivalent;
       }
 
@@ -782,17 +852,7 @@ async function run(ctx, env = process.env) {
     }
   }
 
-  // ── 模式与输出目录 ──
-  let mode = 0;
-  if (cfg.mode === '1') mode = 1;
-  else if (cfg.mode === '2') mode = 2;
-  else return fail('未选择复刻模式：请在主窗口选择原片复刻或去重复刻后重新开始制作', '复刻模式');
-  const modeName = mode === 1 ? '原片复刻' : '去重复刻';
-  // 去重复刻：候选池 = 原配置素材池（+ 日志中片段目录补充）。第 1 段恒定不动，其余段**原位**
-  // 换新片段（顺序不变），候选优先来自配置声明的素材目录。
-  const configPool = (mode === 2)
-    ? buildReplicaPools({ txtPath, jobs, logger })
-    : { pools: [], exclude: [], src: '', fromConfig: 0, fromLog: 0 };
+  // ── 输出目录（mode / configPool 已在缺失修复之前构建）──
   const outRoot = path.join(cfg.outputDir || derivedRoot, modeName);
   try { fs.mkdirSync(outRoot, { recursive: true }); } catch (e) {}
   // 源配置备份：主进程已在启动前按提交快照还原 txtPath，故此处复制到的即本次执行所用配置。
@@ -892,6 +952,7 @@ async function run(ctx, env = process.env) {
               dedupMaxOn: cfg.dedupMaxOn,
               // 候选池来自"原配置的素材目录"（第1段不动、其余段原位替换，顺序恒定）
               pools: configPool.pools,
+              deny,
             });
             newVideos = r.paths;
             for (let i = 0; i < job.videos.length; i++) {
@@ -916,6 +977,7 @@ async function run(ctx, env = process.env) {
             for (const k of triedSubs.keys()) if (k.startsWith(workKey + '|')) exclude.push(k.slice(workKey.length + 1));
             const sel = await selectReplacementVideo({
               originalPath: workVideos[longestIdx], exclude, preferShort: true, shorterThan: longestDur, info,
+              deny,
             });
             if (!sel.path) {
               exhaustedIdx.add(longestIdx);
@@ -962,7 +1024,7 @@ async function run(ctx, env = process.env) {
           const viOthers = [];
           for (let k = 0; k < videos.length; k++) if (k !== vi && videos[k]) viOthers.push(path.basename(videos[k]));
           const excludeDup = videos.filter((v) => v && v !== videos[vi]);
-          const selDup = await selectReplacementVideo({ originalPath: videos[vi], exclude: excludeDup, excludeNames: viOthers, info });
+          const selDup = await selectReplacementVideo({ originalPath: videos[vi], exclude: excludeDup, excludeNames: viOthers, info, deny });
           if (selDup.path && exists(selDup.path)) {
             logger.info(`     第 ${vi + 1} 段: ${viName} -> ${path.basename(selDup.path)}`);
             videos[vi] = selDup.path;
@@ -1008,6 +1070,7 @@ async function run(ctx, env = process.env) {
               originalPath: videos[i], exclude: excludeSubs, excludeNames: usedNames, info,
               pool: configPool.pools ? poolForPath(configPool.pools, videos[i]) : null,
               noSameSuffix: true,
+              deny,
             });
             if (!sel.path || sel.equivalent) continue;
             videos[i] = sel.path;

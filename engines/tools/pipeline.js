@@ -323,14 +323,14 @@ async function runPipeline(opts) {
   // 用户自选目录（如 E:\Cache）时，在其下再建一层应用专属文件夹 ——
   // ① 备份不散落在用户目录根下；② 避免与别的应用的同名子文件夹（如 tool）混淆
   // ⚠ 层级必须是 `output.defaultBackupDir`（= spec.output.defaultBackupDir，后端 runTool 填的设置项）。
-  //   此前写成顶层的 `o.defaultBackupDir` —— 而调用方（engines/tools/module.js）只传 output、不传顶层，
-  //   该值**恒为 undefined** → 视频处理从未用过设置里的默认备份目录，任务没带 backupDir 就一律落到
-  //   数据目录 backup（这就是"设了备份路径却仍落在数据目录"的根因）。
+  //   不能读顶层的 `o.defaultBackupDir`：调用方（engines/tools/module.js）只传 output、不传顶层，
+  //   该值恒为 undefined → 任务没带 backupDir 就一律落到数据目录 backup，
+  //   表现为「设了备份路径却仍落在数据目录」。
   const customRoot = String(output.backupDir || '').trim() || String(output.defaultBackupDir || '').trim();
   const backupRoot = customRoot ? path.join(customRoot, 'Video Lab 备份') : path.join(storageDir, 'backup');
   // ⚠ 开关语义：`output.backup === true` 表示**用户勾选了「处理前备份」**（见 tool.js outCollect：
   //   `d.backup = !!$('outBackup').checked`，与「已开启备份」的告警文案一致）。
-  //   此前写反成 `=== true ? '' : 备份`，导致「勾了备份反而不备份、不勾反而备份」。
+  //   ⚠ 分支不可写反：写成 `=== true ? '' : 备份` 会「勾了备份反而不备份、不勾反而备份」。
   const backupDir = output.backup === true
     ? outplan.backupDirFor(backupRoot, o.toolName || 'misc')
     : '';

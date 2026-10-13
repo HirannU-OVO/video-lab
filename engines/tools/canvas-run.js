@@ -135,8 +135,8 @@ async function run(spec, ctx, lockUtils) {
     //   ① 任务自带 backupDir 优先，否则回退设置里的默认备份目录 defaultBackupDir；
     //   ② 用户自选目录时在其下再建「Video Lab 备份」层（设置页显示的也是这一层）；
     //   ③ 都没设才用数据目录下的 backup。
-    // 此前只读 out.backupDir 且不加层：画布任务从不带 backupDir（cvCollectSpec 未传），
-    // 于是**永远落到数据目录 backup**，与用户在设置里指定的备份目录无关。
+    // ⚠ 必须同时读 out.defaultBackupDir：画布任务不带 backupDir（cvCollectSpec 未传），
+    //   只读前者会**永远落到数据目录 backup**，与用户在设置里指定的备份目录无关。
     const customRoot = String(out.backupDir || '').trim() || String(out.defaultBackupDir || '').trim();
     const backupRoot = customRoot ? path.join(customRoot, 'Video Lab 备份') : path.join(storageDir || process.cwd(), 'backup');
     const backupDir = out.backup === false ? ''
