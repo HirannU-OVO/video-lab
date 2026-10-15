@@ -5,13 +5,10 @@
 **批量成片项目管理器 · Electron 桌面应用**
 
 扫描项目与 TXT 配置，按日期分支管理版本，一键批量生成成片；也可对已有视频批量后处理（去黑屏 / 变速 / 转分辨率 / 转码 等）。
-
 <br>
 
 [![版本](https://img.shields.io/badge/版本-2.6.0-0078D7?style=flat-square)](https://github.com/HirannU-OVO/video-lab/releases)
 ![Platform](https://img.shields.io/badge/平台-Windows%2010%2F11-00A4EF?style=flat-square)
-![Engine](https://img.shields.io/badge/任务引擎-内置-5391FE?style=flat-square)
-![FFmpeg](https://img.shields.io/badge/FFmpeg-可自动下载-FF7F2A?style=flat-square)
 
 </div>
 
@@ -21,41 +18,38 @@
 
 | 类别 | 说明 |
 | --- | --- |
-| 免装依赖 | 任务执行组件随包内置，无需系统安装额外环境；缺少 FFmpeg 时应用启动后自动下载 |
-| 视频处理工具 | 对已有视频批量后处理 —— 去黑屏 / 变速 / 转分辨率 / 转码（H.264 · H.265 · AV1）/ 叠加图片 / 截取 / 删帧 / 倒放 / 旋转镜像 / 音频 / 帧率，步骤自由组合，只编码一次 |
-| 任务队列与通知 | 成片任务与视频处理任务同一队列：可排队、可在当前成片完成后暂停排队、失败可续跑；任务失败或本轮跑完弹系统通知 |
-| 遮罩叠加 | 多原片 × 多遮罩自由组合（遮罩+水印 / 仅水印 / 仅遮罩），GPU 硬件编码，失败任务断点续跑 |
+| 视频处理工具 | 对已有视频批量后处理，步骤自由组合，只编码一次 |
+| 任务队列与通知 | 成片任务与视频处理任务同一队列：可排队、可在当前成片完成后暂停排队、失败可续跑 |
+| 遮罩叠加 | 多原片 × 多遮罩自由组合，GPU 硬件编码，失败任务断点续跑 |
 | 复刻与续跑 | 完全复刻 / 去重复刻双模式，失败成片可「继续制作」从断点恢复 |
 | 日期分支管理 | TXT 配置按日期分支归档，历史版本随时比对与跳转 |
 | 水印体系 | 归属校验、跨项目保存、主流水印一键递归替换 |
-| 深度定制界面 | 多皮肤主题（含 Maid Atelier 女仆皮肤）、自制标题栏、托盘菜单自绘 |
-| 后台化体验 | 预检测与成片索引后台运行不阻塞、缓存失效后台清理、开机自启静默到托盘、冷启动提速 |
 
 ## 目录结构
 
 ```
 Video Lab/
-├─ build/               # 打包钩子（afterPack.js）
+├─ build/               # 打包钩子
 ├─ frontend/            # 渲染进程页面、样式与脚本
 │  ├─ index.html        # 主窗口页面
-│  ├─ settings.*        # 设置页（html/js/css）
-│  ├─ task.*            # 任务列表（html/js）
-│  ├─ tool.*            # 视频处理工具窗口（html/js）
-│  ├─ guide.* / preview.html / trayMenu.html
+│  ├─ settings.*        # 设置页
+│  ├─ task.*            # 任务列表
+│  ├─ tool.*            # 视频处理工具窗口
+│  ├─ guide.* / trayMenu.html
 │  ├─ app.js / icons.js / styles.css / titlebar.js / txapi.js
-│  ├─ skins/            # 皮肤（Black_Orange / white_blue / Maid_Atelier + assets）
+│  ├─ skins/            # 皮肤
 │  └─ fonts/            # 内置字体
-├─ engines/             # 内置任务引擎，构建时复制为产物 resources\Engines
+├─ engines/             # 内置任务引擎，构建时复制为产物 
 │  ├─ engine-runner.js / registry.js
-│  ├─ base/             # 共享底座（ffmpeg/ffprobe/缓存/锁/日志/路径等）
+│  ├─ base/             # 共享底座
 │  ├─ modules/          # batch / mask / replica 三个成片引擎
-│  └─ tools/            # 视频处理工具引擎（后处理步骤 + 流水线）
+│  └─ tools/            # 视频处理工具引擎
 ├─ icon/                # 应用图标
 ├─ main.js              # Electron 主进程
 ├─ preload.js           # 渲染进程桥接
 ├─ backend.js           # 后端业务逻辑
 ├─ server.js            # 浏览器访问 HTTP 服务
-├─ run.js               # 启动入口（run.js 启动）
+├─ run.js               # 启动入口
 ├─ package.json / package-lock.json
 └─ CHANGELOG.md / LICENSE / NOTICE
 ```
