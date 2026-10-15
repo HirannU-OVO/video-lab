@@ -1412,8 +1412,13 @@ class Api {
     // 缓存里没有（首次运行 / 刚新建的配置）才落到下面的目录扫描兜底 ——
     // 那是「用户主动打开某配置」的路径，允许读盘；启动渲染路径（项目列表）不经过这里。
     const fromCache = this._versionsFromTreeCache(project, name);
-    // 每版本是否有可跳日志（缓存命中路径也必须算，否则前端恒判「配置没有对应日志」）
-    const logs = this._collectLogFiles().files;
+    // 每版本是否有可跳日志（缓存命中路径也必须算，否则前端恒判「配置没有对应日志」）。
+    // ⚠ 这里必须**真扫**：hasLog 现在被前端用来**禁用「覆盖当前配置」**（强联动保护），
+    //   判定错了就没有出口 —— 走缓存会出现"日志已经删了、按钮却仍然禁用"的死局
+    //   （缓存指纹只覆盖一级项目目录 mtime，删子目录里的日志它察觉不到）。
+    //   本方法只在用户主动打开配置时调用（列表渲染走 _buildProjectsData，不经过这里），
+    //   真扫约 200ms，代价可接受，且真扫会回写缓存供后续查询复用。
+    const logs = this._collectLogFiles(true).files;
     if (fromCache) {
       fromCache.forEach((v) => { v.hasLog = this._versionHasLog(v, project, name, logs); });
       return fromCache;
@@ -1472,10 +1477,18 @@ class Api {
     const d = String(v.label || '').slice(0, 4);
     if (!/^\d{4}$/.test(d)) return false;
     const match = (f) => f.project === project && f.config === name && f.date === d;
-    if (v.isExternal) return logs.some(match);
+    // ★ 0 字节日志不算「有日志」—— 与 _configHasEffectiveLog 必须是**同一口径**。
+    //   为什么：hasLog 现在同时驱动两个决定 —— 前端据此**禁用「覆盖当前配置」**，
+    //   后端 _configHasEffectiveLog 据此**拒绝覆盖请求**。两处不一致就会出现
+    //   「按钮看起来禁用了、请求发出去却被放行」的错位。
+    //   （实测踩过：16:40 那次紧急停止留下的空日志 → 前端判有日志、后端判无 → 覆盖被放行，
+    //     配置内容被清空。两处统一为"非空才算"后，前后端一致。）
+    //   空日志没有配对价值（复刻读它同样是空），忽略它不会削弱复刻的配对保护。
+    const alive = (f) => { try { return fs.statSync(f.path).size > 0; } catch (e) { return false; } };
+    if (v.isExternal) return logs.some((f) => match(f) && alive(f));
     // 成片内：必须与配置位于同一成片文件夹的日志才能跳
     const cfgDir = path.dirname(v.path);
-    return logs.some((f) => match(f) && path.dirname(f.path) === cfgDir);
+    return logs.some((f) => match(f) && path.dirname(f.path) === cfgDir && alive(f));
   }
 
   _buildVersions(projectDir, name) {
@@ -1657,13 +1670,119 @@ class Api {
     return out.join('\r\n') + '\r\n';
   }
 
-  saveConfig(filePath, folders, excludes, watermark) {
+  // 「该配置是否已有**有效**日志」—— 配置与日志强联动判定的唯一入口（改名、覆盖保存共用）。
+  // 为什么必须走真扫、且必须忽略 0 字节日志：
+  //   ① **真扫**：这里要拿结论去**拒绝用户**，依据只能是磁盘真相。`_collectLogFiles()` 默认优先
+  //      返回内存/持久化缓存（769-776），后台校验又受 60 秒频率控制；持久化缓存的指纹只覆盖
+  //      「一级项目目录」的 mtime（_logTreeFingerprint），用户删掉成片子目录里的日志**根本改不动它**。
+  //      实测后果：用户照着提示"先处理掉日志"、文件确实删了，判定仍是"有日志"，改不动也覆盖不了。
+  //      本判定只出现在用户主动操作（改名/保存）路径上，非渲染路径，真扫代价可接受；
+  //      真扫会回写缓存，同一次操作里的后续查询一并受益。
+  //   ② **空日志不算**：0 字节日志没有任何配对价值（复刻读它同样是空），却会把两条出口全堵死 ——
+  //      而紧急停止/失败留下的恰恰就是这种空日志（引擎建了文件、首片没做完就中断，
+  //      一个字都没写进去，见 batch/index.js:938 建空文件、1429 每完成一片才追加）。
+  // 配对范围与 _versionHasLog 保持一致：成片内配置只认同目录的日志；外部 * 配置放宽到当天任意位置。
+  _configHasEffectiveLog(abs, project, baseName, dir) {
+    try {
+      this._collectLogFiles(true);                        // ← 无条件真扫：先把缓存刷成磁盘真相
+      const logs = (this._collectLogFiles().files) || [];  // 刚真扫过，此处内存缓存即真相
+      const v = (this.listVersions(project, baseName) || [])
+        .find((x) => x && x.path && path.resolve(x.path).toLowerCase() === path.resolve(abs).toLowerCase());
+      const pairing = logs.filter((f) => f.project === project
+        && String(f.config || '').trim() === baseName
+        && ((v && v.isExternal) ? true : path.dirname(f.path).toLowerCase() === path.resolve(dir).toLowerCase()));
+      // 判空只对"配对上的这少数几条"做 stat，代价可忽略
+      return pairing.some((f) => { try { return fs.statSync(f.path).size > 0; } catch (e) { return false; } });
+    } catch (e) { return false; }
+  }
+
+  // 就地改名**当前这一个**配置文件。两条边界：
+  //   ① 不做「配置级改名」（把该配置在其它日期分支的历史版本一并改名）—— 那会把"把这个文件改对"
+  //      变成"整个配置换名"，与场景不符（用户只是在某个日期分支发现名字不对）。
+  //   ② **有对应日志即拒绝**：日志文件名里嵌着配置名（MMdd-HH时MM分-配置名-拼接日志.txt），
+  //      两者强联动（复刻要按名字配对读日志）。与其改名时连带搬日志（动到日志风险更大），
+  //      不如只允许「本来就没有日志可断」的配置改名 —— 判断依据就是现成的 hasLog。
+  _renameConfigFile(filePath, newName) {
+    const abs = path.resolve(filePath);
+    const ext = path.extname(abs) || '.txt';
+    const oldBase = path.basename(abs, ext);
+    const bad = this._validProjectName(newName);
+    if (bad) return { ok: false, error: bad };
+    const dir = path.dirname(abs);
+    const dest = path.join(dir, newName + ext);
+    try { if (fs.existsSync(dest)) return { ok: false, error: '该目录下已有同名配置：' + newName }; } catch (e) {}
+    // 有对应日志 → 拒绝改名：日志与配置按名字配对，改名会让这份日志再也配不上本配置
+    const project = this._projectOf(abs);
+    const hasLog = this._configHasEffectiveLog(abs, project, oldBase, dir);
+    if (hasLog) {
+      return { ok: false, error: '该配置已有对应日志（配置与日志按名字配对，复刻依赖它），改名会让日志失去关联；如需改名请先处理掉日志' };
+    }
+    // 任务占用保护：非终态任务把它记在 env.REPLICA_TXT 上（续跑也直接读这个路径）——
+    // 改名会让任务读不到配置，故有引用即拒绝，让用户等任务结束后再改。
+    const busyStates = ['running', 'queued', 'paused', 'interrupted', 'stopped'];
+    const busy = [...((this.tasks && this.tasks.values) ? this.tasks.values() : [])]
+      .filter((t) => t && busyStates.indexOf(t.status) >= 0);
+    for (const t of busy) {
+      const p = t.env && t.env.REPLICA_TXT;
+      if (p && path.resolve(String(p)).toLowerCase() === abs.toLowerCase()) {
+        return { ok: false, error: '该配置正被任务「' + (t.title || '') + '」使用，请等任务结束后再改名' };
+      }
+    }
+    // 仅大小写不同时，Windows 上 renameSync 目标被视为已存在 → 经临时名两步走（失败改回）
+    const caseOnly = oldBase.toLowerCase() === newName.toLowerCase();
+    try {
+      if (caseOnly) {
+        const tmp = path.join(dir, '.vl-rename-' + Date.now() + ext);
+        fs.renameSync(abs, tmp);
+        try { fs.renameSync(tmp, dest); } catch (e) { try { fs.renameSync(tmp, abs); } catch (e2) {} throw e; }
+      } else {
+        fs.renameSync(abs, dest);
+      }
+    } catch (e) { return { ok: false, error: '改名失败：' + ((e && e.message) || e) }; }
+    return { ok: true, path: dest };
+  }
+
+  saveConfig(filePath, folders, excludes, watermark, newName) {
     filePath = path.resolve(filePath);
+    const ext = path.extname(filePath) || '.txt';
+    const oldBase = path.basename(filePath, ext);
+    // 配置名改了就地改名（可选）：名字规范化与「保存为当日配置」一致（允许用户带 .txt 输入）
+    const want = String(newName == null ? '' : newName).trim().replace(/\.txt$/i, '').trim();
+    let target = filePath;
+    let renamed = false;
+    if (want && want !== oldBase) {
+      const rn = this._renameConfigFile(filePath, want);
+      if (!rn || !rn.ok) return rn || { ok: false, error: '改名失败' };
+      target = rn.path; renamed = true;
+    } else {
+      // ★ 强联动保护（最后一道防线）：**已有有效日志的配置，禁止就地覆盖**。
+      //   为什么：日志记录着那次任务实际用了哪些片段，配置名又嵌在日志名里 —— 两者是一对一的
+      //   「任务正本 + 运行记录」。就地覆盖会让配置内容与这份日志脱钩：复刻按
+      //   「日志的结构 + 本配置的素材池」生成，池被改过之后产出的片子不再符合"复刻"的定义；
+      //   而这种改动**不留任何痕迹**（改名至少还有日志名做锚点），用户很难察觉自己做过。
+      //   正确出口是「保存为当日配置」：新名字、新日志，与旧的那份彻底脱钩。
+      //   前端会据此禁用「覆盖当前配置」按钮并给出引导，这里兜住键盘/脚本等绕过路径。
+      const project = this._projectOf(target);
+      const dir = path.dirname(target);
+      if (this._configHasEffectiveLog(target, project, oldBase, dir)) {
+        return { ok: false, error: '该配置已有对应日志，不能覆盖（复刻按「日志的结构 + 本配置的素材池」生成，覆盖会让两者脱钩）。请改用「保存为当日配置」' };
+      }
+    }
     const text = this._rewriteText(folders, excludes, watermark);
-    fs.writeFileSync(filePath, text, 'utf-8');
-    this._putConfigCache(filePath, text, this._parseConfigText(filePath, text));   // 保存即更新内容缓存（下次打开零 IO）
-    this._markConfigModified(filePath);   // 传入路径 → 就地并入配置树，列表/版本立刻可见（无需重扫）
-    return { ok: true, path: filePath };
+    fs.writeFileSync(target, text, 'utf-8');
+    this._putConfigCache(target, text, this._parseConfigText(target, text));   // 保存即更新内容缓存（下次打开零 IO）
+    // 传入路径 → 就地并入配置树，列表/版本立刻可见（无需重扫）；改名时把旧路径一并传入，
+    // 旧条目并入失败会触发配置树整体作废（比手工摘条目更稳）
+    if (renamed) this._markConfigModified(target, filePath);
+    else this._markConfigModified(target);
+    if (renamed) {
+      // 内容缓存以路径为键：旧路径那行必须删（否则残留一份"旧名"的解析结果）
+      try {
+        const store = this._useDbCache() ? this._cacheStore : null;
+        if (store && typeof store.txtDelete === 'function') store.txtDelete(filePath);
+      } catch (e) {}
+    }
+    return { ok: true, path: target, name: path.basename(target, ext), renamed };
   }
 
   saveConfigToday(project, name, configName, folders, excludes, watermark) {
@@ -1753,6 +1872,12 @@ class Api {
         try { fs.rmdirSync(cur); } catch (e) { break; }
         cur = path.dirname(cur);
       }
+      // ★ 删除 TXT 后必须刷新**日志索引缓存**：配置与日志同属一批被索引的 TXT，
+      //   删掉任何一个都会让 log_index 缓存过期。而 _collectLogFiles() 默认吃缓存
+      //   （内存 → 持久化；持久化指纹只覆盖「一级项目目录」mtime，删子目录里的文件它察觉不到），
+      //   后果是界面继续挂着已经删掉的日志条目、改名前的日志配对判定也继续看得见它。
+      //   此处就地真扫一次把缓存刷成磁盘真相 —— 删除是低频用户操作，这点代价可接受。
+      try { this._collectLogFiles(true); } catch (e) {}
       this._markConfigModified();
       return { ok: true };
     } catch (e) { return { ok: false, error: String(e) }; }
@@ -4327,6 +4452,145 @@ class Api {
     this._saveMarker(task, data);
   }
 
+  // ── 成片目录收尾（共用，唯一入口）────────────────────────────
+  // 为什么必须存在这两个函数：批量引擎在任务开始时把**源配置移入**成片文件夹当正本
+  // （batch/index.js:922-925 `renameSync(txtFilePath, txtDest)`），于是任务一旦没能正常收尾
+  // （用户紧急停止 / 进程被杀 / 编码失败），磁盘上就同时留下三样东西：
+  //   · 配置正本 —— 孤零零躺在成片目录里，源位置已空。用户在界面上看到配置"像是还在"，
+  //     但它已被搬走：**改不了名**（同目录有空日志 → hasLog 拦）、一旦清除就可能被整目录带走。
+  //   · 0 字节拼接日志 —— 日志是逐片追加的（batch/index.js:938 建空文件、1429 每完成一片追加），
+  //     首片没做完时它就是空的：既无信息价值，又会把该配置的改名路径堵死。
+  //   · `<随机>.tmp` 半截产物 —— 引擎先写临时名、成功才原子改名（tempNameFor），
+  //     被杀时来不及删（batch/index.js:1345 只在 ffmpeg 自行返回非 0 时删）。
+  // 引擎被 taskkill /T /F 硬杀（stopTask），**没有机会自理**，所以收尾只能由主进程做。
+  //
+  // 回迁目标 = 成片目录的**父目录**：引擎的移入规律保证源就是同一 outputRootDir
+  // （batch/index.js:913-925，outDir = outputRootDir/<时间戳>-<配置名>-成片，正本来自该 outputRootDir），
+  // 所以不必依赖 task.env —— **任务记录已被清除的孤儿目录同样能救回来**。
+  // 父目录已有同名配置时一律跳过：绝不覆盖用户的原件（多任务共用同一配置名时会遇到）。
+  _rescueConfigFromOutDir(outDir) {
+    const out = { restored: [], skipped: [] };
+    const abs = String(outDir || '').trim();
+    if (!abs) return out;
+    // 只处理成片目录：别处的 .txt 不是"被移入的正本"，动了就是误伤
+    if (!/成片$/i.test(path.basename(abs))) return out;
+    let names = [];
+    try { if (!fs.statSync(abs).isDirectory()) return out; names = fs.readdirSync(abs); } catch (e) { return out; }
+    const parent = path.dirname(path.resolve(abs));
+    for (const f of names) {
+      if (!/\.txt$/i.test(f)) continue;
+      if (LOG_NAME_RE.test(f)) continue;      // 拼接日志/复刻日志：不是配置
+      if (BACKUP_NAME_RE.test(f)) continue;   // 复刻侧的「配置备份-」是**副本**（源还在），不回迁
+      const src = path.join(abs, f);
+      try { if (!fs.statSync(src).isFile()) continue; } catch (e) { continue; }
+      const dest = path.join(parent, f);
+      if (fs.existsSync(dest)) { out.skipped.push(f); continue; }
+      try { fs.renameSync(src, dest); out.restored.push(f); } catch (e) { /* 占用/权限：留原地，不阻断 */ }
+    }
+    return out;
+  }
+
+  // 清扫成片目录里**确定无价值**的残渣：0 字节拼接日志 + 引擎临时产物。
+  // 保守边界（宁可留，不可误删）：
+  //   · 日志只在**0 字节**时删 —— 有内容的日志是复刻配对与事后复盘的唯一凭据，一个字都不能动；
+  //   · 临时产物只认严格形态 `^[0-9a-z]{6,}\.tmp$`（tempNameFor 生成：base36 时间戳 + 8 位随机），
+  //     与续跑清理（见 _verifyAndCleanTaskOutputs）同一形态判定；其它 `.tmp` 一律不动；
+  //   · 目录只在不剩任何文件时收回 —— 有残留就保留，交给用户判断。
+  _sweepOutDirResidue(outDir) {
+    const out = { logs: [], temps: [], dirRemoved: false };
+    const abs = String(outDir || '').trim();
+    if (!abs) return out;
+    let names = [];
+    try { if (!fs.statSync(abs).isDirectory()) return out; names = fs.readdirSync(abs); } catch (e) { return out; }
+    for (const f of names) {
+      const fp = path.join(abs, f);
+      let st = null; try { st = fs.statSync(fp); } catch (e) { continue; }
+      if (!st.isFile()) continue;
+      if (LOG_NAME_RE.test(f) && st.size === 0) {
+        try { fs.unlinkSync(fp); out.logs.push(f); } catch (e) {}
+        continue;
+      }
+      if (/^[0-9a-z]{6,}\.tmp$/i.test(f)) {
+        try { fs.unlinkSync(fp); out.temps.push(f); } catch (e) {}
+      }
+    }
+    // 目录已空（连日志/临时产物都没了）→ 收回空壳，不留「成片文件夹空壳」；
+    // 父目录若也因此变空，逐级向上收（到项目根为界）——任一层非空即停
+    try {
+      if (fs.readdirSync(abs).length === 0) {
+        fs.rmdirSync(abs);
+        out.dirRemoved = true;
+        let cur = path.dirname(abs);
+        const stopAt = path.resolve(this.root || process.cwd());
+        while (cur.length > stopAt.length && cur !== stopAt) {
+          let entries = [];
+          try { entries = fs.readdirSync(cur); } catch (e) { break; }
+          if (entries.length) break;
+          try { fs.rmdirSync(cur); } catch (e) { break; }
+          cur = path.dirname(cur);
+        }
+      }
+    } catch (e) {}
+    return out;
+  }
+
+  // 任务终态收尾（stopped / error / interrupted）：回迁正本 + 清扫残渣，一次做完并留痕。
+  // 只在**没能正常出片收尾**的终态调用：done 不动（正本留在成片目录是正常形态），
+  // paused 不动（软暂停后用户会「继续任务」，此时搬走正本反而添乱）。
+  // 顺序不可颠倒：**先回迁、再清扫** —— 反了会把还没搬走的正本连同空日志一起判断成"杂乱目录"。
+  _settleTaskLeftovers(task, status) {
+    try {
+      if (!task) return;
+      if (status !== 'stopped' && status !== 'error' && status !== 'interrupted') return;
+      const dir = String(task.outDir || (task.env && task.env.REPLICA_OUTPUT_DIR) || '').trim();
+      if (!dir) return;
+      const rescued = this._rescueConfigFromOutDir(dir);
+      const swept = this._sweepOutDirResidue(dir);
+      if (rescued.restored.length || rescued.skipped.length || swept.logs.length || swept.temps.length || swept.dirRemoved) {
+        this._lg('DEL', 'task.settle',
+          '任务未正常结束的收尾 · ' + status + ' · ' + String(task.title || '').slice(0, 40)
+          + ' · 配置正本回迁 ' + rescued.restored.length + ' 个'
+          + (rescued.skipped.length ? '（' + rescued.skipped.length + ' 个因原位置已有同名而保留）' : '')
+          + ' · 清空日志 ' + swept.logs.length + ' 个 · 清临时产物 ' + swept.temps.length + ' 个'
+          + (swept.dirRemoved ? ' · 空目录已收回' : ''),
+          { id: task.id, outDir: dir,
+            restored: rescued.restored, skipped: rescued.skipped, logs: swept.logs, temps: swept.temps });
+      }
+    } catch (e) { /* 收尾失败绝不阻断任务结束流程 */ }
+  }
+
+  // 清除任务**记录之前**的"孤儿残渣"收尾：只对**没有任何正式成片**的成片目录动手。
+  // 为什么必须有：任务记录一旦删除，其输出目录就再也无法被「清除任务产物」定位
+  //   （那条路径按当前任务列表遍历）—— 目录里的半截 `.tmp` 与 0 字节日志变成永久垃圾，
+  //   而其中的配置正本还被锁在里面（源位置已空：用户既改不了名，也用不上这份配置）。
+  //   实测路径正是如此：用户紧急停止 → 先清任务记录 → 再点「清除产物」→ 目录已无人认领。
+  // 保守边界：只要目录里有**一个 mp4 就完全不动** —— 那可能是用户还要用的产物。
+  _settleOrphanOutDir(task) {
+    try {
+      const dir = String((task && task.outDir) || '').trim();
+      if (!dir || !/成片$/i.test(path.basename(dir))) return false;
+      let names = [];
+      try {
+        if (!fs.statSync(dir).isDirectory()) return false;
+        names = fs.readdirSync(dir);
+      } catch (e) { return false; }
+      if (names.some((f) => path.extname(f).toLowerCase() === '.mp4')) return false;
+      const rescued = this._rescueConfigFromOutDir(dir);
+      const swept = this._sweepOutDirResidue(dir);
+      if (rescued.restored.length || rescued.skipped.length || swept.logs.length || swept.temps.length || swept.dirRemoved) {
+        this._lg('DEL', 'task.orphanClean',
+          '清除任务记录前收走遗留残渣 · ' + String(task.title || '').slice(0, 40)
+          + ' · 配置正本回迁 ' + rescued.restored.length + ' 个'
+          + (rescued.skipped.length ? '（' + rescued.skipped.length + ' 个因原位置已有同名而保留）' : '')
+          + ' · 空日志 ' + swept.logs.length + ' 个 · 临时产物 ' + swept.temps.length + ' 个'
+          + (swept.dirRemoved ? ' · 空目录已收回' : ''),
+          { id: task.id, outDir: dir, restored: rescued.restored, skipped: rescued.skipped, logs: swept.logs, temps: swept.temps });
+        return true;
+      }
+    } catch (e) { /* 收尾失败不阻断清除流程 */ }
+    return false;
+  }
+
   // 按任务标记精确删除失败任务遗留产物：
   // 1) 标记中逐成片记录的输出文件（复刻/批量共用）；
   // 2) batch 专属输出目录内的成片 mp4 与拼接日志（与重制结果同名冲突）；
@@ -4352,16 +4616,14 @@ class Api {
     const rm = (p) => { try { if (p && fs.existsSync(p)) this._recycleFile(p); } catch (e2) {} };
     for (const v of (marker.videos || [])) rm(v);
     if (marker.type === 'batch' && marker.batchOutDir) {
-      const src = (marker.env && marker.env.REPLICA_TXT) ? String(marker.env.REPLICA_TXT) : '';
-      if (src && !fs.existsSync(src)) {
-        const dest = path.join(marker.batchOutDir, path.basename(src));
-        try { if (fs.existsSync(dest) && fs.statSync(dest).isFile()) fs.renameSync(dest, src); } catch (e2) {}
-      }
+      // 正本回迁收敛到共用函数：原实现依赖 marker.env.REPLICA_TXT（任务标记缺失的孤儿目录就救不回来），
+      // 且只认 env 里那一个文件名；新实现按「成片目录里的 .txt 即被移入的正本」判定，父目录有同名则跳过。
+      this._rescueConfigFromOutDir(marker.batchOutDir);
       try {
         if (fs.existsSync(marker.batchOutDir) && fs.statSync(marker.batchOutDir).isDirectory()) {
           for (const f of fs.readdirSync(marker.batchOutDir)) {
             const fp = path.join(marker.batchOutDir, f);
-            if (fs.existsSync(fp) && fs.statSync(fp).isFile() && (path.extname(f).toLowerCase() === '.mp4' || /拼接日志/.test(f))) rm(fp);
+            if (fs.existsSync(fp) && fs.statSync(fp).isFile() && (path.extname(f).toLowerCase() === '.mp4' || LOG_NAME_RE.test(f))) rm(fp);
           }
         }
       } catch (e2) {}
@@ -4646,6 +4908,10 @@ class Api {
         catch (e) { if (fs.existsSync(p)) throw e; } // 原路径已不存在视为成功
       };
       for (const { t, marker } of marked) {
+        // ★ 记录马上被删除 → 顺手收走"只剩残渣"的输出目录（回迁配置正本 + 清 0 字节日志与半截
+        //   临时产物，目录清空后自动收回）。不做这一步，这些残渣会随记录一起失去归属、永久留存。
+        //   ⚠ 范围「仅列表」（scope==='list'）不会走到这里 —— 那个语义就是只清列表、不动磁盘。
+        this._settleOrphanOutDir(t);
         // 该任务精确产出的成片清单：优先任务标记（复刻/遮罩逐条记录 `✅ 成片完成：<路径>`），
         // 缺失时回退任务日志行解析。⚠ **batch 的完成行不带路径**（只报时长/加速倍率，见
         // engines/base/logger.js 的 clipDoneBatch）→ 批量任务的清单恒为空，必须走下方时间窗兜底。
@@ -4669,26 +4935,33 @@ class Api {
           try { isDir = fs.existsSync(abs) && fs.statSync(abs).isDirectory(); } catch (e2) { isDir = false; }
           // 目录不存在 = 已无产物（先前已清理 / 用户手动删除）→ 无需报错，视为已达成
           if (!isDir) continue;
-          // 目录内 mp4 全部属于本任务 → 独占，可整目录删除；否则说明与重跑/续跑任务共享目录，
-          // 降级为「只删本任务的成片」，避免波及他人产物
-          let mp4s = [];
-          try { mp4s = fs.readdirSync(abs).filter((f) => path.extname(f).toLowerCase() === '.mp4'); }
-          catch (e) { errors.push('读取成片目录失败：' + abs); continue; }
-          const owned = new Set(exactVideos.filter(Boolean).map((p) => path.resolve(p)));
-          // 清单缺失（batch 常态）→ 以**任务运行时间窗**界定本任务产物：
-          // 引擎先写临时名、编码成功才原子改名，故正式名成片的 mtime 必然落在 [startedAt, endedAt] 内；
+          // 目录内产物归属判定（**保守优先：确认不了就不动**）。三类内容各有归属依据：
+          //  · mp4（正式产物）：优先任务标记的精确清单；缺失时（batch 常态）以**任务运行时间窗**界定 ——
+          //    引擎先写临时名、编码成功才原子改名，故正式名成片的 mtime 必然落在 [startedAt, endedAt] 内。
+          //  · `<随机>.tmp`（引擎临时产物）：只有唯一的硬依据 —— 名字里的 base36 时间戳/patch mtime，
+          //    同样按时间窗界定；**时间窗外的一律视为他人产物**。
+          //  · 拼接日志：命名即含「<时间戳>-<配置名>」，与成片目录同源，不会混入他人日志。
           // 容差仅取 ±2 秒（时钟/边界抖动），**不可放大** —— 容差一大，相邻同目录任务的时间窗就会重叠，
           // 「删 17:50 不误删后续任务」的保证随之失效。
           // 同目录串行执行由引擎的执行权控制保证：任一时刻只有一个任务在产出，故时间窗天然互斥。
+          let names = [];
+          try { names = fs.readdirSync(abs); }
+          catch (e) { errors.push('读取成片目录失败：' + abs); continue; }
+          const mp4s = names.filter((f) => path.extname(f).toLowerCase() === '.mp4');
+          const logFiles = names.filter((f) => LOG_NAME_RE.test(f));
+          const tempFiles = names.filter((f) => /^[0-9a-z]{6,}\.tmp$/i.test(f));
           const winFrom = Number(t.startedAt || 0);
           const winTo = Number(t.endedAt || 0);
-          if (owned.size === 0 && mp4s.length && winFrom > 0 && winTo > 0) {
+          const inWindow = (fp) => {
+            if (!(winFrom > 0 && winTo > 0)) return false;
+            try { const m = fs.statSync(fp).mtimeMs; return m >= winFrom - 2000 && m <= winTo + 2000; }
+            catch (e) { return false; }
+          };
+          const owned = new Set(exactVideos.filter(Boolean).map((p) => path.resolve(p)));
+          if (owned.size === 0 && mp4s.length) {
             for (const f of mp4s) {
               const fp = path.join(abs, f);
-              try {
-                const m = fs.statSync(fp).mtimeMs;
-                if (m >= winFrom - 2000 && m <= winTo + 2000) owned.add(path.resolve(fp));
-              } catch (e) { /* 单文件 stat 失败不影响其余判定 */ }
+              if (inWindow(fp)) owned.add(path.resolve(fp));
             }
           }
           // 归属确认不了就不动 —— 但必须把原因说清楚（旧实现静默 continue，用户以为软件没反应）
@@ -4699,7 +4972,27 @@ class Api {
             errors.push(`未能确认「${titleBrief}」的产物归属（${why}），已保留未删除`);
             continue;
           }
-          const exclusive = mp4s.length > 0 && mp4s.every((f) => owned.has(path.resolve(path.join(abs, f))));
+          // 残渣 = 时间窗内的临时产物（半成品）。日志天然归本任务，不参与时间窗筛选。
+          const ownedTemps = tempFiles.filter((f) => inWindow(path.join(abs, f)));
+          // 目录里有没有"既不认识、也不属于本任务"的文件？有 → 不判独占，绝不整目录删。
+          // 待回迁的正本 txt 不算未知（它只是还没搬回去），会在下面被回迁。
+          const unknown = names.filter((f) => {
+            if (mp4s.indexOf(f) >= 0) return false;
+            if (LOG_NAME_RE.test(f)) return false;
+            if (tempFiles.indexOf(f) >= 0) return false;
+            if (/\.txt$/i.test(f) && !BACKUP_NAME_RE.test(f)) return false;
+            try { return fs.statSync(path.join(abs, f)).isFile(); } catch (e) { return true; }
+          });
+          // 独占 = 目录内一切都能确认属于本任务：
+          //   mp4 全在清单内 + 临时产物全在时间窗内 + 没有未知文件。
+          // ★ 与旧实现的关键差别：**不再要求目录里有 mp4** ——
+          //   紧急停止/失败的任务目录常常只有 `.tmp` + 0 字节日志 + 被移入的正本，
+          //   旧判定下 exclusive 恒为 false，用户点「清除产物·全部」也永远清不掉（空壳残留的病根）。
+          const exclusive = (mp4s.length + tempFiles.length + logFiles.length) > 0
+            && mp4s.every((f) => owned.has(path.resolve(path.join(abs, f))))
+            && ownedTemps.length === tempFiles.length
+            && unknown.length === 0;
+          // 范围「仅视频」时清理对象也只有正式产物（语义即"只清成片文件"，不碰日志与正本）
           const trashOwned = async () => {
             for (const f of mp4s) {
               const fp = path.join(abs, f);
@@ -4723,6 +5016,16 @@ class Api {
             await trashOwned();
           } else if (scope === 'all') {
             if (path.basename(abs).endsWith('成片') && exclusive) {
+              // ★ 整目录进回收站之前，先把配置正本**移回原处**（成片目录的父目录）——
+              //   正本是被引擎搬进来的"用户原件的唯一一份"，跟着目录一起进回收站，
+              //   用户的配置就凭空消失了（源位置已空）；虽然回收站可还原，但那不是用户能预期的操作。
+              const rescued = this._rescueConfigFromOutDir(abs);
+              if (rescued.restored.length) {
+                this._lg('CFG', 'task.artifacts.clear.restore',
+                  '清除成片目录前，配置正本已移回原处 · ' + rescued.restored.join('、')
+                  + (rescued.skipped.length ? '（另有 ' + rescued.skipped.length + ' 个因原位置已有同名而保留在目录内）' : ''),
+                  { id: t.id, outDir: abs, restored: rescued.restored, skipped: rescued.skipped });
+              }
               try { await trash(abs); }
               catch (e) { errors.push('清除成片文件夹失败：' + abs); continue; }
               const parent = path.dirname(abs);
@@ -5251,6 +5554,13 @@ class Api {
             task.progress.clip = task.progress.clipTarget;
             task.progress.liveLine = null;
           }
+          // ★ 未正常结束的任务先做收尾（回迁配置正本 + 清 0 字节日志与半截临时产物）——
+          //   必须排在下面所有「缓存失效 / 前端广播」**之前**：收尾本身改变了磁盘结构，
+          //   界面要按收尾后的真相重整，否则会先渲染出一个"配置还锁在成片目录里"的中间态。
+          //   场景：用户跑到一半发现配置名写错，紧急停止后要改名 —— 但正本躺在成片目录里
+          //   （源位置已空）+ 同目录有个 0 字节拼接日志（hasLog 判定为真）→ 改名会被两层拦住。
+          //   收尾后配置回到原位、空日志消失，用户点「清除已完成任务」即可顺利改名。
+          this._settleTaskLeftovers(task, status);
           // 任务结束 → 成片存在性结论失效：本次可能刚产出成片（旧结论是"无"），
           // 精确失效后由下次启动/空闲校验重新判定，避免界面显示"成片已删除"却其实还在
           try { this._invalidateHasOutput(task.id); } catch (e) {}

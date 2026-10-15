@@ -113,7 +113,7 @@
     list_projects: function (force) { return invokeArgs('list_projects', force); },
     list_versions: function (project, name) { return invokeArgs('list_versions', project, name); },
     read_config: function (p) { return invokeArgs('read_config', p); },
-    save_config: function (p, folders, excludes, watermark) { return invokeArgs('save_config', p, folders, excludes, watermark); },
+    save_config: function (p, folders, excludes, watermark, newName) { return invokeArgs('save_config', p, folders, excludes, watermark, newName); },
     save_config_today: function (project, name, configName, folders, excludes, watermark) { return invokeArgs('save_config_today', project, name, configName, folders, excludes, watermark); },
     new_empty_config: function (project) { return invokeArgs('new_empty_config', project); },
   create_project: function (name, kind) { return invokeArgs('create_project', name, kind); },

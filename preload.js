@@ -14,8 +14,8 @@ contextBridge.exposeInMainWorld('txapi', {
   list_projects: (force) => invoke('list_projects', force),
   list_versions: (project, name) => invoke('list_versions', project, name),
   read_config: (p) => invoke('read_config', p),
-  save_config: (p, folders, excludes, watermark) =>
-    invoke('save_config', p, folders, excludes, watermark),
+  save_config: (p, folders, excludes, watermark, newName) =>
+    invoke('save_config', p, folders, excludes, watermark, newName),
   save_config_today: (project, name, configName, folders, excludes, watermark) =>
     invoke('save_config_today', project, name, configName, folders, excludes, watermark),
   new_empty_config: (project) => invoke('new_empty_config', project),

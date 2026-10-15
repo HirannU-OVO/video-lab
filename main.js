@@ -1981,7 +1981,7 @@ function registerIpc() {
   ipcMain.handle('list_projects', (e, force) => api.listProjectsAsync(!!force));
   ipcMain.handle('list_versions', (e, project, name) => api.listVersions(project, name));
   ipcMain.handle('read_config', (e, p) => api.readConfig(p));
-  ipcMain.handle('save_config', (e, p, folders, excludes, watermark) => api.saveConfig(p, folders, excludes, watermark));
+  ipcMain.handle('save_config', (e, p, folders, excludes, watermark, newName) => api.saveConfig(p, folders, excludes, watermark, newName));
   ipcMain.handle('save_config_today', (e, project, name, configName, folders, excludes, watermark) => api.saveConfigToday(project, name, configName, folders, excludes, watermark));
   ipcMain.handle('new_empty_config', (e, project) => api.newEmptyConfig(project));
   // 项目增删改（软件侧新建 / 改名）：kind = 'batch' | 'mask'，缺省按 batch

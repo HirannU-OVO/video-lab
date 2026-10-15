@@ -1076,15 +1076,32 @@
     }
     state.configModified = modified;
     var b1 = $('btnSaveConfig'), b2 = $('btnSaveToday');
+    // ★ 强联动保护：该配置已有**有效日志**（非 0 字节）→ 禁用「覆盖当前配置」。
+    //   配置与日志是一对一的「任务正本 + 运行记录」：日志名里嵌着配置名，日志内容又记着那次
+    //   任务实际用了哪些片段。就地覆盖会让两者脱钩 —— 复刻按「日志的结构 + 本配置的素材池」
+    //   生成，池被改过之后的产物就不再符合"复刻"的定义；而且这种改动**不留任何痕迹**
+    //   （改名至少还有日志名做锚点），用户很难察觉自己做过。改内容的出口是「保存为当日配置」。
+    //   ⚠ hasLog 来自 list_versions，后端已把该判定改为**真扫**（并忽略 0 字节日志），
+    //     所以不会出现"日志已经删了、按钮却仍然禁用"的死局。
+    var hasLog = !!(state.activeVersion && state.activeVersion.hasLog);
     // ★ 保存类按钮放宽：保存配置只是写盘（原子写），
     //   与预检测、FFmpeg 环境都无关 —— 允许用户在任务运行/排队期间先"暂存配置"备用
-    if (b1) { b1.disabled = !modified; setBtnHint(b1, modified ? null : '配置未发生改变'); }
-    if (b2) { b2.disabled = false; setBtnHint(b2, null); }
+    if (b1) {
+      b1.disabled = hasLog || !modified;
+      setBtnHint(b1, hasLog ? '该配置已有对应日志，不能覆盖；请改用右侧「保存为当日配置」'
+        : (modified ? null : '配置未发生改变'));
+    }
+    if (b2) {
+      b2.disabled = false;
+      setBtnHint(b2, hasLog ? '推荐：保存为当日配置 —— 新名字、新日志，与原有配置和日志彻底脱钩' : null);
+    }
     var hint = $('configModifiedHint');
     if (hint) {
-      hint.style.display = modified ? '' : 'none';
+      hint.style.display = (modified || hasLog) ? '' : 'none';
       // 明确生效范围：任务在提交入队时已快照配置，之后的修改只影响新提交的任务
-      hint.textContent = '配置发生改变（保存后仅对之后启动的任务生效）';
+      hint.textContent = hasLog
+        ? '该配置已有对应日志，不能覆盖 → 请用「保存为当日配置」'
+        : '配置发生改变（保存后仅对之后启动的任务生效）';
     }
     // ── 元素级红框提示 ──
     var orig = state._configOrig || {};
@@ -1644,12 +1661,36 @@
           setStatus('保存失败：' + ((r && r.error) || '未知错误')); return false;
         }).catch(function (e) { setStatus('保存失败：' + e.message); return false; });
       }
+      // ★ 强联动：已有有效日志的配置**不能就地覆盖**（按钮已禁用，这里兜住键盘回车 / 脚本等
+      //   绕过按钮的路径）。后端 saveConfig 也有一道同样的拦截作为最终防线。
+      //   ⚠ 必须放在「另存到其他项目」分支**之后**：另存是合法出口，不该被当前配置的日志状况拦住。
+      if (state.activeVersion && state.activeVersion.hasLog) {
+        toast('该配置已有对应日志，不能覆盖；请用「保存为当日配置」', true);
+        return false;
+      }
+      // 配置名改了就地改名（名字随保存一并交给后端，不另发一次请求，避免"改了名但内容没写进新文件"）
+      var wantName = ($('inputConfigName') ? $('inputConfigName').value.trim() : '') || state.activeTxt || '';
+      var curName = String(state.activeTxt || '');
+      var willRename = !!wantName && wantName.replace(/\.txt$/i, '') !== curName;
+      // ⚠ 这里**不再**用 state.activeVersion.hasLog 做前置拦截。
+      // 理由：那份 hasLog 是「打开配置那一刻」的快照（来自 list_versions，而后者读的是日志索引
+      // 缓存），用户中途按提示处理掉日志之后它仍是旧值 —— 结果是改名在请求发出前就被拦死，
+      // 提示"请先处理日志"但其实日志已经不在了（实测复现：删掉日志后依旧被拦，请求根本没到后端）。
+      // 能否改名只由后端 _renameConfigFile 判定：它会**无条件真扫**日志索引（不吃缓存），
+      // 并忽略 0 字节日志（空日志没有配对价值，却会把改名路径彻底堵死）。
+      // 后端拒绝时返回 error，由下方 go() 的失败分支照常提示，不会静默失败。
       var go = function () {
-        return call('save_config', path, ed.folders, ed.excludes, ed.watermark).then(function (r) {
+        return call('save_config', path, ed.folders, ed.excludes, ed.watermark, wantName).then(function (r) {
           if (r && r.ok) {
-            toast('已保存：' + path, 'ok'); refreshData();
             document.querySelectorAll('.config-exclude-row[data-deleted="1"]').forEach(function (rr) { rr.remove(); });
             document.querySelectorAll('.config-path-row[data-deleted="1"]').forEach(function (rr) { rr.remove(); });
+            if (r.renamed) {
+              // 名字变了：跳到新路径（重拉该名下的版本链、按路径定位版本、重载配置）
+              toast('已重命名并保存：' + (r.name || ''), 'ok');
+              jumpToVersionPath(r.path || path, state.activeProject);
+              return true;
+            }
+            toast('已保存：' + path, 'ok'); refreshData();
             state._configOrigSnapshot = configSnapshot(); refreshConfigModified();
             return true;
           }
@@ -1658,7 +1699,10 @@
       };
       // noConfirm（切换/关闭前确认弹窗场景）：已确认过，跳过「确认覆盖」二次弹窗
       if (noConfirm) return go();
-      return confirmPopover({ title: '确认覆盖', message: '将覆盖原文件：\n' + path, okLabel: '确认覆盖', danger: true }).then(function (ok) {
+      var msg = willRename
+        ? '将重命名并覆盖：\n' + path + '\n→ ' + path.replace(/[^\\/]+\.txt$/i, wantName.replace(/\.txt$/i, '') + '.txt')
+        : '将覆盖原文件：\n' + path;
+      return confirmPopover({ title: willRename ? '确认重命名并覆盖' : '确认覆盖', message: msg, okLabel: willRename ? '重命名并覆盖' : '确认覆盖', danger: true }).then(function (ok) {
         if (!ok) { setStatus('已取消保存'); return false; }
         return go();
       });

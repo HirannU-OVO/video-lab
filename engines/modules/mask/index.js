@@ -289,24 +289,83 @@ async function run(ctx, env = process.env) {
           logger.warn(`原片时长（${Math.round(vidDur * 100) / 100} s）比遮罩时长（${Math.round(maskDur * 100) / 100} s）短超过1秒，将按原片时长输出`);
         }
         // 音频来源判定：有音频流还不够 —— 可能是静音音轨（有流但全程没声音），
-        // 这种情况按「无音频」处理，成片改用原视频音轨，否则成片会没有声音
-        let maskHasAudio = false;
-        try { maskHasAudio = !!(probeDetail(srcForDur) || {}).hasAudio; } catch (e) { maskHasAudio = false; }
-        if (maskHasAudio) {
-          let vol = NaN;
+        // 这种情况按「无音频」处理，成片改用原视频音轨，否则成片会没有声音。
+        //
+        // ⚠ 留痕分两条通道，各司其职（沿用引擎既有的诊断通道设计）：
+        //   · **用户视图**（任务窗口）只给一句话结论：用户关心的是「这条音轨从哪来」，
+        //     不需要看文件名 / 分贝值 / 探测字段（实测反馈：一行太长）。
+        //   · **运行日志**（engine-<日期>.log）给**完整可定位**的信息：完整文件路径、
+        //     探测字段、实测均值、最终决定。缺了它就无法回答「判的到底是哪个文件」——
+        //     遮罩常来自外部素材文件夹（同名文件遍地），只给 basename 根本定位不到；
+        //     而 mode 1 探测的还是**预处理后的合并文件**（%TEMP%\MaskWatermarkTemp\combined_*.mov），
+        //     用户更会误以为是自己的原遮罩有问题，方向从一开始就错了。
+        //   实现走 `@@VLDIAG@@` 前缀行：backend 的 pushLine 会先把**所有**引擎行落进
+        //   engine 日志（在状态检查之前），再把带前缀的行从用户视图里剥离 —— 正好是我们要的两分法。
+        const srcLabel = srcForDur ? path.basename(String(srcForDur)) : '(空)';
+        const srcKind = cfg.mode === 1 ? '预处理合并文件' : '遮罩原文件';
+        const diagAudio = (decision, extra) => {
           try {
-            const vd = await runFfmpeg(
-              ['-hide_banner', '-i', srcForDur, '-vn', '-af', 'volumedetect', '-f', 'null', '-'],
-              { captureStdout: true }
-            );
-            const txt = String((vd && (vd.stderr || vd.stdout)) || '');
-            const mM = txt.match(/mean_volume:\s*(-?[\d.]+)\s*dB/);
-            if (mM) vol = parseFloat(mM[1]);
-          } catch (e) { /* 探测失败则按「有音频」处理，沿用遮罩音轨 */ }
-          // 无音量信息、或平均音量低于 -60dB（近乎静音）→ 视为无音频
-          if (!(vol > -60)) maskHasAudio = false;
+            logger.raw('@@VLDIAG@@' + JSON.stringify([{
+              t: Date.now(), ev: 'mask.audioProbe',
+              d: Object.assign({
+                kind: srcKind,                 // 预处理合并文件 / 遮罩原文件
+                file: srcForDur ? String(srcForDur) : '',   // ★ 完整路径：外部素材夹也能定位
+                name: srcLabel,
+                decision: decision,            // mask = 用遮罩音轨 / source = 用原视频音轨
+                out: j.outName,                // 这条决定作用于哪个成片
+              }, extra || {}),
+            }]));
+          } catch (e) { /* 诊断失败绝不影响主流程 */ }
+        };
+        let maskHasAudio = false;
+        if (!srcForDur) {
+          // 预处理未产出（combinedMap 未命中）时不能静默降级，否则看起来像"遮罩没声音"
+          logger.warn('   · 遮罩素材不可用 → 成片使用原视频音轨');
+          diagAudio('source', { why: '遮罩源路径为空（预处理未产出）', mode: cfg.mode });
+        } else {
+          let pb = null;
+          try { pb = await probeDetail(srcForDur); } catch (e) { pb = null; }
+          maskHasAudio = !!(pb && pb.hasAudio);
+          if (!maskHasAudio) {
+            logger.info('   · 遮罩无音频 → 成片使用原视频音轨');
+            diagAudio('source', {
+              why: '无音频流',
+              hasAudio: !!(pb && pb.hasAudio), probeOk: !!(pb && pb.probeOk),
+              codecV: (pb && pb.vcodec) || '', codecA: (pb && pb.audioCodec) || '',
+            });
+          } else {
+            let vol = NaN;
+            let vdWhy = '';
+            try {
+              const vd = await runFfmpeg(
+                ['-hide_banner', '-i', srcForDur, '-vn', '-af', 'volumedetect', '-f', 'null', '-'],
+                { captureStdout: true }
+              );
+              const txt = String((vd && (vd.stderr || vd.stdout)) || '');
+              const mM = txt.match(/mean_volume:\s*(-?[\d.]+)\s*dB/);
+              if (mM) vol = parseFloat(mM[1]);
+              else vdWhy = '输出中无 mean_volume' + ((vd && vd.code !== 0) ? `（ffmpeg 退出码 ${vd.code}）` : '');
+            } catch (e) { vdWhy = String((e && e.message) || e); }
+            // ★ 只有**确实测出**平均音量低于 -60dB（近乎静音）才降级为「无音频」；
+            //   测不出来（命令失败 / 超时 / 输出格式变化）一律**维持「有音频」** ——
+            //   把工具自身的失败算成素材没有声音，会静默丢掉遮罩音轨，用户完全无从察觉。
+            //   （原实现 `if (!(vol > -60)) maskHasAudio = false;` 把 NaN 也判成无音频，
+            //     与上方 catch 注释「探测失败则按有音频处理」自相矛盾。）
+            if (isFinite(vol)) {
+              if (!(vol > -60)) {
+                maskHasAudio = false;
+                logger.info('   · 遮罩音轨近乎静音 → 成片使用原视频音轨');
+                diagAudio('source', { why: '音轨近乎静音', meanVolume: vol, hasAudio: true, codecA: (pb && pb.audioCodec) || '' });
+              } else {
+                logger.info('   · 遮罩音频可用 → 成片沿用遮罩音轨');
+                diagAudio('mask', { meanVolume: vol, hasAudio: true, codecA: (pb && pb.audioCodec) || '' });
+              }
+            } else {
+              logger.warn('   · 音量检测未取到数值 → 维持遮罩音轨');
+              diagAudio('mask', { why: '音量检测未取到数值：' + vdWhy, hasAudio: true, codecA: (pb && pb.audioCodec) || '' });
+            }
+          }
         }
-        if (!maskHasAudio) logger.info('   · 遮罩无可用音频（无音频流或静音音轨），成片将使用原视频音轨');
         ffArgs = ['-y', '-loglevel', 'error', '-stats', '-t', String(targetDur),
           '-i', j.vidPath, '-i', srcForDur,
           '-filter_complex', '[1:v]setpts=PTS-STARTPTS[ov];[0:v][ov]overlay=0:0[outv]',
