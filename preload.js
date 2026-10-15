@@ -12,7 +12,7 @@ const IN_SUBFRAME = (() => { try { return window.self !== window.top; } catch (e
 
 contextBridge.exposeInMainWorld('txapi', {
   list_projects: (force) => invoke('list_projects', force),
-  list_versions: (project, name) => invoke('list_versions', project, name),
+  list_versions: (project, name, force) => invoke('list_versions', project, name, force),
   read_config: (p) => invoke('read_config', p),
   save_config: (p, folders, excludes, watermark, newName) =>
     invoke('save_config', p, folders, excludes, watermark, newName),

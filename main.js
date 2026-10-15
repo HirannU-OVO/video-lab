@@ -1979,7 +1979,7 @@ function buildHttpExtraRoutes() {
 function registerIpc() {
   // ⚠ 走异步版：同步版会 walkFiles + 逐文件 contentHash 占死事件循环数十秒（冷启动）
   ipcMain.handle('list_projects', (e, force) => api.listProjectsAsync(!!force));
-  ipcMain.handle('list_versions', (e, project, name) => api.listVersions(project, name));
+  ipcMain.handle('list_versions', (e, project, name, force) => api.listVersions(project, name, force));
   ipcMain.handle('read_config', (e, p) => api.readConfig(p));
   ipcMain.handle('save_config', (e, p, folders, excludes, watermark, newName) => api.saveConfig(p, folders, excludes, watermark, newName));
   ipcMain.handle('save_config_today', (e, project, name, configName, folders, excludes, watermark) => api.saveConfigToday(project, name, configName, folders, excludes, watermark));

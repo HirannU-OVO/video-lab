@@ -1407,18 +1407,26 @@ class Api {
     try { return this._buildVersionsFromList(name, txs); } catch (e) { return null; }
   }
 
-  listVersions(project, name) {
+  // ⚠ force 的语义（**这条是性能红线，别随手改成恒真**）：
+  //   · 默认 false = 走日志索引缓存。**启动/渲染路径必须用它** ——
+  //     P0-基线/verify-bootio.js 断言「版本/配置路径对素材盘的访问为 0 次」，
+  //     恒真会让启动预热直接打出上千次素材盘 IO（实测 1771 次，断言当场失败）。
+  //   · true = 合并前无条件真扫日志索引（约 200ms）。只给**用户主动打开/切换配置**用 ——
+  //     那里的 hasLog 会驱动前端「覆盖当前配置」按钮的禁用，必须基于磁盘真相，
+  //     否则会出现"日志已经删了、按钮却仍然禁用"的死局。
+  listVersions(project, name, force) {
     // **缓存优先**：能从配置树缓存派生就直接返回（零磁盘访问）；
     // 缓存里没有（首次运行 / 刚新建的配置）才落到下面的目录扫描兜底 ——
     // 那是「用户主动打开某配置」的路径，允许读盘；启动渲染路径（项目列表）不经过这里。
     const fromCache = this._versionsFromTreeCache(project, name);
     // 每版本是否有可跳日志（缓存命中路径也必须算，否则前端恒判「配置没有对应日志」）。
-    // ⚠ 这里必须**真扫**：hasLog 现在被前端用来**禁用「覆盖当前配置」**（强联动保护），
-    //   判定错了就没有出口 —— 走缓存会出现"日志已经删了、按钮却仍然禁用"的死局
-    //   （缓存指纹只覆盖一级项目目录 mtime，删子目录里的日志它察觉不到）。
-    //   本方法只在用户主动打开配置时调用（列表渲染走 _buildProjectsData，不经过这里），
-    //   真扫约 200ms，代价可接受，且真扫会回写缓存供后续查询复用。
-    const logs = this._collectLogFiles(true).files;
+    // ⚠ hasLog **只在 force 时计算**，非 force 一律留空（[] → 逐版本判定为 false）：
+    //   `_collectLogFiles()` 是「**缓存优先**」而非「缓存必需」—— 日志索引缓存尚未建立时
+    //   （启动预热就是这样）它照样真扫。实测：即便不传 force，这一步也会打出 2 次素材盘 IO，
+    //   足以让「启动期零素材盘访问」的断言失败（P0-基线/verify-bootio.js）。
+    //   消费方只在 force 路径需要 hasLog（打开/切换配置 → 驱动「覆盖当前配置」的禁用），
+    //   其余路径拿到 false 无副作用：前端 !!(undefined) 本就是 false，行为等价。
+    const logs = force ? this._collectLogFiles(true).files : [];
     if (fromCache) {
       fromCache.forEach((v) => { v.hasLog = this._versionHasLog(v, project, name, logs); });
       return fromCache;
@@ -4496,7 +4504,22 @@ class Api {
   //   · 临时产物只认严格形态 `^[0-9a-z]{6,}\.tmp$`（tempNameFor 生成：base36 时间戳 + 8 位随机），
   //     与续跑清理（见 _verifyAndCleanTaskOutputs）同一形态判定；其它 `.tmp` 一律不动；
   //   · 目录只在不剩任何文件时收回 —— 有残留就保留，交给用户判断。
-  _sweepOutDirResidue(outDir) {
+  //   · **删除一律走回收站**：本项目红线是「业务文件不做永久删除」（永久删除仅限中间文件与锁文件，
+  //     由 P0-基线/verify-runlog.js 的断言守着）。0 字节日志对用户仍可能是"那次任务"的唯一痕迹，
+  //     静默抹掉不合适；进回收站可随时还原，代价只是一个 API 调用。
+  //
+  // 删文件统一走这里。**不要**用 fs.unlinkSync 删业务文件 —— 既违红线，也会让上述断言的
+  // 「unlinkSync ≤ 8 处且实参须为中间文件」超限（本项目实测踩过）。
+  async _trash(p) {
+    try {
+      const { shell } = require('electron');
+      await shell.trashItem(p);
+    } catch (e) {
+      if (fs.existsSync(p)) throw e;   // 原路径已不存在视为成功（幂等，重复清理不报错）
+    }
+  }
+
+  async _sweepOutDirResidue(outDir) {
     const out = { logs: [], temps: [], dirRemoved: false };
     const abs = String(outDir || '').trim();
     if (!abs) return out;
@@ -4507,11 +4530,11 @@ class Api {
       let st = null; try { st = fs.statSync(fp); } catch (e) { continue; }
       if (!st.isFile()) continue;
       if (LOG_NAME_RE.test(f) && st.size === 0) {
-        try { fs.unlinkSync(fp); out.logs.push(f); } catch (e) {}
+        try { await this._trash(fp); out.logs.push(f); } catch (e) {}
         continue;
       }
       if (/^[0-9a-z]{6,}\.tmp$/i.test(f)) {
-        try { fs.unlinkSync(fp); out.temps.push(f); } catch (e) {}
+        try { await this._trash(fp); out.temps.push(f); } catch (e) {}
       }
     }
     // 目录已空（连日志/临时产物都没了）→ 收回空壳，不留「成片文件夹空壳」；
@@ -4538,14 +4561,14 @@ class Api {
   // 只在**没能正常出片收尾**的终态调用：done 不动（正本留在成片目录是正常形态），
   // paused 不动（软暂停后用户会「继续任务」，此时搬走正本反而添乱）。
   // 顺序不可颠倒：**先回迁、再清扫** —— 反了会把还没搬走的正本连同空日志一起判断成"杂乱目录"。
-  _settleTaskLeftovers(task, status) {
+  async _settleTaskLeftovers(task, status) {
     try {
       if (!task) return;
       if (status !== 'stopped' && status !== 'error' && status !== 'interrupted') return;
       const dir = String(task.outDir || (task.env && task.env.REPLICA_OUTPUT_DIR) || '').trim();
       if (!dir) return;
       const rescued = this._rescueConfigFromOutDir(dir);
-      const swept = this._sweepOutDirResidue(dir);
+      const swept = await this._sweepOutDirResidue(dir);
       if (rescued.restored.length || rescued.skipped.length || swept.logs.length || swept.temps.length || swept.dirRemoved) {
         this._lg('DEL', 'task.settle',
           '任务未正常结束的收尾 · ' + status + ' · ' + String(task.title || '').slice(0, 40)
@@ -4565,7 +4588,7 @@ class Api {
   //   而其中的配置正本还被锁在里面（源位置已空：用户既改不了名，也用不上这份配置）。
   //   实测路径正是如此：用户紧急停止 → 先清任务记录 → 再点「清除产物」→ 目录已无人认领。
   // 保守边界：只要目录里有**一个 mp4 就完全不动** —— 那可能是用户还要用的产物。
-  _settleOrphanOutDir(task) {
+  async _settleOrphanOutDir(task) {
     try {
       const dir = String((task && task.outDir) || '').trim();
       if (!dir || !/成片$/i.test(path.basename(dir))) return false;
@@ -4576,7 +4599,7 @@ class Api {
       } catch (e) { return false; }
       if (names.some((f) => path.extname(f).toLowerCase() === '.mp4')) return false;
       const rescued = this._rescueConfigFromOutDir(dir);
-      const swept = this._sweepOutDirResidue(dir);
+      const swept = await this._sweepOutDirResidue(dir);
       if (rescued.restored.length || rescued.skipped.length || swept.logs.length || swept.temps.length || swept.dirRemoved) {
         this._lg('DEL', 'task.orphanClean',
           '清除任务记录前收走遗留残渣 · ' + String(task.title || '').slice(0, 40)
@@ -4911,7 +4934,7 @@ class Api {
         // ★ 记录马上被删除 → 顺手收走"只剩残渣"的输出目录（回迁配置正本 + 清 0 字节日志与半截
         //   临时产物，目录清空后自动收回）。不做这一步，这些残渣会随记录一起失去归属、永久留存。
         //   ⚠ 范围「仅列表」（scope==='list'）不会走到这里 —— 那个语义就是只清列表、不动磁盘。
-        this._settleOrphanOutDir(t);
+        await this._settleOrphanOutDir(t);
         // 该任务精确产出的成片清单：优先任务标记（复刻/遮罩逐条记录 `✅ 成片完成：<路径>`），
         // 缺失时回退任务日志行解析。⚠ **batch 的完成行不带路径**（只报时长/加速倍率，见
         // engines/base/logger.js 的 clipDoneBatch）→ 批量任务的清单恒为空，必须走下方时间窗兜底。
@@ -5509,7 +5532,11 @@ class Api {
         const out = { data: Buffer.alloc(0) }, err = { data: Buffer.alloc(0) };
         attach(child.stdout, out);
         attach(child.stderr, err);
-        child.on('close', (code) => {
+        // ⚠ 回调必须是 async：下面 _settleTaskLeftovers 要走回收站（shell.trashItem 是异步 API），
+        //   而收尾**必须在该回调内、且在缓存失效与前端广播之前完成**（见下方注释），
+        //   所以只能在这里 await —— 不能把它挪到回调外做成"稍后处理"，否则界面会先渲染出
+        //   "配置还锁在成片目录里"的中间态。
+        child.on('close', async (code) => {
           if (out.data.length) pushLine(out.data);
           if (err.data.length) pushLine(err.data);
           task.endedAt = Date.now();
@@ -5560,7 +5587,7 @@ class Api {
           //   场景：用户跑到一半发现配置名写错，紧急停止后要改名 —— 但正本躺在成片目录里
           //   （源位置已空）+ 同目录有个 0 字节拼接日志（hasLog 判定为真）→ 改名会被两层拦住。
           //   收尾后配置回到原位、空日志消失，用户点「清除已完成任务」即可顺利改名。
-          this._settleTaskLeftovers(task, status);
+          await this._settleTaskLeftovers(task, status);
           // 任务结束 → 成片存在性结论失效：本次可能刚产出成片（旧结论是"无"），
           // 精确失效后由下次启动/空闲校验重新判定，避免界面显示"成片已删除"却其实还在
           try { this._invalidateHasOutput(task.id); } catch (e) {}

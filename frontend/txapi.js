@@ -111,7 +111,7 @@
   // 暴露与 preload.js 完全一致的接口签名
   var api = {
     list_projects: function (force) { return invokeArgs('list_projects', force); },
-    list_versions: function (project, name) { return invokeArgs('list_versions', project, name); },
+    list_versions: function (project, name, force) { return invokeArgs('list_versions', project, name, force); },
     read_config: function (p) { return invokeArgs('read_config', p); },
     save_config: function (p, folders, excludes, watermark, newName) { return invokeArgs('save_config', p, folders, excludes, watermark, newName); },
     save_config_today: function (project, name, configName, folders, excludes, watermark) { return invokeArgs('save_config_today', project, name, configName, folders, excludes, watermark); },

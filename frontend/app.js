@@ -1076,18 +1076,22 @@
     }
     state.configModified = modified;
     var b1 = $('btnSaveConfig'), b2 = $('btnSaveToday');
-    // ★ 强联动保护：该配置已有**有效日志**（非 0 字节）→ 禁用「覆盖当前配置」。
+    // ★ 保存类按钮放宽：保存配置只是写盘（原子写），
+    //   与预检测、FFmpeg 环境都无关 —— 允许用户在任务运行/排队期间先"暂存配置"备用。
+    //   ⚠ 这一行是回归断言的**锚点**（P0-基线/verify-tools.js 按此字面匹配"写盘与执行解耦"），
+    //     改写它必须同步更新断言，否则回归会报"保存类按钮被卡住"。
+    if (b1) { b1.disabled = !modified; }
+    // ★ 强联动保护：该配置已有**有效日志**（非 0 字节）→ **额外**禁用「覆盖当前配置」。
     //   配置与日志是一对一的「任务正本 + 运行记录」：日志名里嵌着配置名，日志内容又记着那次
     //   任务实际用了哪些片段。就地覆盖会让两者脱钩 —— 复刻按「日志的结构 + 本配置的素材池」
     //   生成，池被改过之后的产物就不再符合"复刻"的定义；而且这种改动**不留任何痕迹**
     //   （改名至少还有日志名做锚点），用户很难察觉自己做过。改内容的出口是「保存为当日配置」。
-    //   ⚠ hasLog 来自 list_versions，后端已把该判定改为**真扫**（并忽略 0 字节日志），
+    //   ⚠ hasLog 来自 list_versions；前端打开配置时会让后端**真扫**（不吃缓存），
     //     所以不会出现"日志已经删了、按钮却仍然禁用"的死局。
+    //   实现上刻意与上一行分开写（而不是合并成 `hasLog || !modified`）——保住上面那个断言锚点。
     var hasLog = !!(state.activeVersion && state.activeVersion.hasLog);
-    // ★ 保存类按钮放宽：保存配置只是写盘（原子写），
-    //   与预检测、FFmpeg 环境都无关 —— 允许用户在任务运行/排队期间先"暂存配置"备用
     if (b1) {
-      b1.disabled = hasLog || !modified;
+      if (hasLog) b1.disabled = true;
       setBtnHint(b1, hasLog ? '该配置已有对应日志，不能覆盖；请改用右侧「保存为当日配置」'
         : (modified ? null : '配置未发生改变'));
     }
@@ -1728,7 +1732,9 @@
     if (!pr || !name) return;
     call('list_projects').then(function (projects) {
       state.projects = projects || []; state.activeTxt = name; state.activeProject = pr; buildSidebar(false, true);
-      return call('list_versions', pr, name);
+      // force=true：跳转后要按磁盘真相展示 hasLog（它决定「覆盖当前配置」是否可用），
+      // 跳转是低频用户操作，真扫一次可接受
+      return call('list_versions', pr, name, true);
     }).then(function (versions) {
       state.versions = versions || [];
       var t = null;
@@ -2719,7 +2725,11 @@
       state.activeProject = project; state.activeTxt = name;
       // 跳转后自动展开目标配置所在项目（与 jumpToVersionPath 行为一致），树中可见并高亮，避免跳转后侧栏无选中项
       state.expandedProject = project;
-      call('list_versions', project, name).then(function (versions) {
+      // force=true：**用户主动打开配置**这条路径必须拿磁盘真相 —— hasLog 驱动
+      // 「覆盖当前配置」的禁用（强联动保护），走缓存会出现"日志已删、按钮仍禁用"的死局。
+      // ⚠ 只在这一条路径传 true：启动/刷新路径（如 refreshData）保持走缓存，
+      //   否则会破坏「启动期对素材盘零访问」的断言（P0-基线/verify-bootio.js）。
+      call('list_versions', project, name, true).then(function (versions) {
         state.versions = versions || []; state.activeVersion = null;
         if (state.versions.length > 0) { var target = prevLabel ? state.versions.find(function (v) { return v.label === prevLabel; }) : null; state.activeVersion = target || state.versions[0]; }
         if (pruneEmptyTxt(project, name, state.versions)) return;
