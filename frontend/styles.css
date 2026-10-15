@@ -3774,13 +3774,20 @@ body[data-preview-collapsed] .center-global-search .ds-input {
   background: var(--bg-overlay, rgba(0, 0, 0, 0.35));
   backdrop-filter: blur(1px);
 }
-/* 内嵌设置面板：居中卡片，尺寸沿用原独立设置窗口的 680×640 */
+/* 内嵌设置面板：居中卡片。
+   宽度按「内容区可用宽度」反推（而非直接照搬某个绝对尺寸）：
+   参考实现的设置面板在 1603 宽窗口下，卡片 980px、内容区约 690px（左导航约 230px）；
+   本设置页的左导航为 150px，要得到同等的内容区宽度，卡片取 840px
+   （840 − 150 导航 − 内边距 ≈ 688px，与参考的 690px 相当）。
+   占地比例也一致：840/1360 ≈ 61.8%，参考为 980/1603 ≈ 61.1%。
+   高度上限取 910px（与参考同值，容纳更多条目），小窗口时按视口收缩不溢出。
+   过窄会压死左栏（内容区 528px 时标题曾被压成逐字换行），这是尺寸的上下界依据。 */
 .settings-frame {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 680px;
-  height: 640px;
+  width: min(840px, calc(100vw - 96px));
+  height: min(910px, calc(100vh - 96px));
   transform: translate(-50%, -50%);
   border: 1px solid var(--border-neutral-l2);
   border-radius: 10px;
@@ -9255,13 +9262,20 @@ body[data-preview-collapsed] .center-global-search .ds-input {
   background: var(--bg-overlay, rgba(0, 0, 0, 0.35));
   backdrop-filter: blur(1px);
 }
-/* 内嵌设置面板：居中卡片，尺寸沿用原独立设置窗口的 680×640 */
+/* 内嵌设置面板：居中卡片。
+   宽度按「内容区可用宽度」反推（而非直接照搬某个绝对尺寸）：
+   参考实现的设置面板在 1603 宽窗口下，卡片 980px、内容区约 690px（左导航约 230px）；
+   本设置页的左导航为 150px，要得到同等的内容区宽度，卡片取 840px
+   （840 − 150 导航 − 内边距 ≈ 688px，与参考的 690px 相当）。
+   占地比例也一致：840/1360 ≈ 61.8%，参考为 980/1603 ≈ 61.1%。
+   高度上限取 910px（与参考同值，容纳更多条目），小窗口时按视口收缩不溢出。
+   过窄会压死左栏（内容区 528px 时标题曾被压成逐字换行），这是尺寸的上下界依据。 */
 .settings-frame {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 680px;
-  height: 640px;
+  width: min(840px, calc(100vw - 96px));
+  height: min(910px, calc(100vh - 96px));
   transform: translate(-50%, -50%);
   border: 1px solid var(--border-neutral-l2);
   border-radius: 10px;

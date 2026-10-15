@@ -322,7 +322,7 @@
       _backupCfgDir = String(s.backup_dir || '');
       // 「打开备份目录」行：显示备份实际落盘根（自定义目录时含「Video Lab 备份」层）
       var bdp = $('backupDirPath');
-      if (bdp) bdp.textContent = s.backup_root_effective || '';
+      if (bdp) { bdp.textContent = s.backup_root_effective || ''; bdp.title = bdp.textContent; }   // 路径过长时 CSS 省略号收尾，完整值放 title
       var bac = $('backupAutoClean');
       if (bac) bac.checked = s.backup_auto_clean === true;
       var bkd = $('backupKeepDays');
@@ -332,8 +332,7 @@
       document.querySelectorAll('input[name="updateSource"]').forEach(function (r) { r.checked = r.value === s.update_source; });
       var um = s.update_mode === 'auto' ? 'auto' : 'notify';
       document.querySelectorAll('input[name="updateMode"]').forEach(function (r) { r.checked = r.value === um; });
-      var storage = s.config_storage === 'appdata' ? 'appdata' : 'program';
-      document.querySelectorAll('input[name="configStorage"]').forEach(function (r) { r.checked = r.value === storage; });
+      // 数据目录已写死 AppData，设置页不再有 configStorage 单选项（无 radio 可回填）
       var hp = $('httpPort'); if (hp) hp.value = s.http_port || 9527;
       var htk = $('httpToken');
       if (htk) htk.value = s.http_token || '';
@@ -376,11 +375,12 @@
         refreshHttpUrl();
         recomputeDirty();
       });
-      var pp = $('cfgPathProgram'), pa = $('cfgPathAppdata');
-      if (pp) pp.textContent = s.config_path_program || '';
-      if (pa) pa.textContent = s.config_path_appdata || '';
+      // 数据目录已写死 AppData：只显示这一个路径（页面上的 program 侧元素已移除）。
+      // 回退到 storageDir（当前实际生效的数据根），保证这一行任何时候都不空。
+      var pa = $('cfgPathAppdata');
+      if (pa) { pa.textContent = s.config_path_appdata || s.storageDir || ''; pa.title = pa.textContent; }   // 同上
       var ld = $('logDirPath');
-      if (ld) ld.textContent = s.log_dir || '';
+      if (ld) { ld.textContent = s.log_dir || ''; ld.title = ld.textContent; }   // 同上
       // 「缓存管理」：单选策略（不删 / 自动删除+天数）；天数下拉始终可改（记忆预选值）
       var ci = s.cache_info || {};
       var cs = $('cacheSize');
@@ -647,7 +647,6 @@
       }
 
       var skin = document.documentElement.getAttribute('data-skin') || THEMES[0].id;
-      var storageEl = document.querySelector('input[name="configStorage"]:checked');
       var srcEl = document.querySelector('input[name="updateSource"]:checked');
       var umEl = document.querySelector('input[name="updateMode"]:checked');
       var cbEl = document.querySelector('input[name="closeBehavior"]:checked');
@@ -665,7 +664,6 @@
         close_behavior: cbEl ? cbEl.value : 'tray',
         update_source: srcEl ? srcEl.value : 'gitcode',
         update_mode: umEl ? umEl.value : 'notify',
-        config_storage: storageEl ? storageEl.value : 'program',
         http_port: parseInt($('httpPort').value, 10) || 9527,
         http_token: tkVal,
         batch: state.batch,
@@ -870,14 +868,12 @@
         setStatus('重建失败：' + ((e && e.message) || e), false);
       });
     });
-    // 「配置和数据保存位置」行：打开当前生效的配置存储目录
+    // 「配置与缓存库位置」行：打开**固定**的数据目录（AppData）—— 已无「当前生效的那一个」之分
     var openCfg = document.getElementById('btnOpenCfgDir');
     if (openCfg && api && api.open_folder_select) openCfg.addEventListener('click', function () {
-      var sel = document.querySelector('input[name="configStorage"]:checked');
-      var isAppdata = sel && sel.value === 'appdata';
-      var pp = document.getElementById('cfgPathProgram'), pa = document.getElementById('cfgPathAppdata');
-      var dir = isAppdata ? (pa ? pa.textContent : '') : (pp ? pp.textContent : '');
-      if (!dir) { setStatus('尚未确定保存文件夹', false); return; }
+      var pa = document.getElementById('cfgPathAppdata');
+      var dir = pa ? String(pa.textContent || '').trim() : '';
+      if (!dir) { setStatus('尚未确定数据文件夹', false); return; }
       api.open_folder_select(dir).then(function (r) {
         if (!(r && r.ok)) toast('打开失败：' + ((r && r.error) || '路径不存在'), true);
       }).catch(function (e) { toast('打开失败：' + e.message, true); });

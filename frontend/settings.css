@@ -86,20 +86,117 @@ body {
 }
 
 /* ─── 表单 ─── */
-.form-group { margin-bottom: 16px; }
+/* 设置项：左「标题 + 说明」/ 右「控件」两栏，**项与项之间用一条横线分隔**，
+   标题与说明都在横线**之内**（即属于该项自身）。
+
+   布局 = flex + 左右各一个容器（左 .form-group__head / 右 .form-group__ops）：
+   · 两个容器各是一个整体，外层 align-items:center 让**左栏相对右栏真正垂直居中** ——
+     此前用 grid 逐行放置时，左栏只是"第一行内的居中"，右栏一多行就表现为置顶；
+   · 右栏内部是纵向 flex，多行控件之间的对齐方式可以单独控制。
+
+   ⚠ 例外：内容本身需要整行宽度的项标 .form-group--stack 保持纵向堆叠
+     （主题三选一卡片、提取前缀多标签、日志文本框），见下方。 */
+.form-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  /* 栏间距 32px：右栏控件多行时，左栏的标题/说明（整体居中）会落在右栏各行的**行间**，
+     20px 的间距下两块视觉上连成一片、看起来像"副标题接上了某个控件"（实测「本地 HTTP 服务」
+     的副标题与右栏「令牌」行、"更新检查"的副标题与右栏第二行都出现这种错觉）。拉开一点更清晰。 */
+  gap: 0 32px;
+  /* 用上下 padding 留白 + 底线分隔：线与上下内容距离均匀，整列是一条连续的条目列表。 */
+  padding: 11px 0;
+  border-bottom: 1px solid var(--border-neutral-l1);
+}
+/* 左栏：主标题 + 副标题作为一个整体（内部块布局、间距恒定），整体与右栏垂直居中。
+   ⚠ flex-basis 必须是 0 而不是 auto：auto 会取「内容宽度」作基准，内容一长（长副标题）
+   加上右栏的 440px 就超出容器 → 触发 flex-wrap 换行，左右栏变成**上下排列**，
+   这时 align-items:center 只是在各自行内居中，看上去左栏依旧置顶（实测中心差 41~90px）。 */
+.form-group > .form-group__head { flex: 1 1 0; min-width: 0; }
+.form-group > .form-group__head > .form-group__label { display: block; margin-bottom: 3px; }
+.form-group > .form-group__head > .form-group__desc { display: block; margin-bottom: 0; }
+
+/* 右栏：宽度取**内容自然宽度**，整组贴右边界，组内各行左边界对齐。
+   ⚠ max-width 62% 是「左栏保底」：不设上限时长路径/令牌行会把左栏挤到换行；
+   写死 px 又会在卡片变宽时空着（明明有位置却出现截断）。用百分比上限兼顾两者 ——
+   窄控件按内容宽、右侧不留白；宽控件最多占 62%，其余留给左栏。
+   ⚠ 单行与多行**用同一套规则**（组内左对齐 + 组整体贴右）。此前"单行右对齐、多行左对齐"
+   两套标准并存，视觉上自相矛盾 —— 一律由 ops 容器的 align-items 统一控制。 */
+.form-group > .form-group__ops {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 62%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;   /* 各行按内容宽度、贴右边界 —— 控件行右侧不留空白 */
+  gap: 6px;
+  margin-left: auto;       /* 整组贴右 */
+}
+/* 默认：控件行一律**右对齐**（贴右边界）。此前把整栏都设成左对齐，导致
+   「打开文件夹」「打开备份文件夹」「缓存大小 + 清理」这类窄控件右侧留一大片空白。 */
+.form-group > .form-group__ops > .opt-row,
+.form-group > .form-group__ops > .dir-row { justify-content: flex-end; }
+/* ⚠ 只有**同组有多行的选项切换行**（含单选/复选）才左对齐：占满整栏宽度后
+   内部左对齐，使组内各行左边界对齐、读起来是「一组选项」。
+   判据 = ops 内至少有两行，且该行含 opt-radio / opt-check。
+   单行的勾选项（如「开机自启动」）不适用 —— 它没有"组内对齐"的需求，右对齐即可。 */
+.form-group:has(> .form-group__ops > :nth-child(2)) > .form-group__ops > .opt-row:has(.opt-radio),
+.form-group:has(> .form-group__ops > :nth-child(2)) > .form-group__ops > .opt-row:has(.opt-check),
+.form-group:has(> .form-group__ops > :nth-child(2)) > .form-group__ops > .dir-row:has(.opt-radio),
+.form-group:has(> .form-group__ops > :nth-child(2)) > .form-group__ops > .dir-row:has(.opt-check) {
+  align-self: stretch;
+  justify-content: flex-start;
+}
+/* 短文本输入（如创作者名）：合理宽度，不撑满也不过窄 */
+
+/* 诊断包「任务 id」输入框：限宽 130px —— 它与两个按钮同处一行，不限宽会把右栏
+   撑到 350px+、左栏被挤到 246px，副标题被压成三行。 */
+#diagTaskId { width: auto !important; flex: 1 1 auto !important; min-width: 110px; }
+.opt-text-input { width: 200px; flex: 0 0 auto; }
+/* 路径在右栏内**占满可用宽度**（其余宽度让给右侧按钮） */
+.form-group > .form-group__ops > .opt-row > .opt-path {
+  flex: 1 1 auto;
+  max-width: none;
+}
+/* 输入类控件：占满右栏的可用宽度（配合右侧按钮自适应）。
+   ⚠ 刻意**不写死 px** —— 卡片变宽时写死宽度会让控件右侧空着，明明有位置却截断
+   （配置与缓存库位置的路径、本地 HTTP 的令牌栏都踩过这个坑）。
+   数字类由 .opt-num-input 固定 88px，不受此规则影响。 */
+.form-group > .form-group__ops > .opt-row > .form-input,
+.form-group > .form-group__ops > .dir-row > .form-input { flex: 1 1 auto; width: auto; min-width: 110px; }
+/* 路径显示：过长时省略号收尾（完整值由 JS 写入 title，悬停可见）。
+   ⚠ 右栏容器自带 62% 上限，这里只需让路径**占满**它（此前写死 210px，
+   卡片有空间时却出现「...\Roaming\Vide」这种无谓截断）。 */
+.form-group .opt-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 预览 / 结果框（如成片名预览）：在右栏内显示 */
+.form-group > .form-group__ops > .producer-preview { width: 100%; }
+/* 访问地址：需要完整展示、不能被右栏截断 → 整行拉通（刻意不放进 ops） */
+.form-group--http > .producer-preview { flex: 0 0 100%; order: 9; margin-top: 8px; }
+
+/* 需整行宽度的项：恢复纵向堆叠，子元素各自占一行并占满宽度 */
+.form-group--stack { display: block; }
+.form-group--stack > .form-group__head { margin-bottom: 8px; }
+.form-group--stack > .form-group__ops { display: block; flex: none; }
+.form-group--stack > .form-group__ops > .opt-row,
+.form-group--stack > .form-group__ops > .dir-row { padding: 4px 0; justify-content: flex-start; }
+/* 主标题：与副标题拉开层次 —— 字号 14px（副标题 11px）、字重 500、颜色 secondary
+   （副标题 tertiary）。此前 13px / 常规字重与副标题区分度不足。 */
 .form-group__label {
   display: block;
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 500;
   color: var(--text-secondary);
   margin-bottom: 6px;
 }
-.form-group__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-.form-group__head .form-group__label { margin-bottom: 6px; }
+/* 此处原有一份 `.form-group__head { display: flex; ... }` 定义 —— 那是"标题 + 右侧按钮"
+   的横向行容器，在 HTML 中早已没有消费者（改动前用量为 0）。该 class 名现由设置项的
+   左栏容器复用，布局定义见上方「.form-group > .form-group__head」一节（块布局，
+   主标题在上、副标题在下）。 */
 .cfg-open-btn {
   flex: none;
   padding: 4px 12px;
@@ -229,10 +326,20 @@ body {
   width: 84px !important;
   flex: 0 0 auto;
 }
-/* 令牌输入框：32 位十六进制合理宽度，不被 flex 拉伸（important 覆盖 .form-input 的 width:100%） */
+/* ⚠ 定宽输入框必须同时锁住 flex：`.dir-row > .form-input { flex: 1 }`、`.opt-row > .form-input`
+   这类两元素选择器的优先级高于单类，会把上面写死的宽度重新拉伸开
+   （实测 httpPort 的 width 算出来是 84px、但 flex 成了 1 1 0%，渲染宽度仍近 300px）。 */
+.opt-row > .form-input--port,
+.dir-row > .form-input--port,
+.opt-row > .form-input.opt-num-input,
+.dir-row > .form-input.opt-num-input { flex: 0 0 auto; }
+/* 令牌输入框：占右栏剩余宽度（important 覆盖 .form-input 的 width:100%）。
+   ⚠ 不写死 px —— 右栏宽度是按比例自适应的，写死 300px 在窄卡片里会溢出、把
+   「随机生成」按钮挤出右栏。 */
 #httpToken {
-  width: 300px !important;
-  flex: 0 0 auto;
+  width: auto !important;
+  flex: 1 1 auto !important;
+  min-width: 110px;
 }
 .btn {
   appearance: none;
@@ -296,7 +403,6 @@ body {
   border-radius: 8px;
   padding: 7px 12px; /* 高度与输入框一致，横向保留原 12px */
   background: var(--bg-overlay-l1);
-  margin-bottom: 20px;
 }
 .producer-preview__value {
   display: block;
@@ -354,27 +460,9 @@ body {
 }
 .opt-radio:hover .opt-radio__dot { border-color: var(--brand-500); }
 .opt-radio__label { display: flex; flex-direction: column; gap: 2px; }
-/* 设置分组头：小标题 + 右延横线（设置项较多，用横线分组区隔，便于快速定位） */
-.settings-group {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 22px 0 10px;
-}
-.settings-group:first-of-type { margin-top: 6px; }
-.settings-group__title {
-  flex-shrink: 0;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.4px;
-  color: var(--text-tertiary);
-}
-.settings-group::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: var(--border-neutral-l1);
-}
+/* 分组头（.settings-group / .settings-group__title）已移除 —— 每个设置项自带
+   「主标题 + 副标题」，再保留分组标题会出现语义重叠（如分组「日志」下面还有
+   「日志级别」这种项）。分隔完全交给 .form-group 的下边框，整列是一条连续的条目列表。 */
 
 .opt-path {
   font-size: 11px;

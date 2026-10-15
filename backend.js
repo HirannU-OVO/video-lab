@@ -92,7 +92,7 @@ const DEFAULT_CONFIG = {
   check_update_hour: 9,       // 每日定时检查更新时间（24 小时制整点 0-23，默认 9）
   update_source: 'gitcode',   // 更新源：gitcode=GitCode release / github=GitHub release，默认 GitCode
   update_mode: 'notify',      // 更新方式：notify=有新版本仅提醒（默认）/ auto=自动检查并下载
-  config_storage: 'program',  // 配置文件保存位置：program=程序所在目录 / appdata=%APPDATA%\Video Lab
+  // config_storage 已废弃移除：数据目录恒为 %APPDATA%\Video Lab（设置页无此项）。
   http_port: 9527,            // 浏览器访问端口（0-65535，默认 9527）
   // 旧版脚本 顶部全局参数（文件内同名常量被顶部读环境变量 BATCH_* 覆盖）
   batch: {
@@ -555,62 +555,12 @@ class Api {
     this._precheckToken++;
   }
 
-  // ── 存储位置与连接管理（切换「配置和数据保存位置」时由 main 调用）──
-
-  // 有任务正在运行或排队 → 禁止迁移存储位置（Windows 下子进程持有库句柄，移动必然失败）
-  hasRunningTasks() {
-    for (const t of this.tasks.values()) {
-      if (t.status === 'running' || t.status === 'queued') return true;
-    }
-    return false;
-  }
-
-  // 关闭全部库连接并落盘（切换保存位置前必须调用）；随后由 onStorageMoved 按新位置重开
-  closeStorageConnections() {
-    const store = this._cacheStore;
-    if (store) {
-      // WAL 收尾：TRUNCATE 把 -wal 内容合并回主库并清空，否则移动时 -wal/-shm 会与主库脱节
-      try { store.open().exec('PRAGMA wal_checkpoint(TRUNCATE)'); } catch (e) {}
-      try { store.close(); } catch (e) {}
-    }
-    this._cacheStore = null;
-    this._cacheBackendMode = '';
-    if (this._settingsStore) { try { this._settingsStore.close(); } catch (e) {} }
-    this._settingsStore = null;
-    this._settingsMode = '';
-  }
-
-  // 保存位置已变更：更新数据目录、清空全部内存缓存，下次访问时按新位置重新打开
-  onStorageMoved(dir) {
-    this.storageDir = dir || '';
-    this._videoCache = null;
-    this._videoCacheDirty = false;
-    this._videoCacheDirtyKeys.clear();
-    this._videoCacheRemovedKeys.clear();
-    this._videoInfoCache.clear();
-    this._scanCache = new Map();
-    this._scanLoadedRoot = '';
-    this._scanDirty = false;
-    this._logCache = null;
-    this._logCacheRoot = '';
-    this._wmCache = null;
-    this._wmEnabled = null;
-    this._wmGroup = null;
-    this._wmGroupEnabled = null;
-    this._wmCacheLoadedRoot = null;
-    this._clipIndex = null;
-    this._clipIndexRoot = '';
-    this._clipIndexDirty = false;
-    this.persistTasks(); // 新位置先把当前任务列表落一份，避免切换后列表为空
-  }
-
   // 手动取消进行中的预检测（前端"缩到后台"后点击 ✕、或再次重置/换路径时自动取消防重复）
   cancelPrecheck() {
     this._precheckToken++;
     return { ok: true };
   }
 
-  // 清理项目/TXT 相关内存缓存（保存配置、重建列表时调用；不清持久化指纹缓存）
   // 清理项目/TXT 相关内存缓存（保存配置、重建列表时调用；不清持久化指纹缓存）
   // dropPersist=true 时连持久化条目一并删除 —— 供「强制重扫」（force）使用：
   //   否则内存清了、持久化指纹仍在，重扫会直接读回旧缓存，force 语义失效。
@@ -2530,31 +2480,67 @@ class Api {
     return files;
   }
   // 扫描数据目录 → 可清项清单（含体积 / 条数 / 不可清原因）
+  // 注入「历史数据根」（main.js 的 legacyDataDirs() 提供）。见 dataDirScan 里 roots 的注释。
+  setLegacyDataDirs(dirs) {
+    try {
+      this._legacyDirs = (Array.isArray(dirs) ? dirs : []).map(String).filter(Boolean);
+    } catch (e) { this._legacyDirs = []; }
+  }
+
   dataDirScan() {
     const dir = String(this.storageDir || '');
     const tasks = this.tasks || new Map();
     const items = [];
     const add = (o) => items.push(Object.assign(
       { key: '', label: '', count: 0, bytes: 0, files: [], cleanable: true, reason: '', desc: '' }, o));
+    // ── 扫描根 = 当前数据根 + 历史数据根 ─────────────────────────────────
+    // 为什么要有「历史数据根」这一维：数据目录已固定为 %APPDATA%\Video Lab，而程序目录里
+    // 可能仍留着更早版本写入的 ffmpeg\ / preview\ / txt-snap\ / log\ 等 —— 它们不在当前
+    // 数据根之下，只扫 <storageDir> 就永远看不见、也无法列入清单交给用户处理。
+    // ⚠ 同一 key 下**合并所有根的文件**（当前根在前）：用户勾一次即可连旧版残留一起清掉，
+    //   不必分辨某个文件究竟躺在哪一份数据根里；展示侧用 legacyN 标注来源。
+    const roots = [dir];
+    for (const d of (this._legacyDirs || [])) {
+      try {
+        if (!d) continue;
+        const a = path.resolve(d);
+        if (roots.every((x) => path.resolve(x) !== a)) roots.push(d);
+      } catch (e) { /* 无效路径：跳过 */ }
+    }
+    const legacyN = Math.max(0, roots.length - 1);
     const abs = (n) => path.join(dir, n);
+    // 各根下同名目录里符合过滤条件的文件（绝对路径）；缺目录/无权限都静默跳过
+    const walkRoots = (name, filter) => {
+      const out = [];
+      for (const r of roots) {
+        try {
+          const p = path.join(r, name);
+          if (!fs.existsSync(p) || !fs.statSync(p).isDirectory()) continue;
+          for (const n of fs.readdirSync(p)) {
+            try { if (!filter || filter(n)) out.push(path.join(p, n)); } catch (e) {}
+          }
+        } catch (e) {}
+      }
+      return out;
+    };
 
-    // ① 画布预览中间产物
+    // ① 画布预览中间产物（含旧版本数据根里的残留）
     try {
-      const pv = abs('preview');
-      const files = fs.existsSync(pv)
-        ? fs.readdirSync(pv).filter((n) => /\.(png|jpe?g)$/i.test(n)).map((n) => path.join(pv, n)) : [];
-      add({ key: 'preview', label: '画布预览中间产物', files,
-        desc: '预览图只为在界面上显示一次，用完即无价值（新版本已改为生成后立即删除，这里是历史遗留）' });
+      const files = walkRoots('preview', (n) => /\.(png|jpe?g)$/i.test(n));
+      add({ key: 'preview', label: '画布预览中间产物', files, legacyN,
+        desc: '预览图只为在界面上显示一次，用完即无价值，可安全回收'
+          + (legacyN ? '；另含程序目录里的遗留文件' : '') });
     } catch (e) {}
 
-    // ② TXT 提交快照：只清「任务已不存在 / 已完成 / 超 30 天」三类
+    // ② TXT 提交快照：只清「任务已不存在 / 已完成 / 超 30 天」三类（含旧版本数据根里的残留）
     try {
-      const sd = abs('txt-snap');
-      const all = fs.existsSync(sd) ? fs.readdirSync(sd).filter((n) => /\.txt$/i.test(n)) : [];
+      // ⚠ 用绝对路径列表（跨根）：旧版本数据根里的快照，其任务必然已不在当前任务表内，
+      //   会落到 dead 分支 —— 正是我们要的；仍在跑/排队的（跨根同名）照旧保留。
+      const all = walkRoots('txt-snap', (n) => /\.txt$/i.test(n));
       const DEAD = 30 * 24 * 3600 * 1000, now = Date.now();
       const dead = [], keep = [];
-      for (const n of all) {
-        const p = path.join(sd, n);
+      for (const p of all) {
+        const n = path.basename(p);
         const t = tasks.get(n.replace(/\.txt$/i, ''));
         let age = 0;
         try { age = now - fs.statSync(p).mtimeMs; } catch (e) { age = 0; }
@@ -2563,8 +2549,9 @@ class Api {
       }
       // ⚠ 必须写 files: dead —— 这条曾是 `files` 简写（该作用域无此变量），
       //   ReferenceError 被外层 catch 静默吞掉，导致整项从清单里消失且毫无提示（已被隔离测试抓出）。
-      add({ key: 'txtsnap', label: 'TXT 提交快照（已无用）', files: dead,
-        desc: '快照只在任务启动前用于还原配置；任务已完成、已不存在或超过 30 天时它再无用途' });
+      add({ key: 'txtsnap', label: 'TXT 提交快照（已无用）', files: dead, legacyN,
+        desc: '快照只在任务启动前用于还原配置；任务已完成、已不存在或超过 30 天时它再无用途'
+          + (legacyN ? '；另含程序目录里的遗留文件' : '') });
       if (keep.length) {
         add({ key: 'txtsnap-live', label: 'TXT 提交快照（保留中）', cleanable: false, count: keep.length,
           reason: '有 ' + keep.length + ' 个任务在跑 / 排队 / 未完成，它们启动或续跑时要按快照还原配置',
@@ -2582,45 +2569,113 @@ class Api {
 
     // ④ 数据搬迁残留（*.migrated）：数据搬进 AppData 后，旧位置三个库改名留下的副本
     try {
-      const dirs = [dir];
-      try {
-        const el = require('electron');
-        if (el && el.app && el.app.isPackaged) dirs.push(path.dirname(process.execPath));
-      } catch (e) { /* 非 Electron 环境：只扫数据目录 */ }
       const files = [];
-      for (const d of dirs) {
+      for (const d of roots) {
         let ns = [];
         try { ns = fs.readdirSync(d); } catch (e) { continue; }
         for (const n of ns) if (/\.migrated$/.test(n)) files.push(path.join(d, n));
       }
       add({ key: 'migrated', label: '数据搬迁残留', files,
-        desc: '数据搬进 AppData 后，旧位置三个库改名留下的副本（回滚取证用）；新版数据确认正常后即可清理' });
+        desc: '数据搬进 AppData 时，原位置三个库改名留下的副本（回滚取证用）；确认应用运行正常后即可清理' });
     } catch (e) {}
 
-    // ⑤ FFmpeg 组件目录：**只有当前没在用它**时才可清
+    // ⑤ FFmpeg 组件目录：**只有当前没在用它**的那一份才可清（逐个根判，混在一起会误清在用的那份）
     try {
-      const ffDir = abs('ffmpeg');
-      const files = fs.existsSync(ffDir) ? this._ddWalk(ffDir) : [];
       const active = String(this._resolveFfmpegBin().cfgDir || '');
-      let inUse = true;   // 判不出来时按"在用"处理 —— 宁可少清，不能把软件清坏
-      try { if (active) inUse = path.resolve(active) === path.resolve(ffDir); } catch (e) { inUse = true; }
-      add({ key: 'ffmpeg', label: 'FFmpeg 组件目录', files, cleanable: !inUse,
-        reason: inUse ? '当前正在使用这份组件，清理后软件将无法处理视频' : '',
-        desc: inUse ? '' : '当前使用的是另一份组件，这份可以回收' });
+      const files = [];
+      let usedN = 0;
+      for (const r of roots) {
+        const ffDir = path.join(r, 'ffmpeg');
+        try {
+          if (!fs.existsSync(ffDir) || !fs.statSync(ffDir).isDirectory()) continue;
+          let inUse = true;   // 判不出来时按"在用"处理 —— 宁可少清，不能把软件清坏
+          try { inUse = !!active && path.resolve(active) === path.resolve(ffDir); } catch (e) { inUse = true; }
+          if (inUse) { usedN++; continue; }
+          for (const p of this._ddWalk(ffDir)) files.push(p);
+        } catch (e) {}
+      }
+      add({ key: 'ffmpeg', label: 'FFmpeg 组件目录', files, cleanable: files.length > 0,
+        reason: files.length ? '' : '当前正在使用这份组件，清理后软件将无法处理视频',
+        desc: files.length
+          ? '当前使用的是另一份组件，这份可以回收；另含程序目录里遗留的自动下载组件'
+          : (usedN ? '' : '没有发现可回收的组件目录') });
     } catch (e) {}
 
     // ⑥⑦ 只展示不清理的两项：让用户知道它们的去向，免得以为"没清干净"
+    // ⚠ 统计跨根（旧版本数据根里同样有 log\ 与 backup\）—— 否则用户会以为"旧目录里没东西"
     try {
-      const lg = this._ddWalk(abs('log'));
+      const lg = [];
+      for (const r of roots) { try { for (const p of this._ddWalk(path.join(r, 'log'))) lg.push(p); } catch (e) {} }
       add({ key: 'log', label: '运行日志', files: [], cleanable: false, count: lg.length,
         bytes: lg.reduce((s, p) => s + this._ddSize(p), 0),
         reason: '日志是排查「某次成片去哪了」的唯一证据，任何清理都不触碰它',
-        desc: '按各自保留期自动清理（app 7 天 / error 30 天 / engine 7 天）' });
-      const bk = this._ddWalk(abs('backup'));
+        desc: '按各自保留期自动清理（app 7 天 / error 30 天 / engine 7 天）'
+          + (legacyN ? '；另含程序目录里遗留的日志，需要时可自行删除' : '') });
+      const bk = [];
+      for (const r of roots) { try { for (const p of this._ddWalk(path.join(r, 'backup'))) bk.push(p); } catch (e) {} }
       add({ key: 'backup', label: '处理前备份', files: [], cleanable: false, count: bk.length,
         bytes: bk.reduce((s, p) => s + this._ddSize(p), 0),
         reason: '属于你的数据，只能由你决定',
         desc: '在「视频处理」设置里开启自动清理并按保留天数处理' });
+    } catch (e) {}
+
+    // ⑧ 旧版更新包残留：≤2.5.0 便携版「下载更新」会把便携包 zip 落到程序目录，
+    //    用户按提示解压覆盖后那份 zip（及其分卷）就留在原地了 —— 少数几百 MB 到 GB 级。
+    try {
+      const files = [];
+      for (const r of roots) {
+        let ns = [];
+        try { ns = fs.readdirSync(r); } catch (e) { continue; }
+        for (const n of ns) {
+          if (!/^Video-Lab-.*-x64-Portable\.zip(\.\d{3,})?$/i.test(n)) continue;
+          const p = path.join(r, n);
+          try { if (fs.statSync(p).isFile()) files.push(p); } catch (e) {}
+        }
+      }
+      add({ key: 'updatepkg', label: '便携包残留', files,
+        desc: '更新时下载落地的便携包（含分卷）；这类包已无用途，可安全回收' });
+    } catch (e) {}
+
+    // ⑨ 旧版缓存 JSON：布局改造前使用的独立缓存文件（别名见 engines/base/migrate.js 的 ALIASES）。
+    //    迁移只把它们合并进三库并暂存目录，**落在数据根上的那些没人管**（migrate 只认 Cache\/Config\）
+    //    —— 数据早已并入三库，文件本身可回收。
+    try {
+      const RE = /^(scan_cache|video_lab_scan_cache|scan-cache|log_cache|video_cache|usage_cache|task_cache|task_snapshot|mask_cache|mask_session|Batch|watermark_cache|Mask|mask_default_dir|clip_cache)\.json$/i;
+      const files = [];
+      for (const r of roots) {
+        let ns = [];
+        try { ns = fs.readdirSync(r); } catch (e) { continue; }
+        for (const n of ns) {
+          if (!RE.test(n)) continue;
+          const p = path.join(r, n);
+          try { if (fs.statSync(p).isFile()) files.push(p); } catch (e) {}
+        }
+      }
+      add({ key: 'legacyjson', label: '独立缓存文件', files,
+        desc: '内容已并进 settings.db / cache.db 的独立缓存 JSON，文件本身可安全回收' });
+    } catch (e) {}
+
+    // ⑩ 更早的脚本版（PS1 时代）残留：与新架构完全无关，只在旧数据根里出现
+    try {
+      const files = [];
+      for (const r of roots) {
+        let ns = [];
+        try { ns = fs.readdirSync(r); } catch (e) { continue; }
+        for (const n of ns) {
+          // usage_report.txt 是单文件；（QuickAccessBackup / 帧删除备份_*）是**目录**，需展开成文件清单
+          // ⚠ 不在这里匹配 config.json.bak*：那已由上方「配置备份残留」③ 统一负责，避免重复计数
+          const p = path.join(r, n);
+          try {
+            if (/^usage_report\.txt$/i.test(n)) {
+              if (fs.statSync(p).isFile()) files.push(p);
+            } else if (/^(QuickAccessBackup|帧删除备份_.*)$/i.test(n)) {
+              if (fs.statSync(p).isDirectory()) { for (const q of this._ddWalk(p)) files.push(q); }
+            }
+          } catch (e) {}
+        }
+      }
+      add({ key: 'ps1era', label: '脚本版残留', files,
+        desc: '脚本版工具留下的报表与备份目录，与本程序无关，可安全回收' });
     } catch (e) {}
 
     // 体积/条数只在可清项上按文件清单算（不可清项已自行给出）
@@ -2664,10 +2719,16 @@ class Api {
     // 否则清完会留下空文件夹，用户看不出到底清没清。**txt-snap 绝不整目录动**：
     // 里面可能还有在跑/排队任务的快照（它们不在本次可清清单里）。
     try {
-      const base = String(this.storageDir || '');
-      for (const n of ['preview', 'ffmpeg']) {
-        const p = path.join(base, n);
-        if (fs.existsSync(p) && fs.readdirSync(p).length === 0) fs.rmdirSync(p);
+      // 跨根收空壳：历史数据根里的 preview\ / ffmpeg\ 清空后同样要收回，
+      // 否则用户在旧目录里会看到"清完了但文件夹还在"，以为没清干净。
+      const bases = [String(this.storageDir || '')].concat(this._legacyDirs || []);
+      for (const base of bases) {
+        for (const n of ['preview', 'ffmpeg']) {
+          try {
+            const p = path.join(base, n);
+            if (fs.existsSync(p) && fs.statSync(p).isDirectory() && fs.readdirSync(p).length === 0) fs.rmdirSync(p);
+          } catch (e) {}
+        }
       }
     } catch (e) {}
     try {
@@ -4025,6 +4086,9 @@ class Api {
     try { this._prewarmHasOutputAsync(); } catch (e) {}
     // 维护性任务统一入队（启动期不做任何同步扫盘）：过期锁清理等
     try { this._verifyEnqueue('cleanlocks', this.root, () => this._cleanupStaleLocks()); } catch (e) {}
+    // 旧版遗留的自动兜底（与上面同款：只入队，启动期不扫盘）——
+    // 覆盖 preview\ 残留与超 30 天快照；跨"当前 + 历史"数据根（搬迁后旧程序目录里那批）。
+    try { this._verifyEnqueue('legacysweep', this.root, () => this._sweepLegacyAuto().catch(() => {})); } catch (e) {}
     // 日志级别持久化恢复（否则级别只在本会话生效，重启回 info）：
     // 入空闲队列而不是启动路径 —— 读它需要同步打开 settings.db，那正是启动期硬约束禁止的。
     try { this._idleEnqueue('loglevel:' + this.root, () => this._restoreLogLevel()); } catch (e) {}
@@ -4568,16 +4632,20 @@ class Api {
       const dir = String(task.outDir || (task.env && task.env.REPLICA_OUTPUT_DIR) || '').trim();
       if (!dir) return;
       const rescued = this._rescueConfigFromOutDir(dir);
+      // mask / replica 的锁写在**成片输出目录**里（不是 <数据根>\.locks\）——
+      // 被 taskkill 硬杀后它们不在 _cleanupStaleLocks 的扫描范围内，正好在这里顺手收掉。
+      const locks = this._cleanupLocksIn(dir);
       const swept = await this._sweepOutDirResidue(dir);
-      if (rescued.restored.length || rescued.skipped.length || swept.logs.length || swept.temps.length || swept.dirRemoved) {
+      if (rescued.restored.length || rescued.skipped.length || swept.logs.length || swept.temps.length || swept.dirRemoved || locks) {
         this._lg('DEL', 'task.settle',
           '任务未正常结束的收尾 · ' + status + ' · ' + String(task.title || '').slice(0, 40)
           + ' · 配置正本回迁 ' + rescued.restored.length + ' 个'
           + (rescued.skipped.length ? '（' + rescued.skipped.length + ' 个因原位置已有同名而保留）' : '')
           + ' · 清空日志 ' + swept.logs.length + ' 个 · 清临时产物 ' + swept.temps.length + ' 个'
+          + (locks ? ' · 清过期锁 ' + locks + ' 个' : '')
           + (swept.dirRemoved ? ' · 空目录已收回' : ''),
           { id: task.id, outDir: dir,
-            restored: rescued.restored, skipped: rescued.skipped, logs: swept.logs, temps: swept.temps });
+            restored: rescued.restored, skipped: rescued.skipped, logs: swept.logs, temps: swept.temps, locks });
       }
     } catch (e) { /* 收尾失败绝不阻断任务结束流程 */ }
   }
@@ -8356,10 +8424,73 @@ class Api {
   // 过期锁清理：进程被强杀（崩溃 / 任务管理器结束）时 finally 不执行，锁文件会残留下来；
   // 而 .locks 目录只建不删 —— 残留会一直累积，用户也无从清理。
   // 判定与 acquireLock 的过期规则一致：pid 不存活 或 写入时间超过 60 秒
-  _cleanupStaleLocks() {
+  // 旧版遗留的**自动**兜底清理（手动清单之外的另一路）：只清「确定无价值且无争议」的两类 ——
+  //   · preview\ 下的预览图（png/jpg）：本版已改为生成后即删，留着即无用途
+  //   · txt-snap\ 里**超 30 天**的快照：任务早已不存在，续跑/还原都不可能再用到
+  // 为什么必须自动（而不是只留在手动清单里）：
+  //   preview 那一份只有"用户再次打开画布预览"才会被 trim(0) 顺带清掉 —— 从不打开预览的用户
+  //   那份残留就永远躺着；txt-snap 的 30 天兜底若只写在手动扫描项里，任务列表被清空后就
+  //   再没有人删它。
+  // ⚠ 刻意不做的（避免"自动"越界）：
+  //   · 不动 30 天内的快照 —— 任务可能还在列表里、还在续跑
+  //   · 不动 ffmpeg\（那份可能是用户唯一的可用组件，交给 cleanupLegacyFfmpeg 的严格判据）
+  //   · 不动 log\ / backup\（属用户证据，各按保留期自清理）
+  // 删除一律走回收站（项目硬约束），并跨"当前 + 历史"数据根。
+  async _sweepLegacyAuto() {
     try {
-      const dir = path.join(this.storageDir || process.cwd(), '.locks');
-      if (!fs.existsSync(dir)) return;
+      const roots = [String(this.storageDir || '')].concat(this._legacyDirs || []);
+      const DEAD = 30 * 24 * 3600 * 1000, now = Date.now();
+      let n = 0, freed = 0;
+      const drop = async (p) => {
+        try { const sz = this._ddSize(p); await this._trash(p); n++; freed += (sz || 0); } catch (e) {}
+      };
+      for (const r of roots) {
+        // ① 预览图（成品文件即删，空壳顺手收回）
+        try {
+          const pv = path.join(r, 'preview');
+          if (fs.existsSync(pv) && fs.statSync(pv).isDirectory()) {
+            for (const f of fs.readdirSync(pv)) {
+              if (!/\.(png|jpe?g)$/i.test(f)) continue;
+              const p = path.join(pv, f);
+              try { if (fs.statSync(p).isFile()) await drop(p); } catch (e) {}
+            }
+            try { if (fs.readdirSync(pv).length === 0) fs.rmdirSync(pv); } catch (e) {}
+          }
+        } catch (e) {}
+        // ② 超 30 天的任务快照
+        try {
+          const sd = path.join(r, 'txt-snap');
+          if (fs.existsSync(sd) && fs.statSync(sd).isDirectory()) {
+            for (const f of fs.readdirSync(sd)) {
+              if (!/\.txt$/i.test(f)) continue;
+              const p = path.join(sd, f);
+              let age = 0;
+              try { age = now - fs.statSync(p).mtimeMs; } catch (e) { age = 0; }
+              if (age > DEAD) await drop(p);
+            }
+          }
+        } catch (e) {}
+      }
+      if (n) {
+        try {
+          this._lg('SYS', 'legacy.autoSweep',
+            '遗留文件自动清理 · ' + n + ' 个文件 · 释放 ' + this._humanSize(freed),
+            { removed: n, freed, roots: roots.length });
+        } catch (e) {}
+      }
+    } catch (e) { /* 兜底清理失败绝不能影响启动 */ }
+  }
+
+  // 清掉某个目录里的过期锁（进程已死 或 mtime 超 60s）。返回清掉的个数。
+  // 为什么要把"清理一个目录"抽出来共用：引擎有**三处**写锁，落点各不相同 ——
+  //   batch  → <数据根>\.locks\.video-lab-batch.lock   （engines/modules/batch/index.js:894）
+  //   mask   → <成片输出目录>\.video-lab-mask.lock    （engines/modules/mask/index.js:229）
+  //   replica→ <成片输出根>\.video-lab-replica.lock   （engines/modules/replica/index.js:878）
+  // 只看 <数据根>\.locks\ 一处的话，后两处被 taskkill 硬杀后留下的锁不在清理范围内。
+  _cleanupLocksIn(dir) {
+    let n = 0;
+    try {
+      if (!dir || !fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) return 0;
       for (const name of fs.readdirSync(dir)) {
         if (!/\.lock$/i.test(name)) continue;
         const lockFile = path.join(dir, name);        // 锁文件是进程间同步用的临时控制文件，非业务数据
@@ -8373,8 +8504,22 @@ class Api {
           try { process.kill(holder.pid, 0); alive = true; } catch (e) { alive = (e && e.code === 'EPERM'); }
         }
         const stale = !alive || (Date.now() - (st.mtimeMs || 0) > 60 * 1000);
-        if (stale) { try { fs.unlinkSync(lockFile); } catch (e) {} }
+        if (stale) { try { fs.unlinkSync(lockFile); n++; } catch (e) {} }
       }
+    } catch (e) {}
+    return n;
+  }
+
+  _cleanupStaleLocks() {
+    try {
+      const base = String(this.storageDir || process.cwd());
+      const dir = path.join(base, '.locks');
+      this._cleanupLocksIn(dir);
+      // 空壳顺手收回：锁是"只建不删"型目录，清完还留着空文件夹会让用户以为没清干净。
+      // ⚠ 只在**真的空了**时收；还有未过期锁（任务在跑）时保持原样。
+      try {
+        if (fs.existsSync(dir) && fs.statSync(dir).isDirectory() && fs.readdirSync(dir).length === 0) fs.rmdirSync(dir);
+      } catch (e) {}
     } catch (e) {}
   }
 

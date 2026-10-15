@@ -2583,7 +2583,7 @@
       }
       confirmPopover({
         title: '发现重复配置',
-        message: '发现 ' + pending.length + ' 个与正本内容一致的外部 * 配置（历史遗留副本），删除不影响正本与其他日期分支',
+        message: '发现 ' + pending.length + ' 个与正本内容一致的外部 * 配置（重复副本），删除不影响正本与其他日期分支',
         okLabel: '删除并刷新',
         danger: true
       }).then(function (v) {

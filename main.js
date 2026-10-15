@@ -161,24 +161,20 @@ function appdataConfigPath() {
   if (!base) { try { base = app.getPath('userData'); } catch (e) {} }
   return path.join(base, 'Video Lab', 'config.json');
 }
-// 启动时自动仲裁「配置和数据」的保存位置：
-//  1) 两侧都无配置 → 默认程序目录（随后由 ensureConfig 打开启动引导窗口）
-//  2) 两侧各有一份 → 取修改时间较新的一份生效，并删除旧的一份（防双份残留复发）
-//  3) 库与引导文件同目录（扁平布局）——不再有「配置在一侧、缓存在对侧」的情形
+// 数据目录**恒为 %APPDATA%\Video Lab**（本版起写死，不再提供「程序目录」选项）。
+// 为什么去掉这个选项：
+//   · 它原本只对便携版有意义（便携版用户删目录时希望不留残留）；而便携形态本版起正式退役
+//     ——2.6.0 是最后一次发布便携包，之后只有安装形态，「数据放程序目录」失去了存在理由。
+//   · 写死后还顺带解决两类真实故障：
+//     ① 装到 Program Files 等受控目录时程序目录不可写 → 配置/库写入失败、启动报错；
+//     ② 卸载重装（尤其换了安装目录）时，数据不会随安装目录一起被删掉。
+// 存量数据（旧版留在程序目录里的那份）由下方「启动期搬迁」接管 —— 那是唯一会碰程序目录的地方，
+// 且**只在 appdata 侧还没有数据时**动手，绝不覆盖已有数据。
+// ⚠ 刻意**不再**保留「两侧都有 → 取 mtime 较新的一份、删掉旧的一份」那套仲裁：
+//   单一数据根之后不存在双份；程序目录里的历史副本留在原地，由「数据目录清理」清单接管
+//   （可查、可清、进回收站可还原），而不是在这里被无声删掉。
 function resolveConfigLocation() {
-  const prog = programConfigPath();
-  const appd = appdataConfigPath();
-  const hasProg = (() => { try { return fs.existsSync(prog); } catch (e) { return false; } })();
-  const hasAppd = (() => { try { return fs.existsSync(appd); } catch (e) { return false; } })();
-  if (hasProg && hasAppd) {
-    let progNewer = false;
-    try { progNewer = fs.statSync(prog).mtimeMs >= fs.statSync(appd).mtimeMs; } catch (e) {}
-    const chosen = progNewer ? prog : appd;
-    const stale = progNewer ? appd : prog;
-    try { fs.unlinkSync(stale); } catch (e) {} // 以新的一份为准并清理旧的（防双份残留复发）
-    return chosen;
-  }
-  return hasAppd ? appd : prog;
+  return appdataConfigPath();
 }
 let configFile = resolveConfigLocation();
 // 数据根目录 = 引导文件所在目录：三库（config.json / settings.db / cache.db）扁平同目录，
@@ -243,11 +239,50 @@ function _adoptDirAsDataRoot(srcDir) {
   _migLog('已接管数据：' + srcDir + ' → ' + appdDir);
   return true;
 }
+// 线索/标记的存放目录：%LOCALAPPDATA%\Video Lab\
+// ⚠ 刻意不放数据目录内 —— 数据目录可能被删/迁，线索要独立存活（供 NSIS 与后续排查使用）。
+// ⚠ 取值必须容错：LOCALAPPDATA 在极端环境下可能缺失，回退链与 appdataConfigPath() 同款。
+function localAppDir() {
+  let base = '';
+  try { base = process.env.LOCALAPPDATA || ''; } catch (e) {}
+  if (!base) { try { base = app.getPath('appData'); } catch (e) {} }
+  if (!base) { try { base = app.getPath('userData'); } catch (e) {} }
+  return path.join(base, 'Video Lab');
+}
+// ── 历史数据根：旧版遗留清理与清单的**扩展扫描范围** ──────────────────────
+// 为什么需要它：
+//   数据目录已固定为 %APPDATA%\Video Lab，而程序目录里可能仍留着更早版本写入的
+//   ffmpeg\ / preview\ / .locks\ / txt-snap\ / backup\ / log\ 等 —— 它们不在当前数据根之下，
+//   而清理与清单都以 storageDir() 为基准，于是这批遗留既不会被看见、也没有人清。
+// 返回：曾经可能承载过用户数据、但当前已不是数据根的目录（去重、只返回真实存在的）。
+// ⚠ 调用方**必须按白名单逐个确认遗留物名**再动手 —— 程序目录里还有程序本体（exe/dll/resources），
+//   绝不允许通配删除或整目录回收。
+function legacyDataDirs() {
+  const out = [];
+  const cur = (() => { try { return path.resolve(storageDir()); } catch (e) { return ''; } })();
+  const push = (p) => {
+    try {
+      if (!p) return;
+      const a = path.resolve(p);
+      if (a === cur) return;                                  // 当前数据根不算"历史"
+      if (out.indexOf(a) >= 0) return;
+      if (!fs.statSync(a).isDirectory()) return;
+      out.push(a);
+    } catch (e) { /* 不存在/无权限：跳过 */ }
+  };
+  push(path.dirname(programConfigPath()));                    // ① 程序目录（旧版安装版与便携版的默认落点）
+  push(path.dirname(appdataConfigPath()));                    // ② %APPDATA%\Video Lab（旧版切过保存位置时的落点）
+  try {                                                       // ③ 线索里记录的便携目录（可能是第三处）
+    const og = JSON.parse(fs.readFileSync(path.join(localAppDir(), 'portable-origin.json'), 'utf8').replace(/^\uFEFF/, ''));
+    push(og && og.portableDir);
+  } catch (e) { /* 无线索：正常 */ }
+  return out;
+}
 // 留线索：%LOCALAPPDATA%\Video Lab\portable-origin.json
 // 刻意不放数据目录内 —— 数据目录可能被删/迁，线索要独立存活；供 NSIS 安装包与后续排查使用。
 function _writePortableOrigin(migrated) {
   try {
-    const dir = path.join(process.env.LOCALAPPDATA || app.getPath('appData'), 'Video Lab');
+    const dir = localAppDir();
     fs.mkdirSync(dir, { recursive: true });
     const f = path.join(dir, 'portable-origin.json');
     let old = {};
@@ -280,21 +315,31 @@ function isPortableDistribution() {
   if (!app.isPackaged) return false;
   return _looksLikeUninstalledCopy(projectDir());
 }
-// ── 启动期执行（仅此处；开发形态与已安装形态一律跳过）──
+// ── 启动期执行（仅此处；开发形态一律跳过）──
+// 数据目录已写死 appdata，于是这里的职责只剩一件：**把旧版留在程序目录里的数据搬过来**。
+// ⚠ 判据从「程序目录不像 setup 安装现场（无 Uninstall*.exe）」改为「程序目录有数据、appdata 侧没有」：
+//   原判据是便携/安装形态的区分器，只在便携版语境下成立。而现在只有安装形态，且旧安装版的
+//   默认 config_storage 就是 'program' —— 数据恰恰躺在**带 Uninstall*.exe 的安装目录**里，
+//   用原判据这批用户永远不会被搬迁，卸载重装（或换安装目录）时数据就随目录一起没了。
 try {
   const _progDir = path.dirname(programConfigPath());
-  if (app.isPackaged && path.resolve(configFile) === path.resolve(programConfigPath())
-    && _looksLikeUninstalledCopy(_progDir)) {
-    // A1 静默搬迁（数据落在程序目录，且该目录不像 setup 安装现场）
+  const _hasProgData = (() => { try { return fs.existsSync(programConfigPath()); } catch (e) { return false; } })();
+  const _hasAppdData = (() => { try { return fs.existsSync(appdataConfigPath()); } catch (e) { return true; } })();
+  if (app.isPackaged && _hasProgData && !_hasAppdData) {
+    // 存量数据搬迁（只在 appdata 侧为空时动手；非空则保护既有数据，绝不覆盖）
     const done = _adoptDirAsDataRoot(_progDir);
     if (done) configFile = appdataConfigPath();   // 本次会话起即用 appdata（storageDir 随之派生）
-    // A2 留线索（顺序不可颠倒：先搬迁完成，再写线索，migrated 才准确）
+    // 留线索（顺序不可颠倒：先搬迁完成，再写线索，migrated 才准确）
     _writePortableOrigin(done);
+  } else if (app.isPackaged && _hasProgData && _hasAppdData) {
+    // 两侧都有数据：**以 appdata 为准**（单一数据根），程序目录那份不在这里删 ——
+    // 它属于历史遗留，交给「数据目录清理」清单（可查、可清、进回收站可还原）。
+    _migLog('程序目录仍有数据，但 AppData 已有数据 → 以 AppData 为准，原位置留给清理清单：' + _progDir);
   }
   // A3 接管标记：安装程序（NSIS，见 build/installer.nsh）在"未搬迁就装 Setup"时写下 pending-takeover.json。
   // ⚠ 安装程序刻意只写"信号"不解析 JSON（避免两套实现漂移）→ 源目录若不在标记里，回退读线索文件。
   try {
-    const ldir = path.join(process.env.LOCALAPPDATA || app.getPath('appData'), 'Video Lab');
+    const ldir = localAppDir();
     const tf = path.join(ldir, 'pending-takeover.json');
     if (fs.existsSync(tf)) {
       const tk = JSON.parse(fs.readFileSync(tf, 'utf8').replace(/^\uFEFF/, ''));
@@ -305,12 +350,40 @@ try {
           src = String((og && og.portableDir) || '');
         } catch (e2) { _migLog('标记无源目录且线索不可读（跳过接管）：' + ((e2 && e2.message) || e2)); }
       }
+      let attempted = false;
       if (src && fs.existsSync(path.join(src, 'config.json')) && !fs.existsSync(appdataConfigPath())) {
+        attempted = true;
         if (_adoptDirAsDataRoot(src)) configFile = appdataConfigPath();
       }
-      fs.unlinkSync(tf);   // 一次性：无论是否接手，标记用完即删
+      // 标记的删除口径：**只有「目的已达成」或「没什么可接管」才删**。
+      // 原实现无论成败一律删 —— 复制中途失败（磁盘满 / 权限 / 文件被占用）就永久断链：
+      // 标记没了、安装形态又进不了 A1 闸门（安装目录里有 Uninstall*.exe），
+      // 用户在便携目录里的数据从此只能靠人工找。现在改为保留标记、下次启动重试。
+      const adopted = fs.existsSync(appdataConfigPath());
+      if (adopted || !attempted) {
+        fs.unlinkSync(tf);   // 一次性：目的达成或本就没得接管
+      } else {
+        // 反复失败则放弃（避免每次启动都白试）：上限 5 次，之后留日志提示可手动迁移
+        const tries = (Number(tk && tk.tries) || 0) + 1;
+        if (tries >= 5) {
+          try { fs.unlinkSync(tf); } catch (e2) {}
+          _migLog('接管连续失败 ' + tries + ' 次，放弃重试（数据仍在原目录，可手动迁移）：' + src);
+        } else {
+          try { fs.writeFileSync(tf, JSON.stringify(Object.assign({}, tk, { tries }), null, 2), 'utf8'); } catch (e2) {}
+          _migLog('接管未完成（第 ' + tries + ' 次），保留标记供下次启动重试：' + src);
+        }
+      }
     }
   } catch (e) { _migLog('接管标记处理失败（不影响使用）：' + ((e && e.message) || e)); }
+  // A3.5 线索目录的空壳回收：portable-origin.json 按设计常驻（供排查与安装包参考，不删）；
+  // 但若目录里已经什么都没有了（用户清过 / 从未产生过线索），那个目录就是纯空壳 —— 收回，别留垃圾。
+  try {
+    const ldir = localAppDir();
+    if (fs.existsSync(ldir) && fs.statSync(ldir).isDirectory() && fs.readdirSync(ldir).length === 0) {
+      fs.rmdirSync(ldir);
+      _migLog('已回收空的线索目录：' + ldir);
+    }
+  } catch (e) { /* 非致命 */ }
 } catch (e) { _migLog('搬迁流程异常（已忽略，不影响使用）：' + ((e && e.message) || e)); }
 
 // ── 运行日志（排查用，保留 7 天）──
@@ -355,22 +428,6 @@ ipcMain.handle = function (channel, fn) {
     }
   });
 };
-// 切换配置保存位置：复制到目标位置并删除旧位置文件（迁移式，不留两份）
-function moveConfigFile(target) {
-  const src = configFile;
-  if (path.resolve(target) === path.resolve(src)) return { ok: true, moved: false };
-  try {
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    if (fs.existsSync(src)) fs.copyFileSync(src, target);
-    try { if (fs.existsSync(src) && path.resolve(target) !== path.resolve(src)) fs.unlinkSync(src); } catch (e) {}
-    const fromDir = path.dirname(src);
-    configFile = target;                        // 引导文件已到新位置
-    moveStorage(fromDir, path.dirname(target)); // 两个库随其后（关连接 → rename/cp → 读回校验 → 回收站源）
-    return { ok: true, moved: true };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
-}
 // 移入系统回收站（可还原）；Electron 不可用时降级为重命名备份，绝不静默删除
 function recycleFile(p) {
   try {
@@ -391,70 +448,34 @@ function recycleIfEmpty(dir) {
     return recycleFile(dir);
   } catch (e) { return false; }
 }
-// 迁移「配置和数据保存位置」：只搬 2 个库（settings.db / cache.db）及其 -wal/-shm，不再递归搬目录树
-// （引导文件由 moveConfigFile 负责）。前置：关全部连接 + 无任务在跑 —— Windows 下持有句柄会阻止移动。
-// 策略：rename 优先（同盘瞬时完成），跨盘降级 cp + 读回校验 + 源文件入回收站。
-function moveStorage(fromDir, toDir) {
-  if (!fromDir || !toDir || path.resolve(fromDir) === path.resolve(toDir)) return { ok: true, moved: false };
-  if (api && typeof api.hasRunningTasks === 'function' && api.hasRunningTasks()) {
-    return { ok: false, error: '有任务正在运行，请等待任务结束后再切换保存位置' };
-  }
-  const moved = [];
-  try {
-    if (api && typeof api.closeStorageConnections === 'function') api.closeStorageConnections();
-    fs.mkdirSync(toDir, { recursive: true });
-    for (const base of [SETTINGS_DB, CACHE_DB]) {
-      for (const name of [base, base + '-wal', base + '-shm']) {
-        const p = path.join(fromDir, name);
-        if (!fs.existsSync(p)) continue;
-        const dst = path.join(toDir, name);
-        try { fs.renameSync(p, dst); } catch (e) { fs.copyFileSync(p, dst); }
-        moved.push([p, dst]);
-      }
-    }
-    // 读回校验：目标侧必须存在且大小与源一致（rename 成功时源已不在，以目标为准）
-    for (const [srcPath, dstPath] of moved) {
-      let srcSize = 0, dstSize = -1;
-      try { dstSize = fs.statSync(dstPath).size; } catch (e) { dstSize = -1; }
-      try { srcSize = fs.statSync(srcPath).size; } catch (e) { srcSize = dstSize; }
-      if (dstSize < 0 || srcSize !== dstSize) throw new Error('读回校验失败：' + path.basename(dstPath));
-    }
-    for (const [srcPath] of moved) { if (fs.existsSync(srcPath)) recycleFile(srcPath); } // 跨盘复制留下的源文件
-    if (api && typeof api.onStorageMoved === 'function') api.onStorageMoved(toDir);
-    // 运行日志随存储位置一起搬：否则切换后日志仍写旧位置、重启又写新位置，历史被割成两处。
-    try {
-      const oldLog = path.join(fromDir, 'log');
-      const newLog = path.join(toDir, 'log');
-      if (path.resolve(oldLog) !== path.resolve(newLog)) {
-        runLog.close();                       // 先断开旧文件句柄，否则 Windows 上 rename 会失败
-        if (fs.existsSync(oldLog)) {
-          fs.mkdirSync(newLog, { recursive: true });
-          for (const f of fs.readdirSync(oldLog)) {
-            const s = path.join(oldLog, f);
-            try { fs.renameSync(s, path.join(newLog, f)); }
-            catch (e) { try { fs.copyFileSync(s, path.join(newLog, f)); } catch (e2) {} }
-          }
-          try { if (!fs.readdirSync(oldLog).length) fs.rmdirSync(oldLog); } catch (e) {}
-        }
-        runLog.init(newLog);                  // 无论搬移是否顺利，都把写入口切到新位置
-      }
-    } catch (e) {}
-    recycleIfEmpty(fromDir); // 旧位置已搬空则整目录入回收站，避免留下空壳（非空则保留）
-    return { ok: true, moved: true, count: moved.length };
-  } catch (e) {
-    return { ok: false, error: (e && e.message) || String(e) };
-  }
-}
 function defaultRoot() { return path.dirname(projectDir()); }
-// 已废弃的配置键（写入设置库前一律剔除）：scripts_dir（旧脚本目录）、use_node_engine（引擎开关）。
+// 已废弃的配置键（写入设置库前一律剔除）：
+//   · scripts_dir / use_node_engine —— 旧脚本目录 / 引擎开关；
+//   · config_storage —— 数据目录选择（program / appdata）。本版起数据目录**恒为 %APPDATA%\Video Lab**，
+//     该键不再参与任何路径决策；但旧 config.json 里可能还留着它，不显式剔除就会随 saveConfig
+//     一直写回磁盘，成为永久残留（与上面两个同理）。
 // 代码已不再读取，但不显式剔除就会随 saveConfig 一直写回磁盘，成为永久残留。
-const OBSOLETE_CONFIG_KEYS = ['scripts_dir', 'use_node_engine'];
+const OBSOLETE_CONFIG_KEYS = ['scripts_dir', 'use_node_engine', 'config_storage'];
+// 主题（皮肤）白名单 —— 须与前端 app.js 的 SKINS、settings.js 的 THEMES 三处一致
+// （回归断言会核对三者同步，任一漏改即报错）。
+// 为什么必须在写入口校验：皮肤 id 是**外部可见**的值（配置文件、IPC、HTTP API 都能写），
+// 而前端遇到无法识别的 id 会**静默回落到第一个主题**（浅色/白蓝）—— 用户看到的现象是
+// 「我的皮肤自己变了」，既没有提示也查不到原因，极难定位（本项目真实踩过：
+// 一次测试用 API 写入 skin:"dark"（并非有效 id），表现为皮肤被重置为浅色）。
+// ⚠ 非法值一律**忽略、保留原值**，不抛错也不改动其它键 —— 皮肤改不动远比整体保存失败要好。
+const SKIN_IDS = ['white_blue', 'Black_Orange', 'Maid_Atelier'];
+const isValidSkin = (v) => typeof v === 'string' && SKIN_IDS.indexOf(v.trim()) >= 0;
 // ── 配置读取：settings.db 为唯一业务来源，config.json 不参与业务键读取 ──
 // ⚠ 业务键一律只从 settings.db 取，**不得回退读 config.json**：config 会被逐步简化，
 // 任何「config 缺失就回退读它」的路径都会变成取到 undefined 的隐患（表现为设置莫名丢失）；
 // 库里没有就用 DEFAULT_CONFIG 的默认值。
 // config.json 仍保留并写入全部键，但只为「回滚旧版本」服务（旧版本读 config.json 时能拿到完整值）。
-const CONFIG_ANCHOR_KEYS = ['config_storage'];   // 唯一仍需从 config.json 读的键
+// 「锚点键」= 定位数据目录所必需、因而仍需从 config.json 读的键。
+// ⚠ 本版起**为空**：数据目录写死 %APPDATA%\Video Lab，不再靠 config_storage 决定路径，
+//   于是 config.json 不再承担任何路径决策职能，可以彻底退出业务读取（见下方「配置读取」段）。
+//   机制保留（而不是连数组一起删），是为了将来若再出现「必须先读 config 才知道库在哪」的
+//   需求时有个既定入口，不必重新发明。
+const CONFIG_ANCHOR_KEYS = [];
 
 // ── 批量模式的工作目录：唯一真相 = `config.batch.root` ──
 // 工作路径属于**批量模式**而非整个软件：各模式的工作目录由各模式自己承接（遮罩有自己的 `mask.root`）。
@@ -567,7 +588,7 @@ function loadConfig() {
     //   （会让整个启动崩溃）。readSettingsApp 内部已做 try 探测，走到这里就是真读不到。
     try { runLog.sys('app.config', '设置库不可用：本次按默认值运行（不回退 config.json）', {}); } catch (e) {}
   }
-  // ④ 锚点键：仅 config_storage（定位数据目录所必需，库路径由它派生，无法自举）
+  // ④ 锚点键（本版起为空数组，见 CONFIG_ANCHOR_KEYS 定义）：循环保留以备将来需要
   for (const k of CONFIG_ANCHOR_KEYS) {
     if (disk[k] !== undefined && disk[k] !== null) cfg[k] = disk[k];
   }
@@ -651,6 +672,12 @@ function saveConfig(config) {
       if (_configValueEqual(disk[k], changed[k])) continue;
       disk[k] = changed[k];
       touched = true;
+    }
+    // ⚠ 顺手**剔除已废弃的键**：上面「不新增」保证了快照不会越长越胖，但对**已在磁盘上**的
+    //   废弃键没有出口 —— 它们会随快照一直留着（既不参与路径决策、也不进 settings.db，
+    //   却是实打实的冗余）。这里主动清掉，让快照随使用逐步收敛到当前键集。
+    for (const k of OBSOLETE_CONFIG_KEYS) {
+      if (Object.prototype.hasOwnProperty.call(disk, k)) { delete disk[k]; touched = true; }
     }
     if (touched) {
       const dir = path.dirname(p);
@@ -736,13 +763,25 @@ try {
   if (mr.migrated && mr.stagingDir) pendingTrashDirs.push(mr.stagingDir);
   if (mr.errors && mr.errors.length) console.error('[migrate] ' + mr.errors.join('；'));
 } catch (e) { console.error('[migrate] 迁移异常：' + ((e && e.message) || e)); }
-for (const d of listStagingDirs(path.dirname(configFile))) {
-  if (pendingTrashDirs.indexOf(d) < 0) pendingTrashDirs.push(d); // 回收上次运行未及清理的暂存目录
+// ⚠ 跨根收集：暂存目录（.video-lab-legacy-*）可能落在**曾经**的数据根里 ——
+//   用户在设置页切换过保存位置、或搬迁前后各产生过一次。只扫当前根会让旧根里的暂存
+//   永不回收（它非空，recycleIfEmpty 那条路也不适用）。legacyDataDirs 已按当前根去重。
+const _stagingRoots = [path.dirname(configFile)].concat(legacyDataDirs());
+for (const _sr of _stagingRoots) {
+  try {
+    for (const d of listStagingDirs(_sr)) {
+      if (pendingTrashDirs.indexOf(d) < 0) pendingTrashDirs.push(d); // 回收上次运行未及清理的暂存目录
+    }
+  } catch (e) { /* 单根失败不影响其余 */ }
 }
 if (pendingTrashDirs.length) {
   app.whenReady().then(() => { for (const d of pendingTrashDirs) { try { recycleFile(d); } catch (e) {} } });
 }
 const api = new Api(root, config, resolveEnginesDir(), storageDir());
+// 把「历史数据根」交给后端：旧版遗留的清单与清理必须能看见"当前数据根之外"的那几处
+// （搬迁后仍留在程序目录里的 ffmpeg\ / preview\ / .locks\ / txt-snap\ / backup\ / 老 log\），
+// 否则那批遗留永远不会出现在清单一里。详见 legacyDataDirs() 的注释。
+try { api.setLegacyDataDirs(legacyDataDirs()); } catch (e) { console.error('[legacy] 历史数据根注入失败：' + ((e && e.message) || e)); }
 // ── 设置库载入（两阶段之二）：api 就绪后用 settings.db 的真实值覆盖内存 config ──
 // 为什么分两阶段：loadConfig() 需要 api 才能读 settings.db，而 api 的构造又需要 config.root
 // （库路径由 storageDir 派生，无法自举）。故顶层先用「锚点 + 默认值」建 api，再用真值覆盖。
@@ -1825,8 +1864,7 @@ function buildHttpExtraRoutes() {
         check_update_hour: (() => { const h = parseInt(c.check_update_hour, 10); return (h >= 0 && h <= 23) ? h : 9; })(),
         update_source: c.update_source === 'github' ? 'github' : 'gitcode',
         update_mode: c.update_mode === 'auto' ? 'auto' : 'notify',
-        config_storage: c.config_storage === 'appdata' ? 'appdata' : 'program',
-        config_path_program: path.dirname(programConfigPath()),
+        // 数据目录写死 appdata，不再向前端暴露 config_storage（设置页已无此项）
         config_path_appdata: path.dirname(appdataConfigPath()),
         autostart: c.autostart === true,
         close_behavior: c.close_behavior === 'exit' ? 'exit' : 'tray',
@@ -1852,11 +1890,10 @@ function buildHttpExtraRoutes() {
       const s = args[0];
       const cfg = loadConfig();
       const prevBackupDir = String(cfg.backup_dir || '').trim();   // 变更前值：用于备份目录迁移
-      let configMoved = false;
+      // 数据目录已写死 appdata，不再有「切换保存位置」这一步（config_moved 恒为 false，保留字段兼容前端）
       if (s && typeof s === 'object') {
         // 工作路径已迁入 batch.root（见下方 batch 分支），不再从顶层 s.root 取
-        if (typeof s.skin === 'string') cfg.skin = s.skin.trim();
-        if (s.config_storage === 'program' || s.config_storage === 'appdata') cfg.config_storage = s.config_storage;
+        if (isValidSkin(s.skin)) cfg.skin = s.skin.trim();   // 非法主题 id 直接忽略（见 SKIN_IDS 注释）
         if (typeof s.auto_check_update === 'boolean') cfg.auto_check_update = s.auto_check_update;
         if (typeof s.check_update_daily === 'boolean') cfg.check_update_daily = s.check_update_daily;
         if (s.check_update_hour !== undefined && s.check_update_hour !== null) { const h = parseInt(s.check_update_hour, 10); if (h >= 0 && h <= 23) cfg.check_update_hour = h; }
@@ -1875,11 +1912,6 @@ function buildHttpExtraRoutes() {
         }
         if (s.replica && typeof s.replica === 'object') cfg.replica = Object.assign({}, DEFAULT_CONFIG.replica, s.replica);
         if (s.mask && typeof s.mask === 'object') cfg.mask = Object.assign({}, DEFAULT_CONFIG.mask, s.mask);
-      }
-      const target = cfg.config_storage === 'appdata' ? appdataConfigPath() : programConfigPath();
-      if (path.resolve(target) !== path.resolve(configFilePath())) {
-        const mv = moveConfigFile(target);
-        if (mv.ok && mv.moved) { configMoved = true; }
       }
       saveConfig(cfg);   // 只写实际变更的键：settings.db（唯一读取来源）+ config.json（旧版本兼容快照）
       Object.assign(config, cfg);
@@ -1901,7 +1933,7 @@ function buildHttpExtraRoutes() {
       }
       for (const w of BrowserWindow.getAllWindows()) w.webContents.send('settings_saved', cfg);
       if (httpServerInfo && httpServerInfo.broadcastAll) httpServerInfo.broadcastAll('settings_saved', cfg);
-      return { ok: true, config_moved: configMoved };
+      return { ok: true, config_moved: false };   // 数据目录写死，不存在「切换后已搬迁」这回事
     },
     save_guide: (args) => {
       const s = args[0];
@@ -1911,7 +1943,7 @@ function buildHttpExtraRoutes() {
       return { ok: true, root };
     },
     get_skin: () => String(config.skin || 'white_blue'),
-    set_skin: (args) => { const v = String(args[0] || '').trim(); config.skin = v || 'white_blue'; saveConfig(config); return config.skin; },
+    set_skin: (args) => { const v = String(args[0] || '').trim(); if (isValidSkin(v)) config.skin = v; saveConfig(config); return config.skin; },
     get_autostart: () => ({ enabled: config.autostart === true }),
     set_autostart: (args) => {
       const v = !!args[0]; config.autostart = v; saveConfig(config);
@@ -2173,9 +2205,8 @@ function registerIpc() {
       check_update_hour: (() => { const h = parseInt(c.check_update_hour, 10); return (h >= 0 && h <= 23) ? h : 9; })(),
       update_source: c.update_source === 'github' ? 'github' : 'gitcode',
       update_mode: c.update_mode === 'auto' ? 'auto' : 'notify',
-      config_storage: c.config_storage === 'appdata' ? 'appdata' : 'program',
-      config_path_program: path.dirname(programConfigPath()),   // 显示目录（含引导文件与三库）
-      config_path_appdata: path.dirname(appdataConfigPath()),
+      // 数据目录写死 appdata，不再向前端暴露 config_storage（设置页已无此项）
+      config_path_appdata: path.dirname(appdataConfigPath()),   // 显示目录（含引导文件与三库）
       log_dir: runLog.getDir(),   // 运行日志目录（设置页「打开文件夹」用；与 HTTP 版 get_settings 对齐）
       cache_keep_days: (() => { const n = parseInt(c.cache_keep_days, 10); return Number.isFinite(n) && n >= 0 ? n : 30; })(),
       cache_info: (() => { try { return api.cacheInfo(); } catch (e) { return {}; } })(),
@@ -2198,11 +2229,9 @@ function registerIpc() {
   ipcMain.handle('save_settings', (e, s) => {
     const cfg = loadConfig();
     const prevBackupDir = String(cfg.backup_dir || '').trim();   // 变更前值：用于备份目录迁移
-    let configMoved = false;
     if (s && typeof s === 'object') {
       // 工作路径已迁入 batch.root（见下方 batch 分支），不再从顶层 s.root 取
-      if (typeof s.skin === 'string') cfg.skin = s.skin.trim();
-      if (s.config_storage === 'program' || s.config_storage === 'appdata') cfg.config_storage = s.config_storage;
+      if (isValidSkin(s.skin)) cfg.skin = s.skin.trim();   // 非法主题 id 直接忽略（见 SKIN_IDS 注释）
       if (typeof s.auto_check_update === 'boolean') cfg.auto_check_update = s.auto_check_update;
       if (typeof s.check_update_daily === 'boolean') cfg.check_update_daily = s.check_update_daily;
       if (s.check_update_hour !== undefined && s.check_update_hour !== null) { const h = parseInt(s.check_update_hour, 10); if (h >= 0 && h <= 23) cfg.check_update_hour = h; }
@@ -2222,12 +2251,6 @@ function registerIpc() {
       if (s.mask && typeof s.mask === 'object') cfg.mask = Object.assign({}, DEFAULT_CONFIG.mask, s.mask);
     }
     mergeAppSettings(cfg, s);   // 应用级设置（含 v2.2.1 新增项）
-    // 配置保存位置切换：迁移并删除旧位置文件（迁移式，防止两处配置不一致）
-    const target = cfg.config_storage === 'appdata' ? appdataConfigPath() : programConfigPath();
-    if (path.resolve(target) !== path.resolve(configFilePath())) {
-      const mv = moveConfigFile(target);
-      if (mv.ok && mv.moved) { configMoved = true; } // 库随配置一并迁移（moveConfigFile 内部完成）
-    }
     saveConfig(cfg);   // 只写实际变更的键：settings.db（唯一读取来源）+ config.json（旧版本兼容快照）
     // 应用开机自启动（openAtLogin + --autostart 静默托盘启动）；开发版不注册，避免污染开发环境
     try { if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: cfg.autostart === true, args: ['--autostart'] }); } catch (e) {}
@@ -2250,7 +2273,7 @@ function registerIpc() {
     }
     for (const w of BrowserWindow.getAllWindows()) w.webContents.send('settings_saved', cfg);
     if (httpServerInfo && httpServerInfo.broadcastAll) httpServerInfo.broadcastAll('settings_saved', cfg);
-    return { ok: true, config_moved: configMoved };
+    return { ok: true, config_moved: false };   // 数据目录写死，不存在「切换后已搬迁」这回事
   });
   // 运行时形态（便携分发 / setup 安装版），供前端决定「更新文件就绪」后的按钮动作与说明
   // portable_dist 见 isPortableDistribution()：便携包解压即用也是它（IS_PORTABLE 对真实便携包为 false）
@@ -2336,7 +2359,7 @@ function registerIpc() {
     return { ok: true, root: dir, projects: await api.listProjectsAsync() };
   });
   ipcMain.handle('get_skin', () => String(config.skin || 'white_blue'));
-  ipcMain.handle('set_skin', (e, skin) => { const v = String(skin || '').trim(); config.skin = v || 'white_blue'; saveConfig(config); return config.skin; });
+  ipcMain.handle('set_skin', (e, skin) => { const v = String(skin || '').trim(); if (isValidSkin(v)) config.skin = v; saveConfig(config); return config.skin; });
   // 运行日志目录（设置页「维护」区展示与打开）
   ipcMain.handle('get_log_dir', () => ({ ok: true, dir: runLog.getDir() }));
   // 自愈目录落盘：`api.config` 是构造期浅拷贝（backend 构造里 Object.assign），与顶层 config **不是同一对象**
@@ -2420,21 +2443,27 @@ function registerIpc() {
   // 清理**走回收站**（可还原，遵循项目硬约束），并落一次性标记，此后不再检查。
   function cleanupLegacyFfmpeg(env) {
     try {
-      const legacy = path.join(storageDir(), 'ffmpeg');
       // ⚠ 刻意**不留任何标记文件**。
-      //   本操作天然幂等 —— 下面第二句就是「没有遗留就直接返回」，成本一次 existsSync；
+      //   本操作天然幂等 —— 每轮就是「没有遗留就跳过」，成本一次 existsSync；
       //   不留标记反而更正确：将来若又冒出遗留（例如回装旧版再升级），照样能被清掉 ——
       //   有了"一次性"标记，那种情况就永远不会再清，反倒留坑。
       if (!api.ffmpegBuiltinReady || !api.ffmpegBuiltinReady()) return;   // 内置不在 → 绝不动那份兜底
       if (!env || env.downloadNeeded) return;                            // 内置不可用 → 同上
-      if (!fs.existsSync(path.join(legacy, 'ffmpeg.exe'))) return;       // 没有遗留 → 直接返回
       const active = String(env.ffmpegDir || '');
-      // 正在用它 → 不动（判不出来时也按"在用"处理：宁可少清，不能把唯一可用的组件清掉）
-      try { if (!active || path.resolve(active) === path.resolve(legacy)) return; } catch (e) { return; }
-      let freed = 0;
-      try { freed = fs.readdirSync(legacy).reduce((s, n) => s + (fs.statSync(path.join(legacy, n)).size || 0), 0); } catch (e) {}
-      try { shell.trashItem(legacy); } catch (e) { return; }             // 送站失败：保留现场，下次启动再试
-      try { writeUpdateLog('已自动清理旧版 FFmpeg 组件遗留（' + Math.round(freed / 1048576) + ' MB，进回收站可还原）：' + legacy); } catch (e) {}
+      // ⚠ 遍历**所有数据根**（当前 + 历史），不是只看 storageDir()：
+      //   静默搬迁之后数据根变成 appdata，而旧版本那份自动下载的组件留在**程序目录**里 ——
+      //   只扫当前根会永远看不见它（实测 310.5 MB 就是这样攒下来的）。
+      for (const base of [storageDir()].concat(legacyDataDirs())) {
+        let legacy = '';
+        try { legacy = path.join(base, 'ffmpeg'); } catch (e) { continue; }
+        if (!fs.existsSync(path.join(legacy, 'ffmpeg.exe'))) continue;     // 这一根没有遗留 → 下一根
+        // 正在用它 → 不动（判不出来时也按"在用"处理：宁可少清，不能把唯一可用的组件清掉）
+        try { if (!active || path.resolve(active) === path.resolve(legacy)) continue; } catch (e) { continue; }
+        let freed = 0;
+        try { freed = fs.readdirSync(legacy).reduce((s, n) => s + (fs.statSync(path.join(legacy, n)).size || 0), 0); } catch (e) {}
+        try { shell.trashItem(legacy); } catch (e) { continue; }           // 送站失败：保留现场，下次启动再试
+        try { writeUpdateLog('已自动清理遗留的 FFmpeg 组件（' + Math.round(freed / 1048576) + ' MB，进回收站可还原）：' + legacy); } catch (e) {}
+      }
     } catch (e) {}
   }
 
