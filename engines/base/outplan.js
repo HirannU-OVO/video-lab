@@ -12,6 +12,11 @@
 
 const path = require('node:path');
 const fs = require('node:fs');
+// 临时产物名统一由 paths.tempNameFor 生成（batch / replica / mask 早已用它）。
+// 本模块曾自造 `原名.mp4.vl-tmp.mp4` 形态，与那套规矩相悖，带来两个真实后果：
+//   ① 保留视频扩展名 → 「覆盖原视频」模式下临时文件落在源目录，下次扫描会把它当视频素材；
+//   ② 形态不匹配 backend 的残留清理规则（只认 ^[0-9a-z]{6,}\.tmp$）→ 中断残留清不掉、永久占盘。
+const paths = require('./paths');
 
 const MODE_OVERWRITE = 'overwrite';   // 覆盖原视频
 const MODE_DIRECTORY = 'directory';   // 输出到指定目录
@@ -112,9 +117,14 @@ function targetPath(outDir, srcPath, opts) {
   return { path: candidate, skip: false, conflict: true };
 }
 
-/** 临时文件路径（同目录，成功后替换；ffmpeg 不允许输入输出同一文件） */
+/**
+ * 临时文件路径（同目录，成功后原子替换；ffmpeg 不允许输入输出同一文件）。
+ * 形态委托 paths.tempNameFor：`<base36时间戳+8位随机>.tmp` —— 全仓同一形态，
+ * 于是「中途残留的清理」与「续跑时的产物判定」只需认一套规则。
+ * ⚠ 返回名**没有扩展名**，调用方必须给 ffmpeg 显式 -f 声明容器。
+ */
 function tempPathFor(finalPath) {
-  return finalPath + '.vl-tmp' + path.extname(finalPath);
+  return paths.tempNameFor(finalPath);
 }
 
 /**

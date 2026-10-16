@@ -160,7 +160,10 @@ async function processFile(file, steps, opts) {
   // -stats：让 ffmpeg 持续输出帧进度行（frame= / time=），任务窗口据此显示实时进度
   const head = ['-y', '-hide_banner', '-loglevel', 'error'].concat(o.stats ? ['-stats'] : [])
     .concat(['-i', file]).concat(built.inputArgs || []);
-  const tail = ['-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', tmp];
+  // ⚠ 临时名无扩展名（见 outplan.tempPathFor）→ 显式 -f；容器按**目标扩展名**推断，
+  //   保持与"靠文件名推断"时代一致的行为（mov 名的成片仍按 mov 封装）。
+  const outFmt = path.extname(finalPath.path).toLowerCase() === '.mov' ? 'mov' : 'mp4';
+  const tail = ['-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', '-f', outFmt, tmp];
   const forward = o.stats && o.onProgress
     ? (line) => o.onProgress({ phase: 'frame', file, line })
     : o.onProgress;
@@ -200,7 +203,7 @@ async function processFile(file, steps, opts) {
     applyStepFilters(sampleChain);
     const sBuilt = sampleChain.build();
     const tmpSample = outplan.tempPathFor(tmp);
-    const sTail = ['-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', tmpSample];
+    const sTail = ['-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', '-f', outFmt, tmpSample];
 
     /** 编一段样本并测码率（失败返回 -1） */
     const trySample = async (cqNow) => {

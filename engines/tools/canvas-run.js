@@ -276,7 +276,8 @@ async function run(spec, ctx, lockUtils) {
       args.push('-shortest');
       if (Number(info.duration) > 0) args.push('-t', String(info.duration));   // 无限背景按内容时长精确收尾
       const full = args.concat(nvencArgs(encCq, codecKey))
-        .concat(['-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', tmp]);
+        // ⚠ 临时名是 `<随机>.tmp`（无扩展名）→ 必须显式 -f 声明容器，否则 ffmpeg 无法推断
+        .concat(['-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', '-f', container, tmp]);
 
       const r = await runFfmpeg(full, { onProgress: (line) => logger.raw(line) });
       if (r.code !== 0) {
