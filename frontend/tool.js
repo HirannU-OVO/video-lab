@@ -543,7 +543,7 @@
       state.root = v;
       renderInputHint();
       clearTimeout(_rootTimer);
-      if (!v) { setStatus('请选择文件夹，或直接粘贴路径'); return; }
+      if (!v) { notify('请选择文件夹，或直接粘贴路径', 'info'); return; }
       _rootTimer = setTimeout(function () {
         if (!api || !api.check_exists) return;
         api.check_exists([v]).then(function (m) {
@@ -1480,7 +1480,7 @@
     if (!dir) { if (!auto) toast('请先选择背景目录', 'info'); return; }
     setStatus('正在扫描背景候选…');
     api.canvas_list_backgrounds(dir).then(function (r) {
-      if (!r || !r.ok) { setStatus('背景扫描失败：' + ((r && r.error) || '未知原因')); return; }
+      if (!r || !r.ok) { notify('背景扫描失败：' + ((r && r.error) || '未知原因')); return; }
       cv.bgTotal = r.matched || 0;
       cv.bgIndex = 0;
       cv.bgName = r.matched ? String(r.list[0].name || '') : '';
@@ -1495,7 +1495,7 @@
       cvCountHint();
       cvUpdateBgInfo();
       cvRequestPreview({ immediate: true, force: true });
-    }).catch(function (e) { setStatus('背景扫描失败：' + ((e && e.message) || e)); });
+    }).catch(function (e) { notify('背景扫描失败：' + ((e && e.message) || e)); });
   }
 
   function cvBgStep(step) {
@@ -1796,6 +1796,22 @@
    * 而已存的预设里仍是旧字符串 —— 直接写进 select 会因匹配不到 option 而变成空值，
    * 于是"加载预设"看起来正常、实际把编码格式丢了。这里统一收敛到新取值。
    */
+  /**
+   * 需要用户**立刻注意到**的提示（操作被拦下 / 操作失败）。
+   *
+   * 为什么不能只用 setStatus：它在面板下方，用户操作时视线在按钮与表单上，
+   * 「点了没反应」多半是因为原因只写在了他看不到的地方。
+   * toast 负责被看见，状态栏同步留一条痕迹。
+   *
+   * @param {string} msg
+   * @param {'info'|'ok'|'error'} [kind] 缺省 error
+   */
+  function notify(msg, kind) {
+    var m = String(msg == null ? '' : msg);
+    try { toast(m, kind === true ? 'error' : (kind || 'error')); } catch (e) {}
+    try { setStatus(m); } catch (e2) {}
+  }
+
   function cvNormCodec(v) {
     var s = String(v == null ? '' : v);
     if (s.indexOf('H.265') >= 0 || s.toUpperCase().indexOf('HEVC') >= 0) return 'H.265 / HEVC';

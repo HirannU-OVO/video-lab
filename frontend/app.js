@@ -1248,7 +1248,7 @@
     refreshLogConfigBar();
   }
   function batchReplica(mode) {
-    if (_envBad()) { setStatus('运行组件未就绪'); return; }
+    if (_envBad()) { notify('运行组件未就绪'); return; }
     // 未进入选择模式时给明确提示
     if (!state.selectMode) { toast('请先打开右上角「选择」开关并勾选要复刻的成片', true); return; }
     var items = [];
@@ -1263,7 +1263,7 @@
         // 按选中成片精确复刻（传入成片名，脚本仅处理该成片）
         call('run_replica', it.path, mode, it.video, opts).then(function (r) {
           done++;
-          if (!(r && r.ok)) setStatus('启动失败：' + ((r && r.error) || '未知错误'));
+          if (!(r && r.ok)) notify('启动失败：' + ((r && r.error) || '未知错误'));
           else if (done === cnt) { toast('已全部启动 ' + cnt + ' 个复刻任务', 'ok'); }
         }).catch(function () { done++; });
       });
@@ -1426,7 +1426,7 @@
           if (!np) return;
           brInput.value = np; brInput.title = np;
           runPrecheck(); refreshPreviewIfModified(); refreshConfigModified();
-        }).catch(function (e) { setStatus('修改路径失败：' + e.message); });
+        }).catch(function (e) { notify('修改路径失败：' + e.message); });
       }
       else if (t.classList.contains('config-path-row__open')) { var input = t.closest('.config-path-row').querySelector('.config-path-row__input'); openInShell(input.value.trim()); }
       else if (t.classList.contains('config-exclude-row__remove')) {
@@ -1577,7 +1577,7 @@
   function addPathField() {
     call('pick_paths').then(function (paths) {
       (paths || []).forEach(function (p) { addPathRow(p); });
-    }).catch(function (e) { setStatus('添加路径失败：' + e.message); });
+    }).catch(function (e) { notify('添加路径失败：' + e.message); });
   }
   // 水印归属警告开关（红字 + 水印上半区浅红底一并控制，下半配置名框不受影响）
   // missing=true 时文案为「水印不存在」（文件缺失），否则为「水印错误」（归属不一致）
@@ -1662,8 +1662,8 @@
         // 另存到其他项目：原文件保留
         return saveAsToProject(dest, ed).then(function (r) {
           if (r.ok) { toast('已另存到项目「' + dest + '」', 'ok'); refreshData(); return true; }
-          setStatus('保存失败：' + ((r && r.error) || '未知错误')); return false;
-        }).catch(function (e) { setStatus('保存失败：' + e.message); return false; });
+          notify('保存失败：' + ((r && r.error) || '未知错误')); return false;
+        }).catch(function (e) { notify('保存失败：' + e.message); return false; });
       }
       // ★ 强联动：已有有效日志的配置**不能就地覆盖**（按钮已禁用，这里兜住键盘回车 / 脚本等
       //   绕过按钮的路径）。后端 saveConfig 也有一道同样的拦截作为最终防线。
@@ -1698,8 +1698,8 @@
             state._configOrigSnapshot = configSnapshot(); refreshConfigModified();
             return true;
           }
-          setStatus('保存失败：' + ((r && r.error) || '未知错误')); return false;
-        }).catch(function (e) { setStatus('保存失败：' + e.message); return false; });
+          notify('保存失败：' + ((r && r.error) || '未知错误')); return false;
+        }).catch(function (e) { notify('保存失败：' + e.message); return false; });
       };
       // noConfirm（切换/关闭前确认弹窗场景）：已确认过，跳过「确认覆盖」二次弹窗
       if (noConfirm) return go();
@@ -1710,7 +1710,7 @@
         if (!ok) { setStatus('已取消保存'); return false; }
         return go();
       });
-    }).catch(function (e) { setStatus('保存失败：' + e.message); return false; });
+    }).catch(function (e) { notify('保存失败：' + e.message); return false; });
   }
   function saveConfigToday() {
     if (!state.activeProject || !state.activeTxt) return Promise.resolve(false);
@@ -1720,9 +1720,9 @@
       if (dest === null) { setStatus('已取消保存'); return false; }
       return call('save_config_today', dest, state.activeTxt, configName, ed.folders, ed.excludes, ed.watermark).then(function (r) {
         if (r && r.ok) { toast('已保存为当日配置', 'ok'); jumpToVersionPath(r.path, dest); return true; }
-        setStatus('保存失败：' + ((r && r.error) || '未知错误')); return false;
-      }).catch(function (e) { setStatus('保存失败：' + e.message); return false; });
-    }).catch(function (e) { setStatus('保存失败：' + e.message); return false; });
+        notify('保存失败：' + ((r && r.error) || '未知错误')); return false;
+      }).catch(function (e) { notify('保存失败：' + e.message); return false; });
+    }).catch(function (e) { notify('保存失败：' + e.message); return false; });
   }
   function normalizePath(p) { return String(p || '').replace(/[\\/]+/g, '\\').toLowerCase(); }
   function jumpToVersionPath(targetPath, proj) {
@@ -1744,14 +1744,14 @@
       syncTxtCount(pr, name, state.versions);
       state.expandedProject = pr; buildDateBranches(); buildSidebar(false, true);
       if (state.activeVersion) loadConfig(state.activeVersion.path); else { state.configData = null; buildCenterBottom(); buildRightPanel(); }
-    }).catch(function (e) { setStatus('刷新版本失败：' + e.message); });
+    }).catch(function (e) { notify('刷新版本失败：' + e.message); });
   }
   // 任务列表「定位至配置/日志」：主窗口打开并定位到对应配置/日志分支（版本 -1/-2 按实际文件精确匹配）
   function handleLocateRequest(info) {
     info = info || {};
     var ml = $('modeLog'), mf = $('modeFilelist');
     if (info.target === 'log') {
-      if (!info.logPath) { setStatus('该任务暂无日志可定位'); return; }
+      if (!info.logPath) { notify('该任务暂无日志可定位'); return; }
       if (!info.txtPath) {
         // 复刻：源即日志、无配置 TXT → 切到主窗口复刻项目并定位当日日志分支（而非打开资源管理器）
         if (info.replicaMode) {
@@ -1771,7 +1771,7 @@
       return;
     }
     // 定位至配置：切回配置模式并选中该配置（含匹配的版本分支）
-    if (!info.txtPath) { setStatus('该任务无对应配置'); return; }
+    if (!info.txtPath) { notify('该任务无对应配置'); return; }
     state._locateLogPath = null;
     state.activeLogPath = null; state.activeLogDate = null;
     state.mode = 'filelist';
@@ -1782,12 +1782,12 @@
   // 侧栏「新增配置」：在当前选定项目下新建空白配置（今日目录），完成后定位并打开
   function createNewConfig() {
     var pr = state.expandedProject || state.activeProject;
-    if (!pr) { setStatus('请先在项目列表中选择要新增配置的项目'); return; }
+    if (!pr) { notify('请先在项目列表中选择要新增配置的项目', 'info'); return; }
     call('new_empty_config', pr).then(function (r) {
-      if (!(r && r.ok)) { setStatus('新增配置失败：' + ((r && r.error) || '未知错误')); return; }
+      if (!(r && r.ok)) { notify('新增配置失败：' + ((r && r.error) || '未知错误')); return; }
       toast('已新增空白配置', 'ok');
       jumpToVersionPath(r.path, pr);
-    }).catch(function (e) { setStatus('新增配置失败：' + e.message); });
+    }).catch(function (e) { notify('新增配置失败：' + e.message); });
   }
   // 提交前检查：列出会导致失败/质量风险的问题项（不阻断，确认后可入队）
   function preflightIssues() {
@@ -1814,7 +1814,7 @@
     }).catch(function () {});
   }
   function runScript() {
-    if (_envBad()) { setStatus('运行组件未就绪'); return; }
+    if (_envBad()) { notify('运行组件未就绪'); return; }
     if (!state.activeVersion) return;
     // 成片数：显式填写优先；留空则沿用占位符所示的默认值（预检测视频总数）
     var fcInp = $('inputFilmCount');
@@ -1841,15 +1841,15 @@
       resolveDestProject().then(function (dest) {
         if (dest === null) { setStatus('已取消启动'); return; }
         call('save_config_today', dest, state.activeTxt, configName, ed.folders, ed.excludes, ed.watermark).then(function (saved) {
-          if (!saved || !saved.ok) { setStatus('保存失败：' + ((saved && saved.error) || '未知错误')); return; }
+          if (!saved || !saved.ok) { notify('保存失败：' + ((saved && saved.error) || '未知错误')); return; }
           toast('已保存并开始制作', 'ok');
           // 水印归属在选中配置预检测时已判定并提示，此处不再阻断启动
           call('run_batch', saved.path, count, group).then(function (r) {
-            if (!(r && r.ok)) { setStatus('启动失败：' + ((r && r.error) || '未知错误')); return; }
+            if (!(r && r.ok)) { notify('启动失败：' + ((r && r.error) || '未知错误')); return; }
             notifyQueuePos();
           });
           jumpToVersionPath(saved.path, dest);
-        }).catch(function (e) { setStatus('启动失败：' + e.message); });
+        }).catch(function (e) { notify('启动失败：' + e.message); });
       });
     });
     });   // goAhead.then 闭合（提交前确认流程）
@@ -1983,7 +1983,7 @@
         e.preventDefault();
         var videoNm = entryItem.getAttribute('data-video') || '';
         var lpItem = entryItem.getAttribute('data-log-path');
-        if (!lpItem) { setStatus('无法定位该成片对应的日志文件'); return; }
+        if (!lpItem) { notify('无法定位该成片对应的日志文件'); return; }
         var fname = videoNm.trim();
         if (!fname) return;
         if (!/\.mp4$/i.test(fname)) fname += '.mp4';
@@ -2013,15 +2013,15 @@
       var rep = e.target.closest('.log-entry__replica');
       if (rep) {
         e.stopPropagation();
-        if (_envBad()) { setStatus('运行组件未就绪'); return; }
+        if (_envBad()) { notify('运行组件未就绪'); return; }
         var entry = rep.closest('.log-entry');
         var logPath = entry.getAttribute('data-log-path');
-        if (!logPath) { setStatus('无法定位该成片对应的日志文件'); return; }
+        if (!logPath) { notify('无法定位该成片对应的日志文件'); return; }
         var entryVideo = entry.getAttribute('data-video') || '';
         replicaModeDialog().then(function (sel) {
           if (!sel) { setStatus('已取消复刻'); return; }
           // 仅复刻该单个成片（传入成片名，脚本精确处理该成片）
-          call('run_replica', logPath, sel.mode, entryVideo, sel.opts).then(function (r) { setStatus(r && r.ok ? '已启动该成片的复刻任务' : '启动失败：' + ((r && r.error) || '')); });
+          call('run_replica', logPath, sel.mode, entryVideo, sel.opts).then(function (r) { notify(r && r.ok ? '已启动该成片的复刻任务' : '启动失败：' + ((r && r.error) || '')); });
         });
         return;
       }
@@ -2471,6 +2471,23 @@
   }
   function setStatus(msg) { var el = $('statusLeft'); if (!el) return; el.classList.remove('status-bar__success'); el.textContent = msg; }
 
+  /**
+   * 需要用户**立刻注意到**的提示：操作被拦下、或操作失败。
+   *
+   * 为什么不能只用 setStatus：那是底部状态栏的一行小字，而用户操作时视线在按钮与表单上，
+   * 「点了没反应」多半就是因为拦下/失败的原因只写在了他看不到的地方。
+   * 这里由 toast（弹出、带图标与颜色、自动消失）负责被看见，状态栏同步留一条痕迹，
+   * 便于事后回看"最后发生了什么"。
+   *
+   * @param {string} msg
+   * @param {'info'|'ok'|'error'} [kind] 缺省 error —— 本函数服务于"出问题了"的场景
+   */
+  function notify(msg, kind) {
+    var m = String(msg == null ? '' : msg);
+    try { toast(m, kind === true ? 'error' : (kind || 'error')); } catch (e) {}
+    try { setStatus(m); } catch (e2) {}
+  }
+
   // 「打开文件夹 / 在文件夹中显示」统一入口：失败 toast；浏览器端由本体代开（explorer 可能被前台锁压到后台，
   // 只在任务栏出现）→ 成功后提示去任务栏查看。全项目所有打开目录调用都走这里，文案与行为一致。
   // 打开「路径 / 文件夹 / 所在位置」类操作：后端按目标类型分流 ——
@@ -2558,14 +2575,14 @@
       if (state.precheckBackground) hideProbeMini(); else hideBusy();
       cleanup();
       // 环境不可用时后端直接拦下（无 total/updated）—— 别显示成「更新了 0 个」
-      if (r && r.ok === false) { setStatus(String(r.error || '刷新预缓存失败'), false); return; }
+      if (r && r.ok === false) { notify(String(r.error || '刷新预缓存失败'), false); return; }
       setStatus('预缓存已刷新：本次更新 ' + ((r && r.updated) || 0) + ' 个视频，共 ' + ((r && r.total) || 0) + ' 个视频' + ((r && r.cancelled) ? '（已中断，失效缓存稍后后台清理）' : '，失效缓存已后台清理'));
       if (state.activeTxt && state.activeVersion) runPrecheck();
     }).catch(function (e) {
       hideBusy();
       cleanup();
       hideProbeMini();
-      setStatus('刷新预缓存失败：' + e.message);
+      notify('刷新预缓存失败：' + e.message);
     });
   }
   // 刷新配置列表：先扫描与成片正本内容一致的重复外部 * 配置（确认后删除），再刷新列表
@@ -2593,9 +2610,9 @@
           hideBusy();
           toast('已删除 ' + ((r2 && r2.deleted) ? r2.deleted.length : 0) + ' 个重复配置', 'ok');
           refreshData(true, '正在重新扫描工作路径…', function () { setStatusDone('重新检测完成'); }, true);
-        }).catch(function (e) { hideBusy(); setStatus('清理失败：' + e.message); refreshData(true); });
+        }).catch(function (e) { hideBusy(); notify('清理失败：' + e.message); refreshData(true); });
       });
-    }).catch(function (e) { hideBusy(); setStatus('扫描失败：' + e.message); refreshData(true); });
+    }).catch(function (e) { hideBusy(); notify('扫描失败：' + e.message); refreshData(true); });
     });
   }
 
@@ -2687,7 +2704,7 @@
       if (busyText) setStatus('就绪');
       if (dismissScan) { try { dismissScan(); } catch (e) {} dismissScan = null; }
       if (done) done();
-    }).catch(function (e) { setStatus('数据加载失败：' + e.message); if (dismissScan) { try { dismissScan(); } catch (e) {} dismissScan = null; } });
+    }).catch(function (e) { notify('数据加载失败：' + e.message); if (dismissScan) { try { dismissScan(); } catch (e) {} dismissScan = null; } });
   }
   function selectTxt(project, name, keepVersion, silent) {
     function doSelect() {
@@ -2741,8 +2758,8 @@
         else syncAzHighlight();
         buildDateBranches(switchingTxt);
         if (state.activeVersion) loadConfig(state.activeVersion.path, switchingTxt);
-        else { state.configData = null; buildCenterBottom(); buildRightPanel(); setStatus('该配置无可用版本'); }
-      }).catch(function (e) { setStatus('加载版本失败：' + e.message); });
+        else { state.configData = null; buildCenterBottom(); buildRightPanel(); notify('该配置无可用版本'); }
+      }).catch(function (e) { notify('加载版本失败：' + e.message); });
     }
     // 用户主动切换配置：配置未保存时先弹窗确认（覆盖当前配置 / 保存为当日配置 / 取消）
     if (silent) { doSelect(); return; }
@@ -2769,7 +2786,7 @@
     buildSidebar(false, true);
     if (state.activeProject === project && state.activeTxt === name) {
       resetCenterToLaunch();
-      setStatus('该配置已无可用版本，已从列表移除');
+      notify('该配置已无可用版本，已从列表移除');
     }
     return true;
   }
@@ -2849,7 +2866,7 @@
         if (state.activeVersion) {
           // 当前选中版本路径变化（迁移/另存/已被删则回退最新）才重载配置；路径未变保持编辑状态不打断
           if (!state.configData || state.configData.path !== state.activeVersion.path) loadConfig(state.activeVersion.path, true);
-        } else { state.configData = null; buildCenterBottom(); buildRightPanel(); setStatus('该配置无可用版本'); }
+        } else { state.configData = null; buildCenterBottom(); buildRightPanel(); notify('该配置无可用版本'); }
       }).catch(function () {});
     }).catch(function () {});
   }
@@ -2871,7 +2888,7 @@
       setStatus('已选择:"' + (state.activeVersion && state.activeVersion.path || path) + '"');
     }).catch(function (e) {
       var where = (e && e.stack) ? String(e.stack).split('\n')[1] || '' : '';
-      setStatus('读取配置失败：' + (e && e.message) + (where ? ' @' + where.trim() : ''));
+      notify('读取配置失败：' + (e && e.message) + (where ? ' @' + where.trim() : ''));
     });
   }
   // ── 中间配置栏复位到"刚启动"样式 ──
@@ -2961,7 +2978,7 @@
       if (!pname || pname === REPLICA_PROJECT) return;
       e.preventDefault();
       showMenu(e.clientX, e.clientY, [
-        { label: '打开项目文件夹', action: function () { call('open_project_dir', pname).then(function (r) { if (!(r && r.ok)) setStatus('打开项目失败：' + ((r && r.error) || '未知错误')); }).catch(function (err) { setStatus('打开项目失败：' + err.message); }); } },
+        { label: '打开项目文件夹', action: function () { call('open_project_dir', pname).then(function (r) { if (!(r && r.ok)) notify('打开项目失败：' + ((r && r.error) || '未知错误')); }).catch(function (err) { notify('打开项目失败：' + err.message); }); } },
         { label: '项目设置', action: function () { openProjectWatermarkDialog(pname); } }
       ]);
     });
@@ -3173,10 +3190,10 @@
     }
     function doRemoveBranch(target, scope) {
       call('remove_branch', target, scope).then(function (r) {
-        if (!(r && r.ok)) { setStatus('移除失败：' + ((r && r.error) || '未知错误')); return; }
+        if (!(r && r.ok)) { notify('移除失败：' + ((r && r.error) || '未知错误')); return; }
         setStatus('已移除' + (scope === 'folder' ? '日期文件夹' : '分支文件') + '，已移入回收站');
         refreshData();
-      }).catch(function (err) { setStatus('移除失败：' + err.message); });
+      }).catch(function (err) { notify('移除失败：' + err.message); });
     }
     $('modeFilelist').addEventListener('click', function () {
       if (state.activeLogDate) {
@@ -3233,7 +3250,7 @@
       // 全量重建属低频兜底操作，已移至设置页「维护」
       var lmrp = $('menuResetPrecheck');
       if (lmrp) lmrp.addEventListener('click', function () { closeMenu(); refreshPrecacheFlow(); });
-      $('menuSettings').addEventListener('click', function () { closeMenu(); call('open_settings_window').catch(function () { setStatus('打开设置窗口失败'); }); });
+      $('menuSettings').addEventListener('click', function () { closeMenu(); call('open_settings_window').catch(function () { notify('打开设置窗口失败'); }); });
       var mob = $('menuOpenBrowser');
       if (mob) mob.addEventListener('click', function () {
         closeMenu();
@@ -3243,14 +3260,14 @@
         }
         var api2 = getApi();
         if (api2 && api2.tray_menu_click) api2.tray_menu_click('open_browser').then(function (r) {
-          if (r && r.ok === false) setStatus(r.error || '打开浏览器失败');
-        }).catch(function (e) { setStatus('打开浏览器失败：' + (e && e.message || e)); });
+          if (r && r.ok === false) notify(r.error || '打开浏览器失败');
+        }).catch(function (e) { notify('打开浏览器失败：' + (e && e.message || e)); });
       });
     }
-    $('btnOpenTasks').addEventListener('click', function () { call('open_task_window').catch(function () { setStatus('打开任务窗口失败'); }); });
+    $('btnOpenTasks').addEventListener('click', function () { call('open_task_window').catch(function () { notify('打开任务窗口失败'); }); });
     // 标题栏「视频处理」入口：独立非模态窗口（与设置窗口不同，可与主窗口并排操作）
     var wtt = $('winToolToggle');
-    if (wtt) wtt.addEventListener('click', function () { call('open_tool_window').catch(function () { setStatus('打开视频处理窗口失败'); }); });
+    if (wtt) wtt.addEventListener('click', function () { call('open_tool_window').catch(function () { notify('打开视频处理窗口失败'); }); });
     $('btnPreviewRaw').addEventListener('click', function () { state.rightPreview = false; $('btnPreviewRaw').classList.add('preview-toggle--active'); $('btnPreviewModified').classList.remove('preview-toggle--active'); buildRightPanel(); });
     $('btnPreviewModified').addEventListener('click', function () { state.rightPreview = true; $('btnPreviewModified').classList.add('preview-toggle--active'); $('btnPreviewRaw').classList.remove('preview-toggle--active'); buildRightPanel(); });
     $('btnLogSimple').addEventListener('click', function () { state.logViewMode = 'simple'; syncRightToggle(); renderLogRightPanel(); });
@@ -3320,9 +3337,9 @@
     showBusy('正在检测工作路径文件，请稍候…');
     call('choose_workdir').then(function (r) {
       hideBusy();
-      if (!r) { setStatus('选择路径失败'); return; }
+      if (!r) { notify('选择路径失败'); return; }
       if (r.canceled) { setStatus('已取消选择路径'); return; }
-      if (!r.ok) { setStatus('选择路径失败：' + ((r && r.error) || '未知错误')); return; }
+      if (!r.ok) { notify('选择路径失败：' + ((r && r.error) || '未知错误')); return; }
       hideBootGuide();
       // 第一步：先扫描配置（force 重扫新路径下的配置列表）
       setStatus('工作路径已切换：' + r.root + '，正在扫描配置…');
@@ -3332,9 +3349,9 @@
         // 切换工作路径不该顺带做全量重建。
         refreshPrecacheFlow();
       }, false);
-    }).catch(function (e) { hideBusy(); setStatus('选择路径失败：' + e.message); });
+    }).catch(function (e) { hideBusy(); notify('选择路径失败：' + e.message); });
   }
-  function flashNeedSelect() { setStatus('请先选择一个 TXT 和日期分支'); }
+  function flashNeedSelect() { notify('请先选择一个 TXT 和日期分支', 'info'); }
   // 关闭主窗口行为引导：弹窗选择 退出软件 / 最小化至系统托盘，左下角「不再提醒」复选框持久化
   var _closeAskShown = false;
   function showCloseBehaviorDialog(api0) {
@@ -3508,11 +3525,11 @@
     if (go) go.addEventListener('click', function () {
       hideUpdateResult();
       var gp = getApi();
-      if (!gp || !gp.start_update) { setStatus('更新功能不可用'); return; }
+      if (!gp || !gp.start_update) { notify('更新功能不可用'); return; }
       setStatus('正在连接更新服务器…');
       gp.start_update().then(function (r) {
-        if (r && r.busy) setStatus('已有更新操作进行中，请稍候');
-      }).catch(function () { setStatus('下载更新失败'); });
+        if (r && r.busy) notify('已有更新操作进行中，请稍候', 'info');
+      }).catch(function () { notify('下载更新失败'); });
     });
   }
   function initUpdateBanner() {
@@ -3528,7 +3545,7 @@
     var now = $('updateNowBtn');
     if (now) now.addEventListener('click', function () {
       var gp = getApi();
-      if (!gp) { setStatus('更新功能不可用'); return; }
+      if (!gp) { notify('更新功能不可用'); return; }
       if (_bannerSource === 'envfix') {
         if (_bannerState === 'downloaded') { hideUpdateBanner(); return; }   // 完成态：知道了
         now.disabled = true;
@@ -3536,8 +3553,8 @@
         if (!gp.env_fix_start) { now.disabled = false; return; }
         gp.env_fix_start().then(function (r) {
           now.disabled = false;
-          if (r && r.ok === false) { hideUpdateBanner(); setStatus('FFmpeg 下载失败：' + ((r && r.error) || '未知错误'), true); }
-        }).catch(function (e) { now.disabled = false; hideUpdateBanner(); setStatus('FFmpeg 下载失败：' + e.message, true); });
+          if (r && r.ok === false) { hideUpdateBanner(); notify('FFmpeg 下载失败：' + ((r && r.error) || '未知错误'), true); }
+        }).catch(function (e) { now.disabled = false; hideUpdateBanner(); notify('FFmpeg 下载失败：' + e.message, true); });
         return;
       }
       now.disabled = true;
@@ -3549,15 +3566,15 @@
         setStatus('正在准备安装更新…');
         if (!gp.apply_update) { now.disabled = false; return; }
         gp.apply_update().then(function (r) {
-          if (r && r.ok === false) { now.disabled = false; setStatus((r && r.error) || '启动更新失败'); }
-        }).catch(function () { now.disabled = false; setStatus('启动更新失败'); });
+          if (r && r.ok === false) { now.disabled = false; notify((r && r.error) || '启动更新失败'); }
+        }).catch(function () { now.disabled = false; notify('启动更新失败'); });
       } else {
         // 第一步：仅下载更新包（连接服务器阶段先给提示，随后出现 0% 进度条）
         setStatus('正在连接更新服务器…');
         if (!gp.start_update) { now.disabled = false; return; }
         gp.start_update().then(function (r) {
-          if (r && r.busy) { now.disabled = false; setStatus('已有更新操作进行中，请稍候'); }
-        }).catch(function () { now.disabled = false; setStatus('下载更新失败'); });
+          if (r && r.busy) { now.disabled = false; notify('已有更新操作进行中，请稍候', 'info'); }
+        }).catch(function () { now.disabled = false; notify('下载更新失败'); });
       }
     });
     var upd = getApi();
@@ -3626,14 +3643,14 @@
       if (info.phase === 'done') { hideUpdateMini(); if (info.auto !== false) setStatus('FFmpeg 组件已就绪'); return; }
       if (info.phase === 'error') {
         hideUpdateMini();
-        setStatus('FFmpeg 组件下载失败：' + (info.error || '未知原因'), true);
+        notify('FFmpeg 组件下载失败：' + (info.error || '未知原因'), true);
       }
     });
     if (upd.on_env_fix_done) upd.on_env_fix_done(function (info) {
       hideUpdateMini();
       if (!info || !info.ok) {
         hideUpdateBanner();
-        setStatus('FFmpeg 下载失败：' + ((info && (info.error || info.message)) || '未知原因'), true);
+        notify('FFmpeg 下载失败：' + ((info && (info.error || info.message)) || '未知原因'), true);
         return;
       }
       // 启动自动下载成功：**静默**（不弹确认、不弹横幅）—— 只更新状态栏
@@ -4044,12 +4061,12 @@
         if (dup) msg += '，跳过重复 ' + dup + ' 项';
         if (errs.length) msg += '，' + errs.length + ' 项无效';
         setStatusDone(msg);
-      }).catch(function () { setStatus('添加失败'); });
+      }).catch(function () { notify('添加失败'); });
     }).catch(function () {});
   }
   // 左下角菜单「刷新列表」：重扫当前项目原片分组（保留仍存在的勾选）+ 重载遮罩主题
   function maskRescanCurrent() {
-    if (!maskOn() || !maskState.project) { setStatus('未选择遮罩叠加项目'); return; }
+    if (!maskOn() || !maskState.project) { notify('未选择遮罩叠加项目'); return; }
     var p = maskState.project;
     setStatus('正在重新扫描原片分组…');
     call('scan_mask_raw_dirs', p.path).then(function (dirs) {
@@ -4062,7 +4079,7 @@
       if (maskNeedMask()) loadAllMaskGroups();
       maskPersist();
       setStatusDone('列表已刷新');
-    }).catch(function () { setStatus('刷新失败'); });
+    }).catch(function () { notify('刷新失败'); });
   }
   // 删除/操作结果告知：轻量 toast 呈现（失败为红、其余为绿），不再开窗打断
   function maskTellResult(title, msg) {
@@ -4395,7 +4412,7 @@
     call('list_mask_projects').then(function (list) {
       maskState.projects = Array.isArray(list) ? list : [];
       buildMaskSidebar();
-    }).catch(function (e) { setStatus('加载遮罩叠加项目失败：' + e.message); });
+    }).catch(function (e) { notify('加载遮罩叠加项目失败：' + e.message); });
   }
   function buildMaskSidebar() {
     if (!maskOn()) return;
@@ -5150,10 +5167,10 @@
         call('pick_single_folder').then(function (nd) {
           if (!nd) return;
           call('move_mask_out', maskState.project.path, vn, nd).then(function (r) {
-            if (!r || !r.ok) { setStatus('迁移失败：' + ((r && r.error) || '未知错误')); return; }
+            if (!r || !r.ok) { notify('迁移失败：' + ((r && r.error) || '未知错误')); return; }
             toast('已迁移成片：' + baseNameNoExt(r.to || vn), 'ok');
             buildMaskLogView();
-          }).catch(function (err) { setStatus('迁移失败：' + err.message); });
+          }).catch(function (err) { notify('迁移失败：' + err.message); });
         }).catch(function () {});
       }
       function doDeleteOne(vn) {
@@ -5314,7 +5331,7 @@
       var allLogs = Array.isArray(logs) ? logs : [];
       var lg = allLogs.find(function (x) { return x.path === lp; });
       var names = ((lg && lg.entries) || []).map(function (en) { return en.video; }).filter(Boolean);
-      if (!names.length) { setStatus('该日志无成片可迁移'); return; }
+      if (!names.length) { notify('该日志无成片可迁移'); return; }
       call('pick_single_folder').then(function (nd) {
         if (!nd) return;
         var k = 0;
@@ -5322,9 +5339,9 @@
           if (k >= names.length) { toast('已迁移 ' + names.length + ' 个成片', 'ok'); buildMaskLogView(); return; }
           var vn2 = names[k++];
           call('move_mask_out', maskState.project.path, vn2, nd).then(function (r) {
-            if (!r || !r.ok) { setStatus('迁移失败：' + ((r && r.error) || '未知错误')); return; }
+            if (!r || !r.ok) { notify('迁移失败：' + ((r && r.error) || '未知错误')); return; }
             next();
-          }).catch(function (err) { setStatus('迁移失败：' + err.message); });
+          }).catch(function (err) { notify('迁移失败：' + err.message); });
         })();
       }).catch(function () {});
     }).catch(function () {});
@@ -5379,9 +5396,9 @@
       if (!v) return;
       if (v === 'txt') {
         call('delete_mask_log', maskState.project.path, mfp).then(function (r) {
-          if (!(r && r.ok)) { setStatus('移除失败：' + ((r && r.error) || '未知错误')); return; }
+          if (!(r && r.ok)) { notify('移除失败：' + ((r && r.error) || '未知错误')); return; }
           toast('已移除遮罩日志', 'ok'); buildMaskLogView();
-        }).catch(function (err) { setStatus('移除失败：' + err.message); });
+        }).catch(function (err) { notify('移除失败：' + err.message); });
         return;
       }
       // 连同成片：取该日志全部成片名一并删除（成片文件 + 日志条目块），日志清空会自动删文件
@@ -5390,17 +5407,17 @@
         var names = (lg && Array.isArray(lg.entries) ? lg.entries : []).map(function (e) { return e.video; }).filter(Boolean);
         if (!names.length) {
           call('delete_mask_log', maskState.project.path, mfp).then(function (r2) {
-            if (!(r2 && r2.ok)) { setStatus('移除失败：' + ((r2 && r2.error) || '未知错误')); return; }
+            if (!(r2 && r2.ok)) { notify('移除失败：' + ((r2 && r2.error) || '未知错误')); return; }
             toast('已移除遮罩日志', 'ok'); buildMaskLogView();
-          }).catch(function (err) { setStatus('移除失败：' + err.message); });
+          }).catch(function (err) { notify('移除失败：' + err.message); });
           return;
         }
         call('delete_mask_videos', maskState.project.path, names).then(function (r) {
-          if (!(r && r.ok)) { setStatus('删除失败：' + ((r && r.error) || '未知错误')); return; }
+          if (!(r && r.ok)) { notify('删除失败：' + ((r && r.error) || '未知错误')); return; }
           toast('已删除 ' + ((r.deleted || []).length) + ' 个成片及其日志', 'ok');
           buildMaskLogView();
-        }).catch(function (err) { setStatus('删除失败：' + err.message); });
-      }).catch(function () { setStatus('读取遮罩日志失败'); });
+        }).catch(function (err) { notify('删除失败：' + err.message); });
+      }).catch(function () { notify('读取遮罩日志失败'); });
     });
   }
 
@@ -5410,10 +5427,10 @@
     call('pick_single_folder').then(function (nd) {
       if (!nd) return;
       call('relocate_mask_out', maskState.project.path, videoName, nd).then(function (r) {
-        if (!r || !r.ok) { setStatus('重新定位失败：' + ((r && r.error) || '未知错误')); return; }
+        if (!r || !r.ok) { notify('重新定位失败：' + ((r && r.error) || '未知错误')); return; }
         toast('已重新定位成片：' + baseNameNoExt(r.path || videoName) + (r.noLog ? '（日志中无该成片记录）' : ''), 'ok');
         buildMaskLogView();
-      }).catch(function (err) { setStatus('重新定位失败：' + err.message); });
+      }).catch(function (err) { notify('重新定位失败：' + err.message); });
     }).catch(function () {});
   }
 
@@ -5430,15 +5447,15 @@
         relocateMaskBranchGo(lp, missing);
         return;
       }
-      if (!probeMissing.length) { setStatus('该日志无成片'); return; }
+      if (!probeMissing.length) { notify('该日志无成片'); return; }
       var outs = probeMissing.map(function (en) { return en.outPath; });
       call('check_exists', outs).then(function (map) {
         map = map || {};
         var gone = probeMissing.filter(function (en) { return !map[en.outPath]; }).map(function (en) { return en.video; }).filter(Boolean);
         if (!gone.length) { setStatus('该日志全部成片均已定位'); return; }
         relocateMaskBranchGo(lp, gone);
-      }).catch(function () { setStatus('读取成片状态失败'); });
-    }).catch(function () { setStatus('读取遮罩日志失败'); });
+      }).catch(function () { notify('读取成片状态失败'); });
+    }).catch(function () { notify('读取遮罩日志失败'); });
   }
   // 分支重新定位执行体：选目录 → 对缺失成片逐一按文件名定位
   function relocateMaskBranchGo(lp, missingNames) {
@@ -5448,7 +5465,7 @@
       var k = 0;
       (function next() {
         if (k >= missingNames.length) {
-          setStatus('重新定位完成：成功 ' + okN + ' / 失败 ' + failN + (failN ? '（失败可手动选择对应文件夹）' : ''));
+          notify('重新定位完成：成功 ' + okN + ' / 失败 ' + failN + (failN ? '（失败可手动选择对应文件夹）' : ''));
           buildMaskLogView();
           return;
         }
@@ -5600,10 +5617,10 @@
     if (!maskOn()) return;
     refreshMaskStartHint();
     var hint = $('maskStartHint');
-    if (hint && hint.style.display !== 'none') { setStatus('请先完善遮罩叠加配置：' + hint.textContent); return; }
+    if (hint && hint.style.display !== 'none') { notify('请先完善遮罩叠加配置：' + hint.textContent, 'info'); return; }
     // 兜底防线：直接校验勾选集合两两时差（不依赖按钮状态，即使被程序绕过也拦截）
     var durErrs = maskDurMismatchErrs();
-    if (durErrs.length) { setStatus('时长校验未通过：' + durErrs[0] + (durErrs.length > 1 ? ' 等 ' + durErrs.length + ' 处' : '')); return; }
+    if (durErrs.length) { notify('时长校验未通过：' + durErrs[0] + (durErrs.length > 1 ? ' 等 ' + durErrs.length + ' 处' : '')); return; }
     var vids = {};
     for (var d in maskState.rawSel) {
       if (Object.prototype.hasOwnProperty.call(maskState.rawSel, d) && maskState.rawSel[d].length) vids[d] = maskState.rawSel[d];
@@ -5627,7 +5644,7 @@
       logDir: pathJoin(maskState.project.path, '遮罩日志')
     };
     call('run_mask', payload).then(function (r) {
-      if (!r || !r.ok) { setStatus('启动失败：' + ((r && r.error) || '未知错误')); return; }
+      if (!r || !r.ok) { notify('启动失败：' + ((r && r.error) || '未知错误')); return; }
       // 提交成功不弹窗，仅状态栏提示（任务窗口可随时打开查看）
       toast('遮罩叠加任务已提交，可打开任务窗口查看进度', 'ok');
       // 开始任务后取消所有勾选（勾选不持久化记忆，下次从空开始）
@@ -5635,7 +5652,7 @@
       maskState.maskSel = {};
       maskPersist();
       buildMaskCenter(); buildMaskConfigBar();
-    }).catch(function (e) { setStatus('启动失败：' + e.message); });
+    }).catch(function (e) { notify('启动失败：' + e.message); });
   }
   function updateWinModeLabel() {
     var wm = $('winModeLabel');
