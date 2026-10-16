@@ -3650,7 +3650,7 @@ class Api {
     } catch (e) { /* 还原失败则交由引擎按原样报错 */ }
   }
 
-  _createTask(type, title, env, srcPath) {
+  _createTask(type, title, env, srcPath, specSummary) {
     const id = 'task_' + (++this.taskSeq) + '_' + Date.now().toString(36);
     const task = {
       id, type, title, env: Object.assign({}, env),
@@ -3663,6 +3663,31 @@ class Api {
     };
     this.tasks.set(id, task);
     this._snapshotTaskTxt(task);
+    // ★ 任务参数摘要进任务日志（用户看的那份）。
+    //   为什么用独立的 specSummary 参数而不是从 env 反推：参数语义只有提交方清楚
+    //   （引擎只知道扁平 env 键），而且并非所有任务都有可读参数（续跑等）。
+    //   放在 `[开始运行]` 之前，读起来是「先交代这次做什么，再开始执行」。
+    //   ⚠ 与人话无关的完整技术存档另走 log/task-<date>.log（见 _taskSpecText）——
+    //   详略分两版正是「日志分离」：混一起时人看的被字段名淹没、机器要的又被人读排版变形。
+    let summary = specSummary;
+    // env 型任务（批量拼接 / 遮罩叠加 / 复刻）没有 spec 对象，摘要与快照都由 env 派生。
+    // ⚠ 放在 _createTask 里而不是各 runXxx 里逐个调用：**一处覆盖全部任务类型**，
+    //   以后新增任务类型也不会漏 —— 逐处补是最容易漏的做法（本次就漏过三类）。
+    if (!summary && env && typeof env === 'object') {
+      try { summary = this._taskSpecHumanEnv(title, env, type); } catch (e3) { summary = ''; }
+    }
+    if (summary) {
+      try {
+        task.specSummary = String(summary);
+        for (const line of task.specSummary.split('\n')) task.log.push(line);
+      } catch (e2) { /* 摘要失败不影响任务 */ }
+    }
+    // 完整技术快照落盘（log/task-<date>.log）—— 与上面的人话摘要互为详略两版
+    try {
+      if (env && typeof env === 'object' && !env.TOOL_SPEC) {
+        this._ensureRunLog().writeTaskSpec(task.id, this._taskSpecTextEnv(task, title, env));
+      }
+    } catch (e4) { /* 快照失败不影响任务 */ }
     this._emitTasks();
     return task;
   }
@@ -5716,24 +5741,41 @@ class Api {
           // 运行任务结束：清空运行位并启动执行队列中的下一个任务（暂停/继续不影响插入后的推进）
           this._runningTaskId = null;
           this._startNextQueued();
-          // ★ 系统通知：任务失败必报；队列彻底空闲（无运行中、无排队）
-          //   时报「全部任务完成」并区分最后一次是否带失败项
+          // ★ 系统通知：任务失败 → 走 2.5 秒合并窗口（批量全失败时不会连响十几次）；
+          //   队列彻底空闲时再发一条**汇总**（成功/失败/暂停待续各有计数）并冲掉待发窗口。
+          // 本轮成败计数：逐个任务结束时累加，发完汇总清零 —— 不靠时间窗口反推，
+          //   那种做法在"中途又有新任务入队"时会算错。
+          const rs = this._roundStat || (this._roundStat = { done: 0, error: 0 });
+          if (status === 'done') rs.done++;
+          else if (status === 'error') rs.error++;
           // 视频处理任务结束后按设置清理过期备份（仅开启时执行）
           if (task.type === 'tool') this._cleanupBackups();
-          if (status === 'error') {
-            this._notify('任务失败：' + String(task.title || '').slice(0, 50),
-              task.failReason || '存在失败项，可在任务列表中查看详情或继续制作');
-          }
+          // ★ 结果快照（回到 task-<date>.log）：提交时那份只答「打算做什么」，
+          //   这份答「实际发生了什么」—— 耗时 / 成败 / 失败原因 / 产出规模。
+          //   两者合起来才是完整的一次任务记录；只有提交侧快照时，"为什么失败"是缺失的。
+          try { this._ensureRunLog().writeTaskSpec(task.id, this._taskResultText(task, status)); } catch (e4) { /* 快照失败不影响主流程 */ }
+          if (status === 'error') this._notifyFailSoon(task);
           // 队列已无待运行任务（queued 空）即视为「本轮跑完」——此时可能还有**暂停待续**的任务
           // （用户主动暂停 / 软暂停让位），这类不在执行队列里，需在通知里明确提醒，避免误以为全做完
           if (!this._runningTaskId && this._taskQueue.length === 0 && (status === 'done' || status === 'error')) {
             var pendingPaused = 0;
             this.tasks.forEach((t2) => { if (t2.status === 'paused') pendingPaused++; });
-            const head = status === 'error' ? '任务已跑完（存在失败项）' : '任务已跑完';
-            const tail = pendingPaused > 0
-              ? '另有 ' + pendingPaused + ' 个任务处于暂停待续，点「继续任务」可接着制作'
-              : '任务队列已清空，全部成功';
-            this._notify(head, tail);
+            // 先把 2.5 秒窗口里攒着的失败冲出来，再发汇总 —— 否则两条通知会前后脚到达
+            this._noticeFlushFail();
+            const lines = [];
+            if (rs.done) lines.push('成功 ' + rs.done + ' 项');
+            if (rs.error) lines.push('失败 ' + rs.error + ' 项');
+            if (pendingPaused) lines.push('暂停待续 ' + pendingPaused + ' 项，点「继续任务」接着做');
+            if (!lines.length) lines.push('队列已清空');
+            this._roundStat = { done: 0, error: 0 };
+            this._notify({
+              title: rs.error ? '本轮完成（有失败）' : '本轮完成',
+              lines: lines,
+              attribution: this._noticeStamp(null),
+              // 失败已经用 Critical 报过了，这里不再叠加刺耳音；有暂停待续用柔和的 SMS 提醒
+              sound: pendingPaused && !rs.error ? 'SMS' : 'Default',
+              duration: 'short',
+            });
           }
         });
         child.on('error', (err2) => {
@@ -6742,15 +6784,480 @@ class Api {
         root, recursive: s.recursive !== false, files, output, toolName,
       }
       : { stepIds, params: s.params || {}, root, recursive: s.recursive !== false, files, output, toolName };
-    const env = {
-      TOOL_SPEC: JSON.stringify(toolSpec),
-      VL_STORAGE_DIR: this.storageDir || '',
+
+    // ★ 画布合成的「每个背景各出一条」：一次提交展开成 N 个任务（N = 背景文件数）。
+    //   为什么在提交侧展开而不是让引擎一次跑多背景：引擎一个进程只出一份产物，
+    //   在引擎内部循环会让「进度 / 失败重试 / 续跑 / 逐任务日志」全部失效 ——
+    //   展开成独立任务后，这些能力全部复用现成机制（与遮罩叠加的 N×M 一致）。
+    //   ⚠ 背景清单直接取 params.canvas.bgList（前端扫描背景目录时就已带上，用于预览轮播）
+    //     并做存在性校验；这样 runTool 不必变成 async（枚举目录要碰磁盘）。
+    const cvParams = (toolSpec.params && toolSpec.params.canvas) || {};
+    const bgList = (isCanvas && Array.isArray(cvParams.bgList))
+      ? cvParams.bgList.map(String).filter((p) => {
+        try { return !!p && fs.existsSync(p) && fs.statSync(p).isFile(); } catch (e) { return false; }
+      })
+      : [];
+    const multiBg = isCanvas && bgList.length > 1;
+    // 逐个背景生成一份 spec：把背景固定成该文件（bgMode 由 dir 改为 image）。
+    // ⚠ 展开后必须从 params 里**剔除 bgList** —— 它是前端的候选清单（几百条路径），
+    //   留在 TOOL_SPEC 里既让引擎困惑（它只认 bgPath），又会把每个任务的 env 撑大。
+    const stripBgList = (cvs) => { const o = Object.assign({}, cvs); delete o.bgList; return o; };
+    // 背景名（去扩展名与文件系统非法字符）—— 用作文件名区分标记
+    const bgTagOf = (p) => String(path.basename(String(p || ''), path.extname(String(p || ''))))
+      .replace(/[\\/:*?"<>|]/g, '_').trim().slice(0, 40);
+    const baseSuffix = String((s.output && s.output.suffix) || '');
+    const specList = multiBg
+      ? bgList.map((bg) => {
+        const tag = bgTagOf(bg);
+        return {
+          spec: Object.assign({}, toolSpec, {
+            params: { canvas: Object.assign(stripBgList(cvParams), { bgMode: 'image', bgPath: bg }) },
+            // ★ 同批展开的任务**共享输出目录**（noSubdir）并把**背景名并入文件名后缀**。
+            //   两个一起才解决问题：默认逻辑是"目标目录非空就新建 输出-MMDD-HHMM 子目录"，
+            //   于是 N 个任务各自建目录 —— 产物散在 N 处、文件名还完全相同，
+            //   用户拿到 N 个同名文件分放 N 个文件夹，根本对不上哪个是哪个背景。
+            //   ⚠ 不依赖引擎的文件名冲突加序号：那个只在**同目录**才触发（`stem-1`），
+            //     而"批量"场景下用户真正需要的是**一眼看出这个成片用的是哪张背景图**，
+            //     序号做不到这件事（他不会去数 -1 是第几张图）。
+            output: Object.assign({}, toolSpec.output, {
+              noSubdir: true,
+              suffix: baseSuffix ? (baseSuffix + '-' + tag) : ('-' + tag),
+            }),
+          }),
+          bgPath: bg,
+        };
+      })
+      : [{ spec: toolSpec, bgPath: '' }];
+
+    const ids = [];
+    for (const one of specList) {
+      const sp = one.spec;
+      const spTitle = multiBg ? (toolName + ' · ' + path.basename(one.bgPath)) : title;
+      const env = {
+        TOOL_SPEC: JSON.stringify(sp),
+        VL_STORAGE_DIR: this.storageDir || '',
+      };
+      const task = this._createTask('tool', spTitle, env, files.length ? files[0] : root,
+        this._taskSpecHuman(spTitle, sp, isCanvas ? s : null));
+      task.progress.total = files.length || 0;
+      if (multiBg) task.bgBatch = { total: specList.length, bg: path.basename(one.bgPath) };
+      this._enqueueTask(task);
+      // ★ 完整技术快照独立落盘（task-<date>.log）：env 会随任务记录一起被清除，
+      //   而任务要"按同样参数重跑 / 复现"时，这份快照是唯一凭据。与人话摘要互为详略两版。
+      try { this._ensureRunLog().writeTaskSpec(task.id, this._taskSpecText(task, spTitle, sp, isCanvas ? s : null)); } catch (e3) {}
+      ids.push(task.id);
+    }
+    this._lg('RUN', 'tool.start', toolName + '任务 · ' + title,
+      { id: ids[0], ids, mode: isCanvas ? 'canvas' : 'steps', stepIds, files: files.length, output, 展开任务数: ids.length });
+    // ⚠ 同时返回 taskIds 与 taskId：单任务时两者相同，旧调用方读 taskId 不受影响。
+    return { ok: true, taskId: ids[0], taskIds: ids };
+  }
+
+  /**
+   * 「人话」版任务参数摘要（**env 型任务**：批量拼接 / 遮罩叠加 / 复刻）—— 进任务日志开头。
+   *
+   * 为什么单独一套：这三类任务的参数不在一个 spec 对象里，而是散在 env 的一堆扁平键上
+   * （见 runBatch / runMask / runReplica 的 env 组装）。它们的"参数语义"只有提交方清楚，
+   * 所以摘要必须在**提交侧**组装好，而不是等引擎去猜。
+   *
+   * 刻意记三类信息（对应"只给 log 就能还原"的三问）：
+   *   · 做了什么   → 标题行（项目 / 配置 / 主题）
+   *   · 什么参数   → 逐项中文名 + 值
+   *   · 走了什么流程 → 末行的「流程」说明（如遮罩的 笛卡尔积组合数、批量的分段拼接）
+   */
+  _taskSpecHumanEnv(title, env, taskType) {
+    const E = env || {};
+    const L = [];
+    const has = (k) => E[k] !== undefined && E[k] !== null && String(E[k]) !== '';
+    // ⚠ 必须**按 task.type 分派，不能靠 env 字段猜**：runBatch 的 env 里也有 REPLICA_TXT
+    //   （那是配置 TXT 的路径，字段名是历史遗留），用 has('REPLICA_TXT') 判会把批量拼接
+    //   误判成复刻 —— 实测踩到过。type 是任务创建时给定的，唯一可靠。
+    const isMask = String(taskType) === 'mask' || (!taskType && has('MASK_RAW_DIRS'));
+    const isReplica = String(taskType) === 'replica';
+    if (isMask) {
+      const MODE = { 1: '遮罩 + 水印', 2: '仅水印', 3: '仅遮罩' };
+      L.push('参数：遮罩叠加 · ' + (MODE[String(E.MASK_MODE)] || E.MASK_MODE));
+      const rawDirs = String(E.MASK_RAW_DIRS || '').split(';').filter(Boolean);
+      const vids = String(E.MASK_VIDEOS || '').split(';').filter(Boolean);
+      const masks = String(E.MASK_MASKS || '').split(';').filter(Boolean);
+      const maskDirs = String(E.MASK_MASK_DIRS || '').split(';').filter(Boolean);
+      L.push('  项目 ' + (E.MASK_PROJECT_NAME || '（未命名）'));
+      // ⚠ 原片与遮罩数量的乘积就是成片数 —— 这是遮罩最该被看见的"流程"信息
+      L.push('  原片 ' + (vids.length ? vids.length + ' 个勾选' : rawDirs.length + ' 个目录（全量扫描）')
+        + '   遮罩 ' + (masks.length ? masks.length + ' 个' : maskDirs.length + ' 个目录')
+        + '   → 组合 ' + ((vids.length || 0) * (masks.length || 1) || '按扫描结果') + ' 条成片');
+      if (has('MASK_WATERMARK')) L.push('  水印 ' + path.basename(String(E.MASK_WATERMARK)) + '  透明度 ' + (E.MASK_WATERMARK_ALPHA || '默认'));
+      if (has('MASK_SUFFIX_MARK')) L.push('  后缀标记 ' + E.MASK_SUFFIX_MARK);
+      L.push('  输出 ' + E.MASK_OUTPUT_DIR);
+      if (has('MASK_ONLY_NAMES')) {
+        const n = String(E.MASK_ONLY_NAMES).split(';').filter(Boolean).length;
+        L.push('  ★ 续跑：只补做 ' + n + ' 条（其余已完成，不重做）');
+        L.push('流程：按勾选清单逐条叠加 → 水印（模式 1/2）→ 输出 mp4 → 写使用片段日志');
+      } else {
+        L.push('流程：扫描原片与遮罩 → 两两组合逐条叠加 → 水印（模式 1/2）→ 输出 mp4 → 写使用片段日志');
+      }
+      return L.join('\n');
+    }
+    if (isReplica) {
+      L.push('参数：复刻 · ' + (String(E.REPLICA_MODE) === '2' ? '去重模式' : '原片模式'));
+      L.push('  源日志 ' + E.REPLICA_TXT);
+      if (has('REPLICA_ONLY_NAME')) L.push('  ★ 只复刻 ' + E.REPLICA_ONLY_NAME + ' 这一条');
+      if (has('REPLICA_DEDUP_MIN')) {
+        L.push('  重复度区间 ' + E.REPLICA_DEDUP_MIN + ' ~ ' + (E.REPLICA_DEDUP_MAX || E.REPLICA_DEDUP_MIN)
+          + '（下限' + (String(E.REPLICA_DEDUP_MIN_ON) === '0' ? '关' : '开')
+          + ' / 上限' + (String(E.REPLICA_DEDUP_MAX_ON) === '0' ? '关' : '开') + '）');
+      }
+      L.push('  时长上限 ' + (E.BATCH_MAX_DURATION || '-') + 's   加速阈值 ' + (E.BATCH_SPEED_LIMIT || '-') + '   重试 ' + (E.BATCH_MAX_RETRY || '-'));
+      L.push('流程：读源日志 → 按重复度区间替换片段（去重模式）→ 按原命名规则复刻成片');
+      return L.join('\n');
+    }
+    // 批量拼接（默认）
+    L.push('参数：批量拼接');
+    if (has('REPLICA_TXT')) L.push('  配置 ' + E.REPLICA_TXT);
+    const seg = [];
+    if (has('BATCH_COUNT')) seg.push('成片数 ' + E.BATCH_COUNT);
+    if (has('BATCH_GROUP')) seg.push('分组数 ' + E.BATCH_GROUP);
+    if (seg.length) L.push('  ' + seg.join('   '));
+    if (has('BATCH_PRODUCER')) L.push('  创作者名 ' + E.BATCH_PRODUCER);
+    if (has('BATCH_SUFFIX_MARK')) L.push('  后缀标记 ' + E.BATCH_SUFFIX_MARK);
+    const seg2 = [];
+    if (has('BATCH_MAX_DURATION')) seg2.push('时长上限 ' + E.BATCH_MAX_DURATION + 's');
+    if (has('BATCH_SPEED_LIMIT')) seg2.push('加速阈值 ' + E.BATCH_SPEED_LIMIT);
+    if (has('BATCH_MAX_RETRY')) seg2.push('重试 ' + E.BATCH_MAX_RETRY);
+    if (seg2.length) L.push('  ' + seg2.join('   '));
+    if (has('BATCH_TXT_PREFIX')) {
+      const pfx = String(E.BATCH_TXT_PREFIX).split(';').filter(Boolean);
+      if (pfx.length) L.push('  提取前缀 ' + pfx.join(' / '));
+    }
+    if (has('BATCH_ONLY_NAMES')) {
+      const n = String(E.BATCH_ONLY_NAMES).split(';').filter(Boolean).length;
+      L.push('  ★ 续跑：只补做 ' + n + ' 条（其余已完成，不重做）');
+    }
+    L.push('流程：读配置逐条取片段 → 按时长上限拼到目标时长 → 加创作者名与后缀 → 写日志与成片');
+    return L.join('\n');
+  }
+
+  /**
+   * 「人话」版任务参数摘要 —— 进任务日志开头，给用户看。
+   *
+   * 与 _taskSpecText 的分工（这就是「日志分离」的落点）：
+   *   · 本方法：任务窗口里那份输出日志的开头，讲清「做了什么、什么参数、写到哪」，
+   *     参数只列**实际有意义的**（非默认值），一行一义，不出现 JSON 与内部字段名；
+   *   · _taskSpecText：写入 log/task-<date>.log 的完整技术存档（逐项 + 来源 + 原始 JSON）。
+   *   两者详略不同是刻意的 —— 用户不会去翻 .log，也不该在人话里读字段名。
+   */
+  _taskSpecHuman(title, spec, rawSpec) {
+    const L = [];
+    const S = spec || {};
+    const o = S.output || {};
+    const f = S.files || [];
+    // 输入
+    if (f.length) {
+      L.push('输入：' + f.length + ' 个文件');
+      f.slice(0, 6).forEach((p, i) => L.push('  ' + (i + 1) + '. ' + path.basename(p)));
+      if (f.length > 6) L.push('  …其余 ' + (f.length - 6) + ' 个');
+    } else {
+      L.push('输入：目录 ' + (S.root || '') + (S.recursive ? '（含子目录）' : ''));
+    }
+    // 参数：只列非默认值 + 关键项，用中文名
+    const cv = (S.params && S.params.canvas) || {};
+    const preset = rawSpec && rawSpec.params && rawSpec.params.presetName;
+    if (S.mode === 'canvas') {
+      const CN = {
+        targetW: '成片宽', targetH: '成片高', scale: '内容缩放', posMode: '位置',
+        bgMode: '背景类型', bgPath: '背景文件', bgDir: '背景目录', bgColor: '底色',
+        bgFit: '背景适合', dx: '水平偏移', dy: '垂直偏移', radius: '圆角',
+        borderW: '边框宽', borderColor: '边框色', bgBlur: '背景模糊', watermark: '水印',
+      };
+      const POS = { center: '居中', tl: '左上', tr: '右上', bl: '左下', br: '右下', custom: '自定义' };
+      L.push('参数：画布合成' + (preset ? '（预设「' + preset + '」）' : ''));
+      const parts = [];
+      if (cv.targetW && cv.targetH) parts.push(cv.targetW + '×' + cv.targetH);
+      if (cv.scale != null) parts.push('缩放 ' + cv.scale);
+      if (cv.posMode) parts.push('位置 ' + (POS[cv.posMode] || cv.posMode));
+      if (parts.length) L.push('  ' + parts.join('  '));
+      const parts2 = [];
+      if (cv.bgMode === 'image') parts2.push('背景 图片 ' + (cv.bgPath ? path.basename(cv.bgPath) : ''));
+      else if (cv.bgMode === 'video') parts2.push('背景 视频 ' + (cv.bgPath ? path.basename(cv.bgPath) : ''));
+      else if (cv.bgMode === 'color') parts2.push('背景 纯色 ' + (cv.bgColor || ''));
+      else parts2.push('背景 目录随机');
+      if (cv.bgFit) parts2.push('适合 ' + cv.bgFit);
+      if (cv.radius) parts2.push('圆角 ' + cv.radius);
+      if (cv.borderW) parts2.push('边框 ' + cv.borderW + 'px');
+      if (cv.bgBlur) parts2.push('模糊 ' + cv.bgBlur);
+      if (cv.watermark) parts2.push('水印 ' + path.basename(cv.watermark));
+      if (parts2.length) L.push('  ' + parts2.join('   '));
+      Object.keys(cv).forEach((k) => { if (!CN[k] && k !== 'touched' && k !== 'presetName') L.push('  ' + k + ' = ' + cv[k]); });
+    } else {
+      if (Array.isArray(S.stepIds) && S.stepIds.length) L.push('参数：处理步骤 ' + S.stepIds.join(' → '));
+    }
+    // 输出
+    const NAMEMODE = { suffix: '加后缀 ' + (o.suffix || ''), keep: '保持原名' };
+    const CONFLICT = { overwrite: '覆盖', skip: '跳过已有', index: '加序号' };
+    L.push('输出：' + (o.mode === 'directory' ? '写入目录 ' + (o.dir || '') : '覆盖原文件'));
+    L.push('  ' + (NAMEMODE[o.nameMode] || '') + '   冲突时 ' + (CONFLICT[o.onConflict] || '') + '   备份 ' + (o.backup ? '开' : '关'));
+    return L.join('\n');
+  }
+
+  /**
+   * 组装「可完全还原」的任务参数快照文本（写入 task-<date>.log）。
+   *
+   * 为什么要求这么细：任务记录会被清除、成片会被删，只有这份快照能回答
+   * 「当时到底用了什么参数、喂了哪些文件、结果写到哪」。
+   * 所以刻意做到三条：
+   *   ① 输入逐个列出路径 + 规格（分辨率/时长/是否带音轨），不写「N 个文件」这种省略；
+   *   ② 参数逐项列数值，并标注来源（界面改过 / 预设 / 默认值）——
+   *      否则复现时无从判断哪些是特意调的、哪些只是没碰过；
+   *   ③ 输出策略（目录/命名/冲突/备份）全列，否则无法解释文件为什么落在那儿。
+   */
+  /**
+   * 结果快照 —— 任务终态时写回同一份 task-<date>.log。
+   *
+   * 为什么必须有：提交时那份快照只回答「**打算**做什么」；而"当时到底发生了什么"——
+   * 跑成功了几条、失败的是哪几条、为什么失败、耗时多久 —— 只有终态时才知道。
+   * 只给 log 文件夹的排查场景里，"为什么失败"几乎总是第一个要回答的问题。
+   */
+  _taskResultText(task, status) {
+    const L = [];
+    const push = (k, v) => L.push('  ' + String(k).padEnd(14, ' ') + String(v == null ? '' : v));
+    const t = task || {};
+    const P = t.progress || {};
+    const now = new Date();
+    const p2 = (n) => (n < 10 ? '0' : '') + n;
+    L.push('【结果】');
+    push('终态', ({ done: '完成', error: '失败', stopped: '已停止', interrupted: '已中断', paused: '暂停' }[status] || String(status || '')));
+    push('结束时间', now.getFullYear() + '-' + p2(now.getMonth() + 1) + '-' + p2(now.getDate())
+      + ' ' + p2(now.getHours()) + ':' + p2(now.getMinutes()) + ':' + p2(now.getSeconds()) + '（本地时区）');
+    // 耗时：优先用任务自带的时间戳，缺失时用"现在"兜底（不编造，如实标注）
+    try {
+      const st = Number(t.startedAt) || Number(t.createdAt) || 0;
+      if (st > 0) {
+        const sec = Math.max(0, Math.round((Date.now() - st) / 1000));
+        push('耗时', Math.floor(sec / 60) + ' 分 ' + (sec % 60) + ' 秒');
+      } else { push('耗时', '（任务未记录起始时间）'); }
+    } catch (e) { push('耗时', '（读取失败）'); }
+    // 产出规模：这是"做了什么、做出来多少"的直接答案
+    push('产出', '成功 ' + (Number(P.current) || 0) + ' / 目标 ' + (Number(P.total) || 0) + ' 条');
+    if (P.groupCount) push('分组数', P.groupCount);
+    if (P.clip) push('成片时长', Math.round(Number(P.clip) * 100) / 100 + ' 秒');
+    if (t.failReason) { L.push(''); L.push('【失败原因】'); L.push('  ' + String(t.failReason)); }
+    // 失败清单：逐条列出 —— 复现/续跑全靠它（只给 log 时必须能知道是哪几条出了问题）
+    const fv = Array.isArray(t.failedVideos) ? t.failedVideos : [];
+    const fi = Array.isArray(t.failedIndices) ? t.failedIndices : [];
+    if (fv.length || fi.length) {
+      L.push('');
+      L.push('【失败明细】');
+      if (fi.length) push('失败序号', fi.slice(0, 40).join(', ') + (fi.length > 40 ? ' …共 ' + fi.length + ' 个' : ''));
+      if (fv.length) {
+        push('失败成片', fv.length + ' 条');
+        fv.slice(0, 20).forEach((x, i) => L.push('    ' + (i + 1) + '. ' + x));
+        if (fv.length > 20) L.push('    …其余 ' + (fv.length - 20) + ' 条');
+      }
+    }
+    return L.join('\n');
+  }
+
+  /**
+   * 快照的「任务头」—— 四类任务共用。
+   *
+   * 抽出来是为了**避免两条快照路径（spec 型 / env 型）各自维护一份而漂移**：
+   * 这三类信息是"只给 log 也能排查"的底座 ——
+   *   · 程序版本：用户报问题若不说版本，排查第一步就卡住；
+   *   · FFmpeg 路径：大量问题出在组件缺失/版本过旧/不支持 NVENC；
+   *   · 系统环境：判断"是不是他这台机器的问题"（NVENC 依赖显卡与驱动）。
+   * ⚠ 时间必须用**本地时区**：toISOString 是 UTC，会让复盘时间线与用户描述差 8 小时。
+   */
+  _taskSpecHead(push, task, title) {
+    const now = new Date();
+    const p2 = (n) => (n < 10 ? '0' : '') + n;
+    const localTime = now.getFullYear() + '-' + p2(now.getMonth() + 1) + '-' + p2(now.getDate())
+      + ' ' + p2(now.getHours()) + ':' + p2(now.getMinutes()) + ':' + p2(now.getSeconds());
+    push('任务 id', task && task.id);
+    push('类型', String(task && task.type || ''));
+    push('标题', title);
+    push('提交时间', localTime + '（本地时区）');
+    push('工作路径', this.root || '');
+    // 批量展开的任务（画布"每个背景各出一批"）：标明它是这一批里的第几个、用的是哪个背景 ——
+    // 否则 log 里只有 N 份看起来雷同的快照，无从判断哪个任务是哪一批、对应哪张背景图。
+    if (task && task.bgBatch) {
+      push('同批展开', '共 ' + task.bgBatch.total + ' 个任务，本任务固定使用背景「' + task.bgBatch.bg + '」');
+    }
+    try {
+      const pkg = require(path.join(__dirname, 'package.json'));
+      push('程序版本', String(pkg.version || '') + (pkg.build && pkg.build.appId ? '  (' + pkg.build.appId + ')' : ''));
+    } catch (e) { push('程序版本', '（读取失败）'); }
+    try {
+      const bin = this._resolveFfmpegBin();
+      push('FFmpeg', String((bin && bin.ffmpegPath) || '（未就绪）'));
+      push('FFprobe', String((bin && bin.ffprobePath) || '（未就绪）'));
+    } catch (e) { push('FFmpeg', '（读取异常）'); }
+    try {
+      push('系统', os.type() + ' ' + os.release() + ' · ' + os.arch() + ' · CPU ' + os.cpus().length + ' 核 · 内存 '
+        + Math.round(os.totalmem() / 1024 / 1024 / 1024) + ' GB');
+    } catch (e) { /* 环境信息取不到不影响快照 */ }
+  }
+
+  /**
+   * 完整技术快照（env 型任务：批量拼接 / 遮罩叠加 / 复刻）。
+   *
+   * 与人话摘要的分工：这份是"给机器与深度排查"的 —— 逐项列出 env 的**全部**业务字段
+   * 与原始 JSON，不做归纳、不省略。用户只打包 log 文件夹时，这份必须能独立还原现场。
+   */
+  _taskSpecTextEnv(task, title, env) {
+    const L = [];
+    const push = (k, v) => L.push('  ' + String(k).padEnd(18, ' ') + String(v == null ? '' : v));
+    const E = env || {};
+    const has = (k) => E[k] !== undefined && E[k] !== null && String(E[k]) !== '';
+    const split = (k) => String(E[k] || '').split(';').filter(Boolean);
+    L.push('【任务】');
+    this._taskSpecHead(push, task, title);
+
+    // 输入清单：路径类字段逐个列出（不写"N 个"，否则无法还原喂了哪些文件）
+    L.push('');
+    L.push('【输入】');
+    if (has('REPLICA_TXT')) push('配置/日志', E.REPLICA_TXT);
+    for (const [label, key] of [['原片目录', 'MASK_RAW_DIRS'], ['遮罩目录', 'MASK_MASK_DIRS']]) {
+      const arr = split(key);
+      if (arr.length) { L.push('  ' + label + '（' + arr.length + '）'); arr.forEach((x, i) => L.push('    ' + (i + 1) + '. ' + x)); }
+    }
+    for (const [label, key] of [['勾选原片', 'MASK_VIDEOS'], ['遮罩文件', 'MASK_MASKS']]) {
+      const arr = split(key);
+      if (arr.length) { L.push('  ' + label + '（' + arr.length + '）'); arr.forEach((x, i) => L.push('    ' + (i + 1) + '. ' + x)); }
+    }
+    if (has('MASK_WATERMARK')) push('水印文件', E.MASK_WATERMARK);
+    if (!has('REPLICA_TXT') && !has('MASK_RAW_DIRS') && !has('MASK_MASKS')) L.push('  （无外部输入文件，见下方参数）');
+
+    // 参数：env 的业务字段逐项列出（跳过内部/缓存类键）
+    L.push('');
+    L.push('【参数】');
+    const SKIP = /^(VL_|CACHE_|BATCH_SUBMIT_TS$|REPLICA_SUBMIT_TS$|MASK_SUBMIT_TS$|BATCH_ONLY_NAMES$|MASK_ONLY_NAMES$|REPLICA_ONLY_NAMES$)/;
+    const CN = {
+      BATCH_COUNT: '成片数', BATCH_GROUP: '分组数', BATCH_PRODUCER: '创作者名', BATCH_SUFFIX_MARK: '后缀标记',
+      BATCH_MAX_DURATION: '成片时长上限(秒)', BATCH_SPEED_LIMIT: '加速阈值', BATCH_MAX_RETRY: '重试次数',
+      BATCH_TXT_PREFIX: '提取前缀', MASK_MODE: '遮罩模式(1遮罩+水印/2仅水印/3仅遮罩)', MASK_PROJECT_NAME: '项目名',
+      MASK_SUFFIX_MARK: '后缀标记', MASK_OUTPUT_DIR: '输出目录', MASK_LOG_DIR: '片段日志目录',
+      MASK_WATERMARK_ALPHA: '水印透明度', REPLICA_MODE: '复刻模式(1原片/2去重)', REPLICA_DEDUP_MIN: '重复度下限',
+      REPLICA_DEDUP_MAX: '重复度上限', REPLICA_DEDUP_MIN_ON: '下限启用', REPLICA_DEDUP_MAX_ON: '上限启用',
+      REPLICA_ONLY_NAME: '只复刻该成片',
     };
-    const task = this._createTask('tool', title, env, files.length ? files[0] : root);
-    task.progress.total = files.length || 0;
-    this._enqueueTask(task);
-    this._lg('RUN', 'tool.start', toolName + '任务 · ' + title, { id: task.id, mode: isCanvas ? 'canvas' : 'steps', stepIds, files: files.length, output });
-    return { ok: true, taskId: task.id };
+    Object.keys(E).sort().forEach((k) => {
+      if (SKIP.test(k)) return;
+      if (!has(k)) return;
+      push(k + (CN[k] ? '（' + CN[k] + '）' : ''), E[k]);
+    });
+
+    // 流程：把"这批任务实际会怎么跑"写清楚 —— 用户明确要求能看出走了什么流程
+    L.push('');
+    L.push('【流程】');
+    // ⚠ 同 _taskSpecHumanEnv：按 task.type 判，不能靠 env 字段猜（批量 env 里也有 REPLICA_TXT）
+    const isMask = String(task && task.type) === 'mask' || (!(task && task.type) && has('MASK_RAW_DIRS'));
+    const isReplica = String(task && task.type) === 'replica';
+    if (isMask) {
+      L.push('  1. 扫描原片目录与遮罩目录，得到原片集与遮罩集');
+      L.push('  2. 两两组合（原片 × 遮罩）逐条叠加' + (String(E.MASK_MODE) === '3' ? '（仅遮罩，不加水印）' : ''));
+      if (String(E.MASK_MODE) === '1' || String(E.MASK_MODE) === '2') L.push('  3. 叠加水印' + (has('MASK_WATERMARK_ALPHA') ? '（透明度 ' + E.MASK_WATERMARK_ALPHA + '）' : ''));
+      L.push('  4. 输出 mp4 到 ' + (E.MASK_OUTPUT_DIR || '（见参数）') + '，并写「使用片段」日志');
+    } else if (isReplica) {
+      L.push('  1. 读取源日志 ' + E.REPLICA_TXT + ' 中的片段清单');
+      L.push('  2. ' + (String(E.REPLICA_MODE) === '2' ? '按重复度区间重新替换片段（去重模式）' : '按原片顺序复刻（原片模式）'));
+      L.push('  3. 按时长上限与加速阈值拼接，失败按重试次数重试');
+      L.push('  4. 按原命名规则写出成片');
+    } else {
+      L.push('  1. 读取配置 ' + (E.REPLICA_TXT || '（见参数）') + ' 的片段清单');
+      L.push('  2. 按分组数抽取片段，拼到时长上限' + (has('BATCH_SPEED_LIMIT') ? '（加速阈值 ' + E.BATCH_SPEED_LIMIT + '）' : ''));
+      L.push('  3. 按创作者名与后缀标记生成成片名');
+      L.push('  4. 写出成片与匹配日志');
+    }
+    if (has('BATCH_ONLY_NAMES') || has('MASK_ONLY_NAMES') || has('REPLICA_ONLY_NAMES')) {
+      const names = split(has('MASK_ONLY_NAMES') ? 'MASK_ONLY_NAMES' : (has('REPLICA_ONLY_NAMES') ? 'REPLICA_ONLY_NAMES' : 'BATCH_ONLY_NAMES'));
+      L.push('  ★ 本次为**续跑**：只处理下列 ' + names.length + ' 条，其余已完成的不重做');
+      names.slice(0, 20).forEach((x, i) => L.push('    ' + (i + 1) + '. ' + x));
+      if (names.length > 20) L.push('    …其余 ' + (names.length - 20) + ' 条');
+    }
+
+    // 原始 env：完整不截断（排查时靠它拿到任何未归纳的字段）
+    L.push('');
+    L.push('【原始 env】');
+    let raw = '';
+    try { raw = JSON.stringify(E, null, 2); } catch (e) { raw = '（序列化失败）'; }
+    L.push(raw.split('\n').map((s) => '  ' + s).join('\n'));
+    return L.join('\n');
+  }
+
+  _taskSpecText(task, title, spec, rawSpec) {
+    const L = [];
+    const push = (k, v) => L.push('  ' + String(k).padEnd(14, ' ') + String(v == null ? '' : v));
+    L.push('【任务】');
+    this._taskSpecHead(push, task, title);
+    // 输入清单：逐个列规格。
+    // ⚠ 用**同步** ffprobe 而不是引擎的 probeDetail —— 后者是 Promise，而快照必须在建任务的
+    //   同一拍写定（异步补写会与任务记录的生命周期错位）。8 个文件约 0.8 秒，提交时可接受。
+    // ⚠ 探测失败/无时长**如实记录**，不静默跳过：图片本来就没有 duration，把「静态图」
+    //   明确写出来，才解释得清「为什么这次跑出来的时长是遮罩的时长而不是素材的」。
+    const probe = (p) => {
+      try {
+        const bin = this._resolveFfmpegBin();
+        if (!bin || !bin.ffprobePath) return '（无 ffprobe，未探测）';
+        const { execFileSync } = require('child_process');   // 局部引入：backend 一贯不在顶层引 child_process
+        const out = execFileSync(bin.ffprobePath, [
+          '-v', 'error', '-print_format', 'json', '-show_streams', '-show_format', p,
+        ], { timeout: 15000, encoding: 'utf8', windowsHide: true });
+        const j = JSON.parse(out || '{}');
+        const v = (j.streams || []).find((x) => x.codec_type === 'video') || {};
+        const aud = (j.streams || []).filter((x) => x.codec_type === 'audio');
+        const dur = Number((j.format && j.format.duration) || v.duration || 0);
+        const w = Number(v.width || 0), h = Number(v.height || 0);
+        const parts = [];
+        parts.push(w && h ? w + '×' + h : '（无视频流）');
+        parts.push(dur > 0 ? (Math.round(dur * 100) / 100) + 's' : '静态（无时长）');
+        parts.push(aud.length ? '有音轨' : '无音轨');
+        if (v.pix_fmt) parts.push(v.pix_fmt);
+        return parts.join(' · ');
+      } catch (e) { return '（探测失败）'; }
+    };
+    L.push('');
+    L.push('【输入】');
+    const f = (spec && spec.files) || [];
+    if (f.length) f.forEach((p, i) => L.push('  ' + String(i + 1) + '. ' + p + '   ' + probe(p)));
+    else L.push('  （目录扫描）' + (spec && spec.root ? spec.root : '') + (spec && spec.recursive ? '  含子目录' : ''));
+    // 参数：逐项列数值 + 来源标注
+    L.push('');
+    L.push('【参数】');
+    const cv = (spec && spec.params && spec.params.canvas) || {};
+    // 参数来源：与**引擎的 DEFAULTS 逐项比对自动判定**。
+    // ⚠ 刻意不用前端上报的 touched：前端漏传或版本不匹配时，会把用户改过的值标成
+    //   「默认值」—— 那是**假信息**，比不标更误导航查（本快照第一版就踩了这个坑：
+    //   实测传了 scale=0.8 却全标"默认值"）。比对默认值不依赖任何外部输入，永远准。
+    let CV_DEFAULTS = {};
+    try { CV_DEFAULTS = require(path.join(this.enginesDir, 'tools', 'canvas-plan.js')).DEFAULTS || {}; } catch (e) { CV_DEFAULTS = {}; }
+    const presetName = rawSpec && rawSpec.params && rawSpec.params.presetName;
+    const srcOf = (k, v) => {
+      if (!(k in CV_DEFAULTS)) return '界面设置（无默认值可对比）';
+      return String(CV_DEFAULTS[k]) === String(v)
+        ? (presetName ? '预设「' + presetName + '」或默认值' : '默认值')
+        : '界面改过（默认 ' + CV_DEFAULTS[k] + '）';
+    };
+    const fmt = (obj, skip) => Object.keys(obj || {}).sort().forEach((k) => {
+      if (skip && skip.indexOf(k) >= 0) return;
+      L.push('  ' + k.padEnd(16) + String(obj[k]) + '   ← ' + srcOf(k, obj[k]));
+    });
+    if (spec && spec.mode === 'canvas') { L.push('  （画布合成参数）'); fmt(cv, ['touched', 'presetName']); }
+    else if (spec && Array.isArray(spec.stepIds) && spec.stepIds.length) { L.push('  处理步骤  ' + spec.stepIds.join(' → ')); }
+    // 输出策略
+    L.push('');
+    L.push('【输出】');
+    const o = (spec && spec.output) || {};
+    L.push('  模式            ' + (o.mode === 'directory' ? '按目录' : '覆盖原文件'));
+    L.push('  目录            ' + (o.dir || '（与输入同目录）'));
+    L.push('  命名            ' + (o.nameMode === 'suffix' ? '加后缀 ' + (o.suffix || '') : '保持原名'));
+    L.push('  冲突            ' + ({ overwrite: '覆盖', skip: '跳过已有', index: '加序号' }[o.onConflict] || o.onConflict));
+    L.push('  备份            ' + (o.backup ? '开' : '关') + (o.backup ? '  → ' + (o.backupDir || o.defaultBackupDir || '默认目录') : ''));
+    L.push('');
+    L.push('【原始入参】' + (spec && spec.mode === 'canvas' ? 'params.canvas' : 'params'));
+    let raw = '';
+    try { raw = JSON.stringify((spec && spec.params) || {}, null, 2); } catch (e) { raw = '（序列化失败）'; }
+    L.push(raw.split('\n').map((s) => '  ' + s).join('\n'));
+    return L.join('\n');
   }
 
   /**
@@ -8579,18 +9086,154 @@ class Api {
     try { return Number(this._settingsStore.remove('app', String(key))) > 0; } catch (e) { return false; }
   }
 
-  // Windows 系统通知（任务失败 / 本轮跑完）：
+  // ── Windows 系统通知（任务失败 / 本轮跑完）──
   // 走主进程 Notification（app.setAppUserModelId 已在 main 设置，通知才能正常显示）。
   // 通知不可用时静默 —— 提示失败绝不能影响任务流本身
-  _notify(title, body) {
+  //
+  // 实现要点（Electron 44 / Windows Toast 的能力边界）：
+  //   · **toastXml 独占** —— 一旦给出它，title/body/icon 三个属性就被忽略，只能四选一。
+  //     这里是刻意的：只有 toastXml 才能控制声音（audio）、停留时长（duration）与署名行。
+  //   · **纯文字 ToastGeneric** —— 不加图标也不用 emoji：通知区域已经显示 exe 的图标，
+  //     内容区再塞图只会显杂乱（用户明确要求）。
+  //   · **声音用系统音**（ms-winsoundevent:*）—— WinRT 不接受自定义音频，但这三个的
+  //     区分度足够：Critical 最刺耳（失败）、Default 轻（成功）、SMS 柔和（有暂停待续）。
+  //   · **文字分三层**：标题只说「什么任务出了什么事」，正文给原因与定位信息，
+  //     署名行给时间与队列 —— 标题里塞 50 字任务名会让真正有用的原因被挤到折叠区。
+  _notify(opts) {
     try {
       // 开关：设置的 notify_task_end —— **默认开启**（设置页「通用设置」里可关）
       if (!(this.config && this.config.notify_task_end === true)) return;
       const { Notification } = require('electron');
       if (!Notification || (Notification.isSupported && !Notification.isSupported())) return;
-      new Notification({ title: String(title || ''), body: String(body || '') }).show();
-      this._lg('RUN', 'notify', '系统通知 · ' + title + ' · ' + String(body || '').slice(0, 60));
+      const p = opts || {};
+      const lines = [].concat(p.lines || []).filter(Boolean);
+      const n = new Notification({
+        toastXml: this._toastXml(p.title, lines, p.attribution, p.sound, p.duration),
+      });
+      // 点击通知 → 主窗口置前并定位到该任务（回调由 main.js 注入，见 _noticeActivateHandler）
+      if (p.taskId) { try { n.on('click', () => this._noticeActivate(p.taskId)); } catch (e) {} }
+      n.show();
+      this._lg('RUN', 'notify', '系统通知 · ' + String(p.title || '')
+        + ' · ' + lines.concat(p.attribution ? [p.attribution] : []).join(' | ').slice(0, 120));
     } catch (e) {}
+  }
+
+  // XML 文本转义：标题与正文来自配置名 / 失败原因，用户可以起任何名字（含 & < >）
+  _xmlEsc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  // 组装 Windows Toast XML
+  // ⚠ 开头必须有 XML 声明 —— WinRT 的 ToastNotificationManager 不接受无声明的片段
+  _toastXml(title, lines, attribution, sound, duration) {
+    const texts = ['<text>' + this._xmlEsc(title) + '</text>'];
+    for (const l of [].concat(lines || [])) { if (l) texts.push('<text>' + this._xmlEsc(l) + '</text>'); }
+    if (attribution) texts.push('<text placement="attribution">' + this._xmlEsc(attribution) + '</text>');
+    return '<?xml version="1.0" encoding="UTF-8"?>'
+      + '<toast duration="' + (duration === 'long' ? 'long' : 'short') + '">'
+      + '<visual><binding template="ToastGeneric">' + texts.join('') + '</binding></visual>'
+      + '<audio src="ms-winsoundevent:Notification.' + this._xmlEsc(sound || 'Default') + '"/>'
+      + '</toast>';
+  }
+
+  // 通知点击 → 激活主窗口并定位任务（由 main.js 注入具体实现，避免 backend 直接依赖窗口对象）
+  _noticeActivate(taskId) {
+    try {
+      if (typeof this._noticeActivateHandler === 'function') this._noticeActivateHandler(taskId);
+    } catch (e) {}
+  }
+
+  // 任务类型 → 通知标题用的中文名。
+  // ⚠ 遮罩叠加的任务 type 也是 'batch'（引擎相同），只能靠 env 里的遮罩专有字段区分 ——
+  //   直接看 type 会把遮罩失败报成「批量拼接失败」，用户点进去才发现不是那一类任务。
+  _noticeKind(task) {
+    const t = task || {};
+    if (t.type === 'tool') return '视频处理';
+    if (t.type === 'replica') return '复刻';
+    const E = t.env || {};
+    if (E.MASK_OUTPUT_DIR || E.MASK_THEMES || E.MASK_RAW_DIRS || E.MASK_PROJECT_NAME) return '遮罩叠加';
+    return '批量拼接';
+  }
+
+  // 失败原因 → 归类短语。
+  // 为什么归类：_deriveFailReason 产出的句子动辄 20 字（如「没有可用素材（只认竖版
+  //   1080×1920 且有时长的视频）」），Windows 横幅一行放不下会被截断，而用户在通知里
+  //   真正需要的只是「哪一类问题」—— 完整原因在任务详情里已经能看到。
+  // 顺序：特异 → 通用（先判时长，再判环境、配置、素材，最后兜底）。
+  _noticeFailCategory(reason) {
+    const s = String(reason || '');
+    if (!s) return '未知原因，可在任务详情中查看';
+    // 顺序有讲究：
+    //   ① 「有失败成片可续跑」必须最先判 —— 它是最常见的失败，却不含任何特征词，
+    //     放到后面会被下面的宽松规则（如「时长」）误伤。
+    //   ② 「没有可用素材」必须排在「时长」之前 —— 它的完整文案是
+    //     「没有可用素材（只认竖版 1080×1920 且有时长的视频）」，句中带「时长」，
+    //     若先判时长会被误归成时长问题，把用户引向错误方向。
+    if (/可点击「继续制作」续跑|存在失败成片/.test(s)) return '有失败成片 · 可点「继续制作」续跑';
+    if (/没有可用素材|无任何合规视频|里没有可用素材/.test(s)) return '素材问题 · 没有可用素材';
+    if (/时长要求|找不到符合时长|时长组合|时长超标/.test(s)) return '时长不足 · 拼不出符合要求的组合';
+    if (/FFmpeg|FFprobe|编码失败|运行组件/.test(s)) return '环境问题 · FFmpeg 或编码异常';
+    if (/TXT 配置|不是 TXT 格式|水印|重复的成片名|视频路径/.test(s)) return '配置问题 · 检查 TXT 或水印';
+    if (/不存在|缺失|无可用|没有可用|没有可用的视频文件夹|无有效|没有可用于拼接/.test(s)) return '素材问题 · 视频缺失或不合规';
+    return '运行异常 · 可在任务详情中查看';
+  }
+
+  // 失败通知的**节流合并**。
+  // 为什么需要：批量跑 10 个、10 个都失败时，逐条发会连响 10 次、通知区域刷屏。
+  // 做法：首次失败起一个 2.5 秒的静默窗口，窗口内的失败只累加不发送；窗口结束
+  //   发**一条**「批量拼接失败（N 项）」。单任务时就是 2.5 秒后收到一条，延迟可接受。
+  // ⚠ 用定时器而非「先发后合并」：toast 一旦 show 就无法修改内容，合并必然残留两条。
+  _notifyFailSoon(task) {
+    const kind = this._noticeKind(task);
+    const cat = this._noticeFailCategory(task.failReason);
+    const now = Date.now();
+    const buckets = this._noticeFailBuckets || (this._noticeFailBuckets = {});
+    const b = buckets[kind];
+    if (b && b.timer) { b.count++; b.last = task; return; }
+    const entry = { count: 1, last: task, cat, timer: null };
+    entry.timer = setTimeout(() => {
+      delete buckets[kind];
+      const n = entry.count;
+      const t = entry.last;
+      const lines = [];
+      if (n > 1) lines.push('本轮共 ' + n + ' 个任务失败');
+      lines.push(entry.cat);
+      lines.push(String(t.title || '').slice(0, 40));
+      this._notify({
+        title: kind + '失败' + (n > 1 ? '（' + n + ' 项）' : ''),
+        lines, attribution: this._noticeStamp(t), sound: 'Critical', duration: 'long', taskId: t.id,
+      });
+    }, 2500);
+    buckets[kind] = entry;
+  }
+
+  // 立刻把待发窗口内的失败通知冲出去（队列清空时用，避免与「本轮跑完」通知撞在一起）
+  _noticeFlushFail() {
+    const buckets = this._noticeFailBuckets || {};
+    for (const kind of Object.keys(buckets)) {
+      const b = buckets[kind];
+      if (!b || !b.timer) continue;
+      clearTimeout(b.timer);
+      delete buckets[kind];
+      const t = b.last;
+      this._notify({
+        title: kind + '失败' + (b.count > 1 ? '（' + b.count + ' 项）' : ''),
+        lines: [b.cat, String(t.title || '').slice(0, 40)],
+        attribution: this._noticeStamp(t), sound: 'Critical', duration: 'long', taskId: t.id,
+      });
+    }
+  }
+
+  // 署名行：时间 + 队列规模 —— 让人知道「这是刚才那批」的收尾通知
+  _noticeStamp(task) {
+    const d = new Date();
+    const p2 = (n) => (n < 10 ? '0' : '') + n;
+    const hhmm = p2(d.getHours()) + ':' + p2(d.getMinutes());
+    let n = 0;
+    try { for (const t of this.tasks.values()) if (t && (t.status === 'queued' || t.status === 'running')) n++; } catch (e) {}
+    return hhmm + ' · 队列剩余 ' + n + ' 项' + (task && task.title ? ' · ' + String(task.title).split('/')[0].trim() : '');
   }
 
   _ffmpegTargetDir() {

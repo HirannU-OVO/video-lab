@@ -45,7 +45,7 @@ function uniqueSubdir(parent, base) {
  * @param {string} stamp     时间戳串，如 `0921-1130`（用于新建子目录命名）
  * @returns {{dir:string, created:boolean, reason:string}}
  */
-function resolveRunDir(targetDir, stamp) {
+function resolveRunDir(targetDir, stamp, opts) {
   const dir = String(targetDir || '').trim();
   if (!dir) return { dir: '', created: false, reason: '未指定目标目录' };
   // ★ 目录**不存在**必须先创建（真实数据实测踩到：不存在被当"空目录"放行，
@@ -59,6 +59,12 @@ function resolveRunDir(targetDir, stamp) {
     }
   }
   if (isEmptyDir(dir)) return { dir, created: false, reason: '目标目录为空，直接输出到该目录' };
+  // ★ noSubdir：**同批任务共享一个输出目录**（批量展开时由提交侧指定）。
+  //   为什么必须显式指定：默认逻辑是"目标目录非空就新建「输出-MMDD-HHMM」子目录"，
+  //   于是同一次提交展开出的 N 个任务各自建一个目录 —— 产物散在 N 处，
+  //   用户拿到的是 N 个同名文件分放 N 个文件夹，根本对不上哪个是哪个。
+  //   指定后它们都写进同一个目录，靠**文件名**区分（提交侧已把区分信息并入后缀）。
+  if (opts && opts.noSubdir) return { dir, created: false, reason: '同批任务共享输出目录（不建子目录）' };
   const sub = uniqueSubdir(dir, OUT_SUBDIR_PREFIX + String(stamp || ''));
   try {
     fs.mkdirSync(sub, { recursive: true });

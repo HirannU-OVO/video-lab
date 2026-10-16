@@ -314,7 +314,7 @@ async function runPipeline(opts) {
   let runDir = '';
   let runNote = '';
   if (output.mode === outplan.MODE_DIRECTORY) {
-    const rr = outplan.resolveRunDir(output.dir, stamp);
+    const rr = outplan.resolveRunDir(output.dir, stamp, { noSubdir: output.noSubdir === true });
     runDir = rr.dir;
     if (rr.reason) runNote = '输出落点：' + rr.reason;
   }

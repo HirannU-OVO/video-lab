@@ -1,7 +1,8 @@
 // 运行日志（面向排查）：行格式与级别说明见下。
 //
 // 文件划分（<存储根>\log\）：
-//   app-YYYY-MM-DD.log      全量事件（人读 + 结构化两用），保留 7 天
+//   app-YYYY-MM-DD.log      **给人看**的事件流（一行一事），保留 7 天
+//   task-YYYY-MM-DD.log     **给机器看**的任务参数快照（复现任务的唯一凭据），保留 30 天
 //   error-YYYY-MM-DD.log    lvl>=warn 与失败/异常事件的**索引行**（短正文副本 + ref），保留 30 天
 //   engine-YYYY-MM-DD.log   引擎原始 stdout/stderr（[taskId] 前缀 + 任务标记 + ffmpeg 行秒级采样），保留 7 天
 //   超 32MB 滚动为 -2/-3 序号；跨天未超保留期的旧文件压缩为 .gz（pruneAsync，空闲期调用）
@@ -50,6 +51,7 @@ function stampOf(d) {
 function fileOf(day) { return path.join(logDir, 'app-' + day + '.log'); }
 function errFileOf(day) { return path.join(logDir, 'error-' + day + '.log'); }
 function engineFileOf(day) { return path.join(logDir, 'engine-' + day + '.log'); }
+function specFileOf(day) { return path.join(logDir, 'task-' + day + '.log'); }
 
 /** 敏感值脱敏：令牌/口令不入日志（JSON 形态与裸键形态两道） */
 function scrub(s) {
@@ -349,7 +351,8 @@ function describeFiles(paths, { max = 60 } = {}) {
   return { files: out, count: list.length, bytes: total, truncated: list.length > out.length };
 }
 
-const FILE_RE = /^(app|error|engine)-(\d{4})-(\d{2})-(\d{2})(?:-(\d+))?\.log(\.gz)?$/;
+// task（参数快照）与 error 同为长保留：任务记录会被清除，快照一旦没了就无法复现。
+const FILE_RE = /^(app|error|engine|task)-(\d{4})-(\d{2})-(\d{2})(?:-(\d+))?\.log(\.gz)?$/;
 
 /** 异步清理 + 压缩：超保留期删除；跨天未压缩未超期 → gzip（异步，空闲期调用） */
 async function pruneAsync(keepDays = KEEP_DAYS, keepErrorDays = ERROR_KEEP_DAYS) {
@@ -364,7 +367,7 @@ async function pruneAsync(keepDays = KEEP_DAYS, keepErrorDays = ERROR_KEEP_DAYS)
       const kind = m[1];
       const dayStr = m[2] + '-' + m[3] + '-' + m[4];
       const t = new Date(Number(m[2]), Number(m[3]) - 1, Number(m[4])).getTime();
-      const cutoff = kind === 'error' ? cutoffErr : cutoffApp;
+      const cutoff = (kind === 'error' || kind === 'task') ? cutoffErr : cutoffApp;
       const full = path.join(logDir, f);
       if (t < cutoff) { try { fs.unlinkSync(full); removed++; } catch (e) {} continue; }
       if (m[6] || m[5]) continue;                        // 已滚动序号 / 已压缩
@@ -397,7 +400,7 @@ function pruneOld(keepDays = KEEP_DAYS, keepErrorDays = ERROR_KEEP_DAYS) {
       if (!m || m[6]) continue;
       const kind = m[1];
       const t = new Date(Number(m[2]), Number(m[3]) - 1, Number(m[4])).getTime();
-      const cutoff = kind === 'error' ? cutoffErr : cutoffApp;
+      const cutoff = (kind === 'error' || kind === 'task') ? cutoffErr : cutoffApp;
       if (t < cutoff) { try { fs.unlinkSync(path.join(logDir, f)); removed++; } catch (e) {} }
     }
     return { removed };
@@ -468,11 +471,35 @@ function readLog(opts) {
 /** 兼容旧调用点（app 日志读取） */
 function readDay(day, opts) { return readLog(Object.assign({ file: 'app', day }, opts || {})); }
 
+/**
+ * 任务参数快照 —— 第四个日志文件 task-YYYY-MM-DD.log。
+ *
+ * 为什么必须独立成文件（而不是塞进 app-*.log）：
+ *   · app-*.log 是**给人读的事件流**：一行一事、受 level 过滤、data 超 2000 字符会被
+ *     分片（↳[i/n]）—— 这些机制都会让"完整、原样、可机器解析"的东西在里面变形；
+ *   · 而任务记录一旦被清除，env 快照就是复现这次任务的**唯一凭据**，不能有损。
+ * 两类日志混在一起的结果是：人读日志被快照撑爆，快照又因为分片而不可还原。
+ * 快照内容由调用方（backend）组装成多行文本，这里只负责块分隔、脱敏、轮转。
+ */
+function writeTaskSpec(taskId, text) {
+  try {
+    if (!logDir) return;
+    const day = dayOf(new Date());
+    const file = specFileOf(day);
+    rotateIfNeeded(file);
+    syncAppend(file,
+      '════════ 任务参数快照 · ' + stampOf(new Date()) + ' · task=' + String(taskId || '-') + ' ════════\n'
+      + scrub(String(text == null ? '' : text)).replace(/\s*$/, '') + '\n'
+      + '════════ 快照结束 ════════\n');
+  } catch (e) { /* 快照失败绝不影响任务本身 */ }
+}
+
 module.exports = {
   init, getDir, setLevel, getLevel, logger, log,
   listDays, listErrorDays, listEngineDays, readLog, readDay,
   logEvent, logEventSync, sys, run, del, add, mod, cfg, ipc, err, ui,
   engineLine, engineTaskMark, engineFileOf,
+  writeTaskSpec, specFileOf,
   humanSize, describeFiles, pruneOld, pruneAsync, close,
   scrub, briefArgs, chEvent, isSilentChannel, KEEP_DAYS, ERROR_KEEP_DAYS,
 };

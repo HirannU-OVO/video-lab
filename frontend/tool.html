@@ -264,7 +264,7 @@
   <!-- 两 Tab 共享：目标文件夹与递归 -->
   <div class="tl-input">
     <div class="tl-line">
-      <span class="tl-label">目标文件夹</span>
+      <span class="tl-label">素材文件夹</span>
       <input class="tl-text" id="inRoot" placeholder="可直接粘贴/输入文件夹路径，或点右侧按钮选择（留空则不处理）">
       <button class="tl-btn" id="btnPickDir"><i data-icon="folder-open" data-size="14"></i>选择文件夹</button>
       <button class="tl-btn" id="btnPickFiles"><i data-icon="video" data-size="14"></i>选择视频</button>
@@ -399,6 +399,11 @@
             <button class="tl-btn" id="cvPickBgDir">选择</button>
             <button class="tl-btn" id="cvScanBg" title="扫描候选并统计数量">扫描</button>
           </div>
+          <div class="cv-row" id="cvEachBgRow">
+            <label class="opt-check opt-check--sm" title="勾选后：扫描到的每个背景各自合成一条成片（一次提交、逐条排队）；不勾选则所有成片随机共用这些背景">
+              <input type="checkbox" id="cvEachBg"><span class="opt-check__box"></span><span>每个背景各出一批</span>
+            </label>
+          </div>
           <div class="cv-row" id="cvBgPathRow" hidden>
             <span class="tl-label">背景文件</span>
             <input class="tl-path" type="text" id="cvBgPath" placeholder="选择背景图片或视频" style="flex:1;min-width:0">
@@ -427,11 +432,11 @@
 
           <div class="cv-group">参数预设</div>
           <div class="cv-row">
-            <select class="tl-sel" id="cvPreset" style="flex:1;min-width:0" title="选中即加载（无需再点加载按钮）"><option value="">（未选择）</option></select>
+            <select class="tl-sel" id="cvPreset" style="width:200px;flex:0 0 auto" title="选中即加载（无需再点加载按钮）"><option value="">（未选择）</option></select>
             <button class="tl-btn" id="cvPresetSave">保存当前</button>
             <button class="tl-btn" id="cvPresetDelete">删除</button>
           </div>
-          <div class="tl-hint">输出设置与「开始」按钮共用下方同一套 —— 切换标签页时自动载入本页那一份，两者取值互不影响；合成任务同样进统一队列（串行执行）。</div>
+          <div class="tl-hint">只作用于「画布合成」这一页的合成参数（输出设置、开始按钮在下方独立一份）。</div>
         </div>
       </div>
     </div>

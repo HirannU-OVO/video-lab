@@ -2009,6 +2009,23 @@ function buildHttpExtraRoutes() {
 }
 
 function registerIpc() {
+  // ★ Windows 通知点击 → 置前主窗口并定位到该任务。
+  // 复用既有的 locate_task 链路（api.taskLocate + locate_request 推送），
+  // 不另造一套定位协议 —— 那样两处行为迟早会漂移。
+  // 汇总类通知（没有具体 taskId）只置前窗口。
+  try {
+    api._noticeActivateHandler = (taskId) => {
+      try { showMainWindow(); } catch (e) {}
+      if (!taskId) return;
+      try {
+        const info = api.taskLocate(taskId);
+        if (!info || !info.ok) return;
+        const payload = Object.assign({}, info, { target: 'config', taskId });
+        if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('locate_request', payload);
+        if (httpServerInfo && httpServerInfo.broadcastAll) httpServerInfo.broadcastAll('locate_request', payload);
+      } catch (e) {}
+    };
+  } catch (e) {}
   // ⚠ 走异步版：同步版会 walkFiles + 逐文件 contentHash 占死事件循环数十秒（冷启动）
   ipcMain.handle('list_projects', (e, force) => api.listProjectsAsync(!!force));
   ipcMain.handle('list_versions', (e, project, name, force) => api.listVersions(project, name, force));
@@ -2540,13 +2557,13 @@ function registerIpc() {
     const result = await dialog.showOpenDialog(mainWin, { title: '选择要添加的文件夹', defaultPath: api.getRoot(), properties: ['openDirectory', 'multiSelections'] });
     return result.canceled || !result.filePaths || result.filePaths.length === 0 ? [] : result.filePaths;
   });
-  ipcMain.handle('pick_single_folder', async () => {
-    const result = await dialog.showOpenDialog(mainWin, { title: '选择要修改为的文件夹', defaultPath: api.getRoot(), properties: ['openDirectory'] });
+  ipcMain.handle('pick_single_folder', async (e) => {
+    const result = await dialog.showOpenDialog(winOf(e) || mainWin, { title: '选择要修改为的文件夹', defaultPath: api.getRoot(), properties: ['openDirectory'] });
     return result.canceled || !result.filePaths || result.filePaths.length === 0 ? '' : result.filePaths[0];
   });
   // 遮罩「添加文件」（原片/遮罩两栏共用）：多选视频文件（含 .lnk 快捷方式）
-  ipcMain.handle('pick_paths_files', async () => {
-    const result = await dialog.showOpenDialog(mainWin, {
+  ipcMain.handle('pick_paths_files', async (e) => {
+    const result = await dialog.showOpenDialog(winOf(e) || mainWin, {
       title: '选择视频文件（支持 mp4/mov/avi/mkv 等 / .lnk 快捷方式）',
       defaultPath: api.getRoot(),
       properties: ['openFile', 'multiSelections'],
@@ -2555,8 +2572,8 @@ function registerIpc() {
     return result.canceled || !result.filePaths || result.filePaths.length === 0 ? [] : result.filePaths;
   });
   // 遮罩「添加文件夹」（原片/遮罩两栏共用）：多选文件夹，其中视频将递归扫描
-  ipcMain.handle('pick_paths_dirs', async () => {
-    const result = await dialog.showOpenDialog(mainWin, { title: '选择文件夹（将递归扫描其中视频）', defaultPath: api.getRoot(), properties: ['openDirectory', 'multiSelections'] });
+  ipcMain.handle('pick_paths_dirs', async (e) => {
+    const result = await dialog.showOpenDialog(winOf(e) || mainWin, { title: '选择文件夹（将递归扫描其中视频）', defaultPath: api.getRoot(), properties: ['openDirectory', 'multiSelections'] });
     return result.canceled || !result.filePaths || result.filePaths.length === 0 ? [] : result.filePaths;
   });
   ipcMain.handle('resolve_shortcut', (e, p) => api.resolveShortcut(p));

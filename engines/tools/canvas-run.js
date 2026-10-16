@@ -128,7 +128,7 @@ async function run(spec, ctx, lockUtils) {
     const dirMode = String(out.mode || '') === outplan.MODE_DIRECTORY;
     let runDir = { dir: '', reason: '', ok: true };
     if (dirMode) {
-      runDir = outplan.resolveRunDir(String(out.dir || '').trim(), stampOf(now));
+      runDir = outplan.resolveRunDir(String(out.dir || '').trim(), stampOf(now), { noSubdir: out.noSubdir === true });
       if (!runDir.dir) { logger.error('输出目录', runDir.reason || '未指定输出目录'); return 1; }
     }
     // 备份根：与「视频处理」（pipeline.js）**同一口径** ——

@@ -816,6 +816,10 @@
 
   /** 样本信息条：显示「第 n/共 N 个 · 文件名」；有样本才显示该行 */
   function cvSetSampleInfo() {
+    // 内容清单变了 → 状态栏的「将生成多少条」随之刷新。
+    // ⚠ 放在本函数最前（而非各调用点）：它是**所有**内容变更路径的汇合处
+    //   （选文件 / 扫描文件夹 / 清空 / 切样本），逐处补容易漏。
+    try { cvCountHint(); } catch (e) {}
     var el = $('cvSampleInfo');
     var bar = $('cvSampleRow');
     var n = (cv.samples || []).length;
@@ -832,6 +836,7 @@
   function cvLoadSamples(andPreview) {
     if (state.files && state.files.length) {
       cv.samples = state.files.slice();
+      try { cvCountHint(); } catch (e) {}
       cv.sampleIndex = 0;
       cvSetSampleInfo();
       if (andPreview) { cv.duration = 0; cvRequestPreview({ immediate: true, force: true }); }
@@ -839,7 +844,7 @@
     }
     var root = String(state.root || '').trim();
     if (!root || !api || !api.canvas_list_sources) {
-      cv.samples = []; cv.sampleIndex = 0; cvSetSampleInfo(); return;
+      cv.samples = []; cv.sampleIndex = 0; cvSetSampleInfo(); try { cvCountHint(); } catch (e) {} return;
     }
     api.canvas_list_sources(root, state.recursive !== false).then(function (r) {
       cv.samples = (r && r.ok && r.list) ? r.list.map(function (x) { return x.path; }) : [];
@@ -962,6 +967,16 @@
     var m = cv.params.bgMode;
     $('cvBgDirRow').hidden = m !== 'dir';
     $('cvBgPathRow').hidden = !(m === 'image' || m === 'video');
+    // 「每个背景各出一条」只在**目录**方式下成立：image/video 是单一指定背景、
+    // color 没有背景文件。其余方式隐藏该开关，避免"勾了却看不出任何变化"。
+    var row = $('cvEachBgRow');
+    if (row) row.hidden = m !== 'dir';
+    var eb = $('cvEachBg');
+    if (eb && !eb._vlBound) {
+      eb._vlBound = true;
+      eb.addEventListener('change', function () { try { cvCountHint(); } catch (e) {} });
+    }
+    try { cvCountHint(); } catch (e) {}
   }
 
   function cvRequestPreview(opts) {
@@ -1449,9 +1464,13 @@
       cv.bgName = r.matched ? String(r.list[0].name || '') : '';
       // 候选清单留存：提交处理时随参数带给引擎，保证「预览看到哪一批，处理就用哪一批」
       cv.bgList = (r.list || []).map(function (x) { return x.path; });
+      try { cvCountHint(); } catch (e) {}
       cv.bgSizes = (r.list || []).map(function (x) { return (x.width || 0) + '×' + (x.height || 0); });
       // 背景**不再限制尺寸**（适合方式：填充 / 适应 / 拉伸 能处理任意尺寸）；尺寸只用于展示与"放大"提醒
-      setStatus('背景候选 ' + r.matched + ' / 扫描 ' + r.scanned + ' 个文件');
+      // ⚠ 不在这里单独 setStatus：状态栏由 cvCountHint 统一输出（它会把扫描结果一并带上）。
+      //   若在此处另写 setStatus，会覆盖状态栏的数量提示（「将生成多少条」就永远看不到了）。
+      cv.bgScan = '（扫描 ' + r.scanned + ' 个文件）';
+      cvCountHint();
       cvUpdateBgInfo();
       cvRequestPreview({ immediate: true, force: true });
     }).catch(function (e) { setStatus('背景扫描失败：' + ((e && e.message) || e)); });
@@ -1475,7 +1494,10 @@
     if (o.mode === 'directory' && !o.dir) return { error: '请选择输出文件夹（或把输出方式改为「覆盖原视频」）' };
     var p = Object.assign({}, cv.params);
     // 候选背景清单随参数带上 → 与预览用**同一批候选**（否则两边各自枚举，范围可能不一致）
-    if (p.bgMode === 'dir' && (cv.bgList || []).length) p.bgList = cv.bgList.slice();
+    // 「每个背景各出一条」：勾选后才带上候选清单（后端据此展开成 N 个任务）；
+      // 不勾选时不带，避免把几百条路径塞进 TOOL_SPEC。
+      var eachBg = $('cvEachBg');
+      if (p.bgMode === 'dir' && eachBg && eachBg.checked && (cv.bgList || []).length) p.bgList = cv.bgList.slice();
     return {
       spec: {
         mode: 'canvas',
@@ -1510,9 +1532,17 @@
       api.run_tool(spec).then(function (r) {
         setRunEnabled(true, '');
         if (!r || !r.ok) { toast((r && r.error) || '创建任务失败', 'error'); return; }
-        showLogBox('画布合成任务已加入队列 · ' + r.taskId);
-        setStatus('已加入执行队列（在任务列表中查看进度与结果）', 'ok');
-        watchTask(r.taskId);
+        // 「每个背景各出一条」时后端把一次提交展开成多个任务：逐条告知，并跟随第一条的进度
+        var ids = (r.taskIds && r.taskIds.length) ? r.taskIds : [r.taskId];
+        if (ids.length > 1) {
+          showLogBox('已加入队列 ' + ids.length + ' 个任务（每个背景各一条）：'
+            + ids.slice(0, 3).join('、') + (ids.length > 3 ? ' …' : ''));
+          setStatus('已加入执行队列 ' + ids.length + ' 个任务（在任务列表中查看进度与结果）', 'ok');
+        } else {
+          showLogBox('画布合成任务已加入队列 · ' + ids[0]);
+          setStatus('已加入执行队列（在任务列表中查看进度与结果）', 'ok');
+        }
+        watchTask(ids[0]);
       }).catch(function (e) { setRunEnabled(true, ''); toast('创建任务失败：' + ((e && e.message) || e), 'error'); });
     };
     if (spec.output.mode === 'overwrite') {
@@ -1528,7 +1558,9 @@
     submit();
   }
 
-  // ── 参数预设（存设置库 app scope，双版本共用同一份）──
+  // ── 参数预设（存设置库 app scope，本机全局一份，**只服务「画布合成」**）──
+  // ⚠ 原注释写的是"双版本共用同一份"，容易让人以为后处理也用同一批预设 ——
+  //   实际存进去的是 cv.params（画布参数），后处理面板连预设控件都没有。
   function cvLoadPresets(selectName) {
     if (!api || !api.canvas_preset_list) return;
     api.canvas_preset_list().then(function (r) {
@@ -1542,16 +1574,107 @@
     }).catch(function () {});
   }
 
+  /**
+   * 气泡确认框（含可选输入行）。
+   *
+   * 为什么需要它：保存预设、重命名这类操作**不是破坏性的**，用整屏遮罩的大窗（showDialog）
+   * 会打断操作流、把界面切走；气泡贴在被点的按钮旁边，视线不用移开。
+   * 样式复用 styles.css 里已有的 .vl-pop 一套（tool.html 已引入，零新增 CSS）。
+   *
+   * @param {{title?:string, message?:string, okLabel?:string, cancelLabel?:string, danger?:boolean,
+   *          input?:{value?:string, placeholder?:string, maxlength?:number}}} opts
+   * @param {HTMLElement} [anchor] 定位锚点（一般是触发按钮）；省略则居中
+   * @returns {Promise<true|string|null>} 无输入框：确认 true / 取消 null；
+   *                                      有输入框：确认返回**输入内容** / 取消 null
+   */
+  function confirmPopover(opts, anchor) {
+    var o = opts || {};
+    return new Promise(function (resolve) {
+      var prevMask = document.querySelector('.vl-pop-mask');
+      if (prevMask) prevMask.remove();
+      var prevPop = document.querySelector('.vl-pop');
+      if (prevPop) prevPop.remove();
+
+      var mask = document.createElement('div');
+      mask.className = 'vl-pop-mask';
+      var pop = document.createElement('div');
+      pop.className = 'vl-pop';
+      var html = '<div class="vl-pop__arrow"></div>';
+      if (o.title) html += '<div class="vl-pop__title"></div>';
+      if (o.message) html += '<div class="vl-pop__msg"></div>';
+      if (o.input) html += '<div class="modal__field"><input type="text" class="modal__input"></div>';
+      html += '<div class="vl-pop__actions">'
+        + '<button type="button" class="vl-pop__btn" data-k="cancel"></button>'
+        + '<button type="button" class="vl-pop__btn ' + (o.danger ? 'vl-pop__btn--danger' : 'vl-pop__btn--primary') + '" data-k="ok"></button>'
+        + '</div>';
+      pop.innerHTML = html;
+      if (o.title) pop.querySelector('.vl-pop__title').textContent = o.title;
+      if (o.message) pop.querySelector('.vl-pop__msg').textContent = o.message;
+      pop.querySelector('[data-k="cancel"]').textContent = o.cancelLabel || '取消';
+      pop.querySelector('[data-k="ok"]').textContent = o.okLabel || '确定';
+      var inputEl = pop.querySelector('.modal__input');
+      if (inputEl && o.input) {
+        inputEl.value = String(o.input.value == null ? '' : o.input.value);
+        if (o.input.placeholder) inputEl.placeholder = o.input.placeholder;
+        if (o.input.maxlength) inputEl.maxLength = o.input.maxlength;
+      }
+      document.body.appendChild(mask);
+      document.body.appendChild(pop);
+
+      // 定位：优先贴锚点下方居中；下方空间不足转上方；水平夹紧在视口内
+      var vw = window.innerWidth, vh = window.innerHeight, gap = 8;
+      var pr = pop.getBoundingClientRect();
+      var rect = (anchor && anchor.getBoundingClientRect && anchor.isConnected)
+        ? anchor.getBoundingClientRect() : null;
+      if (rect) {
+        var left = rect.left + rect.width / 2 - pr.width / 2;
+        var top = rect.bottom + gap;
+        var below = true;
+        if (top + pr.height > vh - 8) { top = rect.top - pr.height - gap; below = false; }
+        if (top < 8) { top = Math.min(rect.bottom + gap, Math.max(8, vh - pr.height - 8)); below = true; }
+        left = Math.max(8, Math.min(left, vw - pr.width - 8));
+        pop.classList.add(below ? 'vl-pop--below' : 'vl-pop--above');
+        pop.querySelector('.vl-pop__arrow').style.left =
+          Math.max(12, Math.min(rect.left + rect.width / 2 - left, pr.width - 22)) + 'px';
+        pop.style.left = left + 'px';
+        pop.style.top = Math.max(8, top) + 'px';
+      } else {
+        pop.style.left = Math.max(8, vw / 2 - pr.width / 2) + 'px';
+        pop.style.top = Math.max(8, vh / 2 - pr.height / 2) + 'px';
+      }
+
+      function done(v) {
+        mask.remove();
+        pop.remove();
+        document.removeEventListener('keydown', onKey);
+        resolve(v);
+      }
+      function onKey(e) {
+        if (e.key === 'Escape') { done(null); return; }
+        // 有输入框时回车即确认（起名后按回车是最顺手的路径）
+        if (e.key === 'Enter' && inputEl) { e.preventDefault(); done(inputEl.value); }
+      }
+      mask.addEventListener('click', function () { done(null); });
+      document.addEventListener('keydown', onKey);
+      pop.querySelector('[data-k="cancel"]').addEventListener('click', function () { done(null); });
+      pop.querySelector('[data-k="ok"]').addEventListener('click', function () {
+        done(inputEl ? inputEl.value : true);
+      });
+      if (inputEl) { inputEl.focus(); inputEl.select(); }
+    });
+  }
+
   function cvSavePreset() {
     var sel = $('cvPreset');
     var cur = sel ? String(sel.value || '') : '';
-    // 用自绘输入对话框取名字：**不能用 window.prompt**（Electron 渲染进程不支持，会抛异常）
-    showDialog({
+    // 气泡（不是大窗）：保存预设不是破坏性操作，没必要整屏遮罩打断操作流。
+    // 也不写副标题 —— 「保存在本机、以后所有画布合成都能选到」属于看过一次就够的信息，
+    // 每存一次都摆一遍只会挤占气泡空间。
+    confirmPopover({
       title: '保存参数预设',
-      message: '给当前画布参数起个名字（保存在本机，两个版本共用）',
-      input: { value: cur, placeholder: '例如：带货竖版·0.74' },
-      buttons: [{ label: '取消', value: false }, { label: '保存', value: true, primary: true }],
-    }).then(function (v) {
+      okLabel: '保存',
+      input: { value: cur, placeholder: '预设名称，例如：带货竖版·0.74' },
+    }, $('cvPresetSave')).then(function (v) {
       if (v == null || v === false) return;
       var name = String(v).trim();
       if (!name) { toast('预设名称不能为空', 'error'); return; }
@@ -1724,12 +1847,43 @@
         // ★ 就绪即启用主操作按钮 —— 参数不完整时交给点击后的校验去提示，
         //   否则按钮一直灰着，用户不知道为什么不能点
         setRunEnabled(true, '');
-        setStatus('就绪 —— 选好文件夹、勾选要做的处理后点「开始处理」');
+        // 画布面板用数量提示（会出多少条），后处理面板保留操作说明
+        if (!cvCountHint()) setStatus('就绪 —— 选好文件夹、勾选要做的处理后点「开始处理」');
       }
     }).catch(function (e) {
       setRunEnabled(false, '读取处理能力失败');
       toast('读取处理能力失败：' + ((e && e.message) || e), 'error');
     });
+  }
+
+  /**
+   * 状态栏的**数量提示**：把「这次会生成多少个成片」直接算出来摆在这儿。
+   *
+   * 为什么不用「就绪 —— 选好文件夹、勾选要做的处理后点开始处理」这类操作说明：
+   * 那是纯操作说明，用户看一眼界面就懂，占着状态栏这个黄金位置没有信息量。
+   * 而「会出多少条」恰恰是最容易算错、也最需要提前知道的事 ——
+   * 勾上「每个背景各出一条」后总量是 **背景数 × 内容数**，
+   * 5 个背景配 80 个视频就是 400 条，不提前说清很容易做完才发现多出十倍。
+   */
+  function cvCountHint() {
+    if (outBound !== 'canvas') return false;      // 后处理面板沿用原提示
+    var contentN = (cv.samples || []).length || (state.files || []).length || 0;
+    var bgN = (cv.bgList || []).length || Number(cv.bgTotal) || 0;
+    var bgScan = String(cv.bgScan || '');
+    var each = $('cvEachBg');
+    var on = !!(each && each.checked) && bgN > 1;
+    var txt;
+    if (on && contentN) {
+      txt = '将生成 ' + bgN + ' 个背景 × ' + contentN + ' 个内容 = ' + (bgN * contentN) + ' 个成片';
+    } else if (contentN) {
+      txt = '将生成 ' + contentN + ' 个成片' + (bgN > 1 ? '（背景从 ' + bgN + ' 个候选中随机取）' : '');
+    } else if (bgN > 1) {
+      txt = '背景候选 ' + bgN + ' 个' + bgScan + ' —— 请先选择要处理的内容';
+    } else {
+      txt = '就绪 —— 选好内容与背景后点「开始合成」';
+    }
+    setStatus(txt);
+    return true;
   }
 
   /** 主操作按钮可用态：灰显时必须给出原因（title），避免「一直灰着不知为何」 */
