@@ -430,6 +430,28 @@
             <button class="tl-btn" id="cvPickWm">选择</button>
           </div>
 
+          <div class="cv-group">输出编码</div>
+          <div class="cv-row">
+            <span class="tl-label">编码格式</span>
+            <select class="tl-sel" id="cvEncCodec" style="flex:1;min-width:0" title="H.264 兼容性最好；H.265 体积约小一半；AV1 体积最小但部分播放器/平台不支持">
+              <option>H.264（最通用）</option>
+              <option>H.265 / HEVC（体积更小）</option>
+              <option>AV1（体积最小）</option>
+            </select>
+          </div>
+          <div class="cv-row">
+            <span class="tl-label">CQ 值</span>
+            <input type="range" id="cvEncCq" min="0" max="51" step="1" value="26" title="恒定质量：数值越大体积越小、画质越低（0~51）">
+            <span class="cv-val" id="cvEncCqVal">26</span>
+          </div>
+          <div class="cv-row">
+            <span class="tl-label">容器格式</span>
+            <select class="tl-sel" id="cvContainer" style="flex:1;min-width:0" title="MP4 通用；MOV 便于进剪辑软件、或承接 .mov 素材的既有流程">
+              <option value="mp4">MP4（通用）</option>
+              <option value="mov">MOV（剪辑友好）</option>
+            </select>
+          </div>
+
           <div class="cv-group">参数预设</div>
           <div class="cv-row">
             <select class="tl-sel" id="cvPreset" style="width:200px;flex:0 0 auto" title="选中即加载（无需再点加载按钮）"><option value="">（未选择）</option></select>

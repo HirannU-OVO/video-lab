@@ -92,6 +92,14 @@ async function run(spec, ctx, lockUtils) {
   const params = (spec.params && spec.params.canvas) || {};
   const out = spec.output || {};
 
+  // ── 编码参数（与后处理「转码 / 码率」同一套取值）──
+  // 编码格式文案 → NVENC 键。文案与后处理保持一致，用户在两个模块看到的是同一组选项。
+  const CODEC_KEYS = { 'H.265 / HEVC（体积更小）': 'hevc', 'H.265': 'hevc', 'HEVC': 'hevc', 'AV1（体积最小）': 'av1', 'AV1': 'av1' };
+  const codecKey = CODEC_KEYS[String(params.encCodec || '')] || 'h264';
+  const encCqRaw = Number(params.encCq);
+  const encCq = isFinite(encCqRaw) ? Math.min(51, Math.max(0, Math.round(encCqRaw))) : 26;
+  const container = String(params.container || 'mp4').toLowerCase() === 'mov' ? 'mov' : 'mp4';
+
   // ── 参数预检（避免遍历到一半才发现没配背景）──
   const bgMode = String(params.bgMode || 'dir');
   if (bgMode === 'image' || bgMode === 'video') {
@@ -103,11 +111,37 @@ async function run(spec, ctx, lockUtils) {
   }
 
   const files = resolveFiles(spec, storageDir);
-  logger.total(files.length);
   if (!files.length) {
+    logger.total(0);
     logger.info('未找到可处理的视频（已跳过应用自管的输出/备份目录）');
     return 0;
   }
+
+  // ── 产出清单（jobs）──
+  // 默认「一个内容一条」；勾选「每个背景各出一批」时按 **内容 × 背景** 展开，
+  // 全部在**本任务内**逐条编码 —— 而不是拆成 N 个任务。
+  // 为什么放引擎内：拆任务会让「进度 / 失败重试 / 续跑 / 逐任务日志」各自为政，
+  // 而且 N 个背景就污染出 N 条任务记录（用户要的是一件事一个任务，进度按产物数走）。
+  // 这与遮罩叠加的组织方式一致（那本就是 N 原片 × M 遮罩 在一个任务里跑完）。
+  const eachBg = params.eachBackground === true;
+  let bgFixed = [];
+  if (eachBg) {
+    bgFixed = (Array.isArray(params.bgList) ? params.bgList : []).map(String).filter(exists);
+    if (bgFixed.length < 2) {
+      const bd = String(params.bgDir || '').trim();
+      if (exists(bd)) bgFixed = listBackgrounds(bd);
+    }
+    // 只有 0/1 张时退回「每内容一条」—— 展开没有意义，还会多绕一圈
+    if (bgFixed.length < 2) bgFixed = [];
+  }
+  const jobs = [];
+  if (bgFixed.length) {
+    for (const f of files) for (const b of bgFixed) jobs.push({ file: f, bgPath: b });
+    logger.info('每个背景各出一批：' + bgFixed.length + ' 个背景 × ' + files.length + ' 个内容 = ' + jobs.length + ' 条成片');
+  } else {
+    for (const f of files) jobs.push({ file: f, bgPath: '' });
+  }
+  logger.total(jobs.length);
 
   // ── 互斥锁：与后处理同一套语义（等待 / 已获取 / 已释放）──
   const lockRoot = lockDirFor(spec, files);
@@ -149,23 +183,31 @@ async function run(spec, ctx, lockUtils) {
       + (params.radius > 0 ? '·圆角 ' + params.radius : '')
       + (params.borderW > 0 ? '·边框 ' + params.borderW : '')
       + (params.bgBlur > 0 ? '·背景模糊 ' + params.bgBlur : ''));
-    logger.info('背景方式：' + ({ dir: '目录随机（每个视频独立随机）', image: '指定图片', video: '指定视频', color: '纯色 ' + params.bgColor }[bgMode] || bgMode));
+    logger.info('背景方式：' + (bgFixed && bgFixed.length ? ('每个背景各出一批 · ' + bgFixed.length + ' 个背景') : ({ dir: '目录随机（每个视频独立随机）', image: '指定图片', video: '指定视频', color: '纯色 ' + params.bgColor }[bgMode] || bgMode)));
+    logger.info('编码：' + ({ h264: 'H.264', hevc: 'H.265 / HEVC', av1: 'AV1' }[codecKey]) + ' · CQ ' + encCq + ' · 容器 ' + container);
     logger.info('输出方式：' + (dirMode ? '输出到指定目录' : '覆盖原视频'));
     logger.info('处理前备份：' + (out.backup === false ? '关闭' : '开启'));
     if (dirMode) logger.info('输出落点：' + runDir.reason + ' → ' + runDir.dir);
     logger.section();
 
     let done = 0, skipped = 0, failed = 0, encodes = 0;
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      logger.toolProgress(i + 1, files.length);
+    for (let i = 0; i < jobs.length; i++) {
+      const file = jobs[i].file;
+      // 本条的固定背景（仅「每个背景各出一批」时有）；空则由 pickBackground 随机挑
+      const fixedBg = String(jobs[i].bgPath || '');
+      // 背景名并入成片名：否则同一内容的多条产物文件名完全相同，
+      // 光看文件名无法判断哪条用的是哪张背景图。
+      const bgTag = fixedBg ? path.basename(fixedBg, path.extname(fixedBg)) : '';
+      logger.toolProgress(i + 1, jobs.length);
       const name = path.basename(file);
 
       const info = await probeDetail(file);
       if (!info.probeOk) { failed++; logger.info('   ❌ ' + name + ' —— 探测失败（非视频或已损坏）'); continue; }
       if (Number(info.duration) > 0) logger.fileDuration(Number(info.duration));
 
-      const bg = pickBackground(params);
+      const bg = fixedBg
+        ? { path: fixedBg, kind: VID_RE.test(fixedBg) ? 'video' : 'image', note: '指定 ' + path.basename(fixedBg) }
+        : pickBackground(params);
       if (bg.error) { failed++; logger.info('   ❌ ' + name + ' —— ' + bg.error); continue; }
 
       // 背景尺寸：用于「小于画布会被放大（可能模糊）」的提醒；探测失败则跳过提醒，不影响处理
@@ -190,10 +232,24 @@ async function run(spec, ctx, lockUtils) {
       let dest = file;
       if (dirMode) {
         const r = outplan.targetPath(runDir.dir, file, {
-          nameMode: out.nameMode, suffix: out.suffix, onConflict: out.onConflict,
+          // ⚠ 有固定背景时**强制**用「原名 + 后缀」并把背景名并进去：
+          //   同一内容会有多条产物，若沿用「保持原名」它们就完全同名，
+          //   光看文件名分不清哪条对应哪张背景（用户要的正是"一眼对上"）。
+          nameMode: bgTag ? 'suffix' : out.nameMode,
+          suffix: bgTag
+            ? ((out.nameMode === 'suffix' && out.suffix) ? String(out.suffix) + '-' + bgTag : '-' + bgTag)
+            : out.suffix,
+          onConflict: out.onConflict,
         });
         if (r.skip) { skipped++; logger.info('   ⏭️ ' + name + ' —— 目标已存在且策略为跳过'); continue; }
         dest = r.path;
+      }
+      // 容器格式：目标扩展名要跟着用户选的容器走 —— 否则会出现「按 mp4 封装却顶着 .mov 后缀」
+      // 这种名不副实的产物，交给下游（剪辑软件 / 平台）时按扩展名解码必然出错。
+      if (dirMode && dest !== file) {
+        const wantExt = container === 'mov' ? '.mov' : '.mp4';
+        const curExt = path.extname(dest);
+        if (curExt.toLowerCase() !== wantExt) dest = dest.slice(0, dest.length - curExt.length) + wantExt;
       }
 
       // 备份（覆盖原文件前；备份落在源目录之外，不会被下次扫描当素材）
@@ -219,7 +275,7 @@ async function run(spec, ctx, lockUtils) {
       if (info.hasAudio) args.push('-map', '0:a?');            // 音频取内容视频（背景音轨丢弃）
       args.push('-shortest');
       if (Number(info.duration) > 0) args.push('-t', String(info.duration));   // 无限背景按内容时长精确收尾
-      const full = args.concat(nvencArgs(26))
+      const full = args.concat(nvencArgs(encCq, codecKey))
         .concat(['-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', tmp]);
 
       const r = await runFfmpeg(full, { onProgress: (line) => logger.raw(line) });

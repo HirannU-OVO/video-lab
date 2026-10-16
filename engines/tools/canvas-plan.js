@@ -40,6 +40,19 @@ const DEFAULTS = {
   borderW: 0,             // 内容边框宽度（像素，0=无边框）
   borderColor: '#ffffff', // 边框颜色
   bgBlur: 0,              // 背景高斯模糊 sigma（0=不模糊）
+  // 批量：勾选后，每个背景各出一条成片（内容 × 背景，在一个任务内逐条编码）。
+  // 语义放在这里而不是只在界面：引擎要按它决定「每个内容配一个随机背景」还是「遍历全部背景」。
+  eachBackground: false,
+  // ── 编码（与后处理「转码 / 码率」同一套语义，取值同样）──
+  // ⚠ 默认值与后处理保持一致（恒定质量 + CQ 26 + h264），否则同一素材在两个模块
+  //   跑出来的体积/画质会有差异，用户无从解释。
+  encCodec: 'H.264（最通用）',   // H.264（最通用）| H.265 / HEVC（体积更小）| AV1（体积最小）
+  encMode: 'cq',                // cq=恒定质量 | abr=码率上限 | size=目标体积
+  encCq: 26,                    // 恒定质量的 CQ（0~51，越大越省体积）
+  encBitrateKbps: 0,            // 码率上限（kbps，abr 模式用）
+  encTargetMB: 0,               // 目标体积（MB，size 模式用）
+  // 容器格式：mp4 通用；mov 便于进剪辑软件（ProRes 管线）或承接 .mov 素材的既有流程
+  container: 'mp4',             // mp4 | mov
 };
 
 const NUM_RANGES = {

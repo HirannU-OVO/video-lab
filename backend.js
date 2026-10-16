@@ -6785,72 +6785,40 @@ class Api {
       }
       : { stepIds, params: s.params || {}, root, recursive: s.recursive !== false, files, output, toolName };
 
-    // ★ 画布合成的「每个背景各出一条」：一次提交展开成 N 个任务（N = 背景文件数）。
-    //   为什么在提交侧展开而不是让引擎一次跑多背景：引擎一个进程只出一份产物，
-    //   在引擎内部循环会让「进度 / 失败重试 / 续跑 / 逐任务日志」全部失效 ——
-    //   展开成独立任务后，这些能力全部复用现成机制（与遮罩叠加的 N×M 一致）。
-    //   ⚠ 背景清单直接取 params.canvas.bgList（前端扫描背景目录时就已带上，用于预览轮播）
-    //     并做存在性校验；这样 runTool 不必变成 async（枚举目录要碰磁盘）。
+    // ★ 画布合成的「每个背景各出一批」：**在引擎内**按 内容 × 背景 逐条出片（一个任务）。
+    //   为什么不在这里拆成 N 个任务：那会让 N 个背景污染出 N 条任务记录，而用户要的是
+    //   「一件事一个任务」、进度按产物数走。引擎本来就支持一个任务出多条产物
+    //   （遮罩叠加就是 N 原片 × M 遮罩 在一个任务里跑完），画布没理由例外。
+    //   ⚠ 清单长度 >1 时才置 eachBackground 并保留清单（引擎靠它枚举背景）；
+    //     其余情况剔掉 bgList —— 它是前端的预览候选，几百条路径塞进 TOOL_SPEC 没意义。
     const cvParams = (toolSpec.params && toolSpec.params.canvas) || {};
     const bgList = (isCanvas && Array.isArray(cvParams.bgList))
       ? cvParams.bgList.map(String).filter((p) => {
         try { return !!p && fs.existsSync(p) && fs.statSync(p).isFile(); } catch (e) { return false; }
       })
       : [];
-    const multiBg = isCanvas && bgList.length > 1;
-    // 逐个背景生成一份 spec：把背景固定成该文件（bgMode 由 dir 改为 image）。
-    // ⚠ 展开后必须从 params 里**剔除 bgList** —— 它是前端的候选清单（几百条路径），
-    //   留在 TOOL_SPEC 里既让引擎困惑（它只认 bgPath），又会把每个任务的 env 撑大。
-    const stripBgList = (cvs) => { const o = Object.assign({}, cvs); delete o.bgList; return o; };
-    // 背景名（去扩展名与文件系统非法字符）—— 用作文件名区分标记
-    const bgTagOf = (p) => String(path.basename(String(p || ''), path.extname(String(p || ''))))
-      .replace(/[\\/:*?"<>|]/g, '_').trim().slice(0, 40);
-    const baseSuffix = String((s.output && s.output.suffix) || '');
-    const specList = multiBg
-      ? bgList.map((bg) => {
-        const tag = bgTagOf(bg);
-        return {
-          spec: Object.assign({}, toolSpec, {
-            params: { canvas: Object.assign(stripBgList(cvParams), { bgMode: 'image', bgPath: bg }) },
-            // ★ 同批展开的任务**共享输出目录**（noSubdir）并把**背景名并入文件名后缀**。
-            //   两个一起才解决问题：默认逻辑是"目标目录非空就新建 输出-MMDD-HHMM 子目录"，
-            //   于是 N 个任务各自建目录 —— 产物散在 N 处、文件名还完全相同，
-            //   用户拿到 N 个同名文件分放 N 个文件夹，根本对不上哪个是哪个背景。
-            //   ⚠ 不依赖引擎的文件名冲突加序号：那个只在**同目录**才触发（`stem-1`），
-            //     而"批量"场景下用户真正需要的是**一眼看出这个成片用的是哪张背景图**，
-            //     序号做不到这件事（他不会去数 -1 是第几张图）。
-            output: Object.assign({}, toolSpec.output, {
-              noSubdir: true,
-              suffix: baseSuffix ? (baseSuffix + '-' + tag) : ('-' + tag),
-            }),
-          }),
-          bgPath: bg,
-        };
-      })
-      : [{ spec: toolSpec, bgPath: '' }];
-
-    const ids = [];
-    for (const one of specList) {
-      const sp = one.spec;
-      const spTitle = multiBg ? (toolName + ' · ' + path.basename(one.bgPath)) : title;
-      const env = {
-        TOOL_SPEC: JSON.stringify(sp),
-        VL_STORAGE_DIR: this.storageDir || '',
-      };
-      const task = this._createTask('tool', spTitle, env, files.length ? files[0] : root,
-        this._taskSpecHuman(spTitle, sp, isCanvas ? s : null));
-      task.progress.total = files.length || 0;
-      if (multiBg) task.bgBatch = { total: specList.length, bg: path.basename(one.bgPath) };
-      this._enqueueTask(task);
-      // ★ 完整技术快照独立落盘（task-<date>.log）：env 会随任务记录一起被清除，
-      //   而任务要"按同样参数重跑 / 复现"时，这份快照是唯一凭据。与人话摘要互为详略两版。
-      try { this._ensureRunLog().writeTaskSpec(task.id, this._taskSpecText(task, spTitle, sp, isCanvas ? s : null)); } catch (e3) {}
-      ids.push(task.id);
+    if (isCanvas) {
+      const cvs = Object.assign({}, cvParams);
+      if (bgList.length > 1) { cvs.eachBackground = true; cvs.bgList = bgList; }
+      else delete cvs.bgList;
+      toolSpec.params = Object.assign({}, toolSpec.params, { canvas: cvs });
     }
+    const env = {
+      TOOL_SPEC: JSON.stringify(toolSpec),
+      VL_STORAGE_DIR: this.storageDir || '',
+    };
+    const task = this._createTask('tool', title, env, files.length ? files[0] : root,
+      this._taskSpecHuman(title, toolSpec, isCanvas ? s : null));
+    // 进度总量按**产物数**：批量时是 内容 × 背景，否则按内容数
+    task.progress.total = (bgList.length > 1) ? (files.length * bgList.length) : (files.length || 0);
+    this._enqueueTask(task);
+    // ★ 完整技术快照独立落盘（task-<date>.log）：env 会随任务记录一起被清除，
+    //   而任务要"按同样参数重跑 / 复现"时，这份快照是唯一凭据。与人话摘要互为详略两版。
+    try { this._ensureRunLog().writeTaskSpec(task.id, this._taskSpecText(task, title, toolSpec, isCanvas ? s : null)); } catch (e3) {}
     this._lg('RUN', 'tool.start', toolName + '任务 · ' + title,
-      { id: ids[0], ids, mode: isCanvas ? 'canvas' : 'steps', stepIds, files: files.length, output, 展开任务数: ids.length });
-    // ⚠ 同时返回 taskIds 与 taskId：单任务时两者相同，旧调用方读 taskId 不受影响。
-    return { ok: true, taskId: ids[0], taskIds: ids };
+      { id: task.id, mode: isCanvas ? 'canvas' : 'steps', stepIds, files: files.length, output, 背景数: bgList.length });
+    // ⚠ 仍返回 taskIds（单元素）：前端沿用同一套"逐条告知"的分支逻辑，不必分两路
+    return { ok: true, taskId: task.id, taskIds: [task.id] };
   }
 
   /**
@@ -6987,6 +6955,14 @@ class Api {
       if (cv.bgBlur) parts2.push('模糊 ' + cv.bgBlur);
       if (cv.watermark) parts2.push('水印 ' + path.basename(cv.watermark));
       if (parts2.length) L.push('  ' + parts2.join('   '));
+      // 输出编码：与后处理同义的选项，用户需要一眼看出这次用的哪套（体积/兼容性差异很大）
+      const encParts = [];
+      encParts.push('编码 ' + (cv.encCodec ? String(cv.encCodec).replace(/（.*?）/g, '') : 'H.264'));
+      if (cv.encCq != null && cv.encCq !== '') encParts.push('CQ ' + cv.encCq);
+      encParts.push('容器 ' + (String(cv.container || 'mp4').toUpperCase()));
+      L.push('  ' + encParts.join('   '));
+      if (cv.eachBackground === true) L.push('  每个背景各出一批（内容 × 背景，逐条出片）');
+      if (cv.bgList && cv.bgList.length) L.push('  背景候选 ' + cv.bgList.length + ' 个');
       Object.keys(cv).forEach((k) => { if (!CN[k] && k !== 'touched' && k !== 'presetName') L.push('  ' + k + ' = ' + cv[k]); });
     } else {
       if (Array.isArray(S.stepIds) && S.stepIds.length) L.push('参数：处理步骤 ' + S.stepIds.join(' → '));
@@ -7081,6 +7057,8 @@ class Api {
     // 否则 log 里只有 N 份看起来雷同的快照，无从判断哪个任务是哪一批、对应哪张背景图。
     if (task && task.bgBatch) {
       push('同批展开', '共 ' + task.bgBatch.total + ' 个任务，本任务固定使用背景「' + task.bgBatch.bg + '」');
+      // 产物落点决策也要留痕：否则事后看到 N 个任务写进同一目录，无法判断是设计使然还是重名事故
+      if (task.bgBatch.outNote) push('输出落点', task.bgBatch.outNote);
     }
     try {
       const pkg = require(path.join(__dirname, 'package.json'));

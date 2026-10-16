@@ -950,6 +950,7 @@
       var map = {
         scale: 'cvScaleNum', dx: 'cvDx', dy: 'cvDy',
         targetW: 'cvTW', targetH: 'cvTH', radius: 'cvRadius', borderW: 'cvBorderW', bgBlur: 'cvBgBlur',
+        encCq: 'cvEncCq',
       };
       (keys || Object.keys(map)).forEach(function (k) {
         var el = $(map[k]);
@@ -959,6 +960,7 @@
         if (k === 'radius') { var rv = $('cvRadiusVal'); if (rv) rv.textContent = String(cv.params.radius); }
         if (k === 'borderW') { var bv = $('cvBorderWVal'); if (bv) bv.textContent = String(cv.params.borderW); }
         if (k === 'bgBlur') { var gv = $('cvBgBlurVal'); if (gv) gv.textContent = String(cv.params.bgBlur); }
+        if (k === 'encCq') { var ev = $('cvEncCqVal'); if (ev) ev.textContent = String(cv.params.encCq); }
       });
     } finally { cv.syncing = false; }
   }
@@ -974,7 +976,12 @@
     var eb = $('cvEachBg');
     if (eb && !eb._vlBound) {
       eb._vlBound = true;
-      eb.addEventListener('change', function () { try { cvCountHint(); } catch (e) {} });
+      eb.addEventListener('change', function () {
+        // 勾选时若还没有候选清单，顺手扫一次 —— 否则清单为空会让提交被拦下
+        // （报错提示是对的，但能让用户少一次往返就少一次）。
+        if (eb.checked && !(cv.bgList || []).length) { try { cvScanBackgrounds(false); } catch (e) {} }
+        try { cvCountHint(); } catch (e) {}
+      });
     }
     try { cvCountHint(); } catch (e) {}
   }
@@ -1358,6 +1365,15 @@
     onInput('cvBgDir', function (el) { cv.params.bgDir = String(el.value).trim(); cv.bgIndex = 0; return true; });
     onInput('cvBgPath', function (el) { cv.params.bgPath = String(el.value).trim(); return true; });
     onInput('cvBgBlur', function (el) { cv.params.bgBlur = Math.max(0, cvNum(el, 0)); cvWriteBackInputs(['bgBlur']); return true; });
+
+    // 输出编码（与后处理「转码 / 码率」同一套取值，两处看到的选项一致）
+    onInput('cvEncCodec', function (el) { cv.params.encCodec = String(el.value); return true; });
+    onInput('cvEncCq', function (el) {
+      cv.params.encCq = Math.min(51, Math.max(0, cvNum(el, 26)));
+      cvWriteBackInputs(['encCq']);
+      return true;
+    });
+    onInput('cvContainer', function (el) { cv.params.container = String(el.value); return true; });
     onInput('cvScale', function (el) { cv.params.scale = Math.min(3, Math.max(0.05, cvNum(el, 0.74))); cvWriteBackInputs(['scale']); return true; });
     onInput('cvScaleNum', function (el) { cv.params.scale = Math.min(3, Math.max(0.05, cvNum(el, 0.74))); cvWriteBackInputs(['scale']); return true; });
     onInput('cvPos', function (el) {
@@ -1490,14 +1506,30 @@
   /** 画布合成的提交参数：输入与**本页那份输出配置**（outStore.canvas），与后处理互不读取对方配置 */
   function cvCollectSpec() {
     if (!state.root && !state.files.length) return { error: '请先在页面上方选择要合成的文件夹或视频文件' };
+    // ⚠ 先把输出设置区的当前 DOM 值同步回 outStore，再读数据。
+    //   原因：输出控件（outDir / outSuffix / outBackupDir 等）**没有 input 监听**，
+    //   值只在 outCollect() 被调用时才存回 outStore，而 outCollect 只在「切换标签页」
+    //   (outBind) 时触发 —— 用户在输出区填了目录、直接点开始合成时读到的仍是空值，
+    //   界面报「请选择输出文件夹」，而输入框里明明有路径。
+    //   在读取入口做一次同步，比给每个控件挂事件更可靠（控件会增删，入口只有一个）。
+    try { outCollect(); } catch (e) {}
     var o = outStore.canvas;
     if (o.mode === 'directory' && !o.dir) return { error: '请选择输出文件夹（或把输出方式改为「覆盖原视频」）' };
     var p = Object.assign({}, cv.params);
     // 候选背景清单随参数带上 → 与预览用**同一批候选**（否则两边各自枚举，范围可能不一致）
-    // 「每个背景各出一条」：勾选后才带上候选清单（后端据此展开成 N 个任务）；
-      // 不勾选时不带，避免把几百条路径塞进 TOOL_SPEC。
-      var eachBg = $('cvEachBg');
-      if (p.bgMode === 'dir' && eachBg && eachBg.checked && (cv.bgList || []).length) p.bgList = cv.bgList.slice();
+    // 「每个背景各出一批」：勾选后带上候选清单（后端据此展开成 N 个任务）；
+    // 不勾选时不带，避免把几百条路径塞进 TOOL_SPEC。
+    var eachBg = $('cvEachBg');
+    if (p.bgMode === 'dir' && eachBg && eachBg.checked) {
+      // ⚠ 候选清单为空时**必须报错，不能静默降级**：清单只在成功扫描过背景目录后才有值，
+      //   若未扫描（或扫描未完成）就提交，老逻辑会当成普通单任务跑出一条成片 ——
+      //   用户明明勾选了「每个背景各出一批」，却只拿到 1 条，且界面没有任何提示。
+      //   宁可拦下来告诉他要先扫描，也不要跑出一个与预期不符的结果。
+      if (!(cv.bgList || []).length) {
+        return { error: '已勾选「每个背景各出一批」，但背景候选还没扫描 —— 请点背景目录旁的「扫描」后再开始合成' };
+      }
+      p.bgList = cv.bgList.slice();
+    }
     return {
       spec: {
         mode: 'canvas',
