@@ -40,6 +40,7 @@
     .tl-text::placeholder { color: var(--text-tertiary); }
     .tl-btn {
       display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px;
+      white-space: nowrap; flex-shrink: 0;   /* 文字恒一行、且不参与压缩（压缩交给同行输入框） */
       border-radius: var(--radius-6); border: 1px solid var(--border-neutral-l2);
       background: transparent; color: var(--text-secondary); cursor: pointer;
       font-family: var(--font-family-default); font-size: var(--body-sm-font-size);
@@ -136,7 +137,7 @@
     .tl-out__row--hide { display: none; }
     .tl-sep { height: 1px; background: var(--border-neutral-l1); }
 
-    /* 状态 + 开始按钮：作为输出设置框的最后一行（原先单独一条底部栏，只为塞这个按钮） */
+    /* 状态 + 开始按钮：作为输出设置框的最后一行（不单独占一条底部栏，省一栏纵向空间） */
     .tl-out__row--run { flex-wrap: nowrap; }
     .tl-status { flex: 1; min-width: 0; font-size: var(--body-sm-font-size); color: var(--text-secondary);
                  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -233,9 +234,15 @@
     .cv-row { display: flex; align-items: center; gap: 8px; }
     .cv-row > .tl-label { flex: 0 0 72px; }
     .cv-row .tl-num { width: 72px; }
-    /* 滑杆统一长度（含操作条的时间点滑杆）：固定宽度，避免各行因标签/数字框宽度不同而长短不一 */
+    /* 滑杆**固定长度**：各行（含多一个色块的边框行）的滑杆必须等长 ——
+       长度不一时，同一位置的可拖行程不同，拖动手感与刻度直觉都会乱。 */
     .cv-row input[type="range"] { flex: 0 0 120px; width: 120px; min-width: 0; }
-    .cv-val { min-width: 36px; text-align: right; font-size: 11px; color: var(--text-secondary); }
+    /* 数值：**左对齐、紧贴滑杆右端**。
+       ⚠ 若用 text-align:right（配合 min-width:36px），数值前的空白会把「0」推到离滑杆
+       约 37px 处 —— 数值看起来是个独立浮在行中的东西，与滑杆的从属关系被抹掉。
+       左对齐后间距就是行内 8px 的 gap；min-width 仍保留 3 位数宽度，
+       使数值位数变化时不致挤压同行的其它元素。 */
+    .cv-val { min-width: 26px; text-align: left; font-size: 11px; color: var(--text-secondary); }
     .cv-swatch { width: 28px; height: 22px; padding: 0; border: 1px solid var(--border-neutral-l1);
                  border-radius: 4px; background: none; cursor: pointer; }
     @media (max-width: 940px) {
@@ -329,6 +336,15 @@
             </div>
           </div>
           <div class="cv-warn" id="cvWarn"></div>
+
+          <div class="cv-group">水印</div>
+          <div class="cv-row">
+            <span class="tl-label">水印 PNG</span>
+            <input class="tl-path" type="text" id="cvWm" placeholder="可留空（水印图，整幅叠加）" style="flex:1;min-width:0;max-width:340px">
+            <button class="tl-btn" id="cvPickWm">选择</button>
+          </div>
+
+
         </div>
 
         <div class="cv-params">
@@ -353,7 +369,7 @@
             <input type="range" id="cvScale" min="0.05" max="2" step="0.01" value="0.74">
             <input class="tl-num" type="number" id="cvScaleNum" min="0.05" max="3" step="0.01" value="0.74">
           </div>
-          <div class="tl-hint" title="等比缩放决定视频在画布中的大小（非输出尺寸）；拖四角手柄时尺寸会吸附到「满屏 / 一半」两档，按住 Alt 可临时关闭吸附">视频在画布中的大小，非输出尺寸；拖角手柄吸满屏 / 一半（Alt 关闭）</div>
+          <div class="tl-hint">视频在画布中的大小，非输出尺寸；拖角手柄吸满屏 / 一半（Alt 关闭）</div>
           <div class="cv-row">
             <span class="tl-label">基准</span>
             <select class="tl-sel" id="cvPos">
@@ -400,7 +416,7 @@
             <button class="tl-btn" id="cvScanBg" title="扫描候选并统计数量">扫描</button>
           </div>
           <div class="cv-row" id="cvEachBgRow">
-            <label class="opt-check opt-check--sm" title="勾选后：扫描到的每个背景各自合成一条成片（一次提交、逐条排队）；不勾选则所有成片随机共用这些背景">
+            <label class="opt-check opt-check--sm" title="勾选后每个背景各出一批（成片数 = 内容数 × 背景数）">
               <input type="checkbox" id="cvEachBg"><span class="opt-check__box"></span><span>每个背景各出一批</span>
             </label>
           </div>
@@ -411,7 +427,7 @@
           </div>
           <div class="cv-row">
             <span class="tl-label">适合方式</span>
-            <select class="tl-sel" id="cvBgFit" style="flex:1;min-width:0" title="与 Windows 桌面背景的「选择适合方式」同名：填充 = 铺满画布、超出部分裁掉；适应 = 完整显示、留黑边；拉伸 = 铺满画布、可能变形">
+            <select class="tl-sel" id="cvBgFit" style="flex:1;min-width:0" title="填充 = 铺满裁掉超出；适应 = 完整显示留黑边；拉伸 = 铺满但可能变形">
               <option value="cover">填充</option>
               <option value="contain">适应</option>
               <option value="stretch">拉伸</option>
@@ -423,43 +439,13 @@
             <span class="cv-val" id="cvBgBlurVal">0</span>
           </div>
 
-          <div class="cv-group">水印</div>
-          <div class="cv-row">
-            <span class="tl-label">水印 PNG</span>
-            <input class="tl-path" type="text" id="cvWm" placeholder="可留空（水印图，整幅叠加）" style="flex:1;min-width:0">
-            <button class="tl-btn" id="cvPickWm">选择</button>
-          </div>
-
-          <div class="cv-group">输出编码</div>
-          <div class="cv-row">
-            <span class="tl-label">编码格式</span>
-            <select class="tl-sel" id="cvEncCodec" style="flex:1;min-width:0" title="H.264 兼容性最好；H.265 体积约小一半；AV1 体积最小但部分播放器/平台不支持">
-              <option>H.264（最通用）</option>
-              <option>H.265 / HEVC（体积更小）</option>
-              <option>AV1（体积最小）</option>
-            </select>
-          </div>
-          <div class="cv-row">
-            <span class="tl-label">CQ 值</span>
-            <input type="range" id="cvEncCq" min="0" max="51" step="1" value="26" title="恒定质量：数值越大体积越小、画质越低（0~51）">
-            <span class="cv-val" id="cvEncCqVal">26</span>
-          </div>
-          <div class="cv-row">
-            <span class="tl-label">容器格式</span>
-            <select class="tl-sel" id="cvContainer" style="flex:1;min-width:0" title="MP4 通用；MOV 便于进剪辑软件、或承接 .mov 素材的既有流程">
-              <option value="mp4">MP4（通用）</option>
-              <option value="mov">MOV（剪辑友好）</option>
-            </select>
-          </div>
-
           <div class="cv-group">参数预设</div>
           <div class="cv-row">
-            <select class="tl-sel" id="cvPreset" style="width:200px;flex:0 0 auto" title="选中即加载（无需再点加载按钮）"><option value="">（未选择）</option></select>
-            <button class="tl-btn" id="cvPresetSave" title="用当前参数**新建**一个预设（会先让你起名）">新建预设</button>
-            <button class="tl-btn" id="cvPresetOverwrite" title="用当前参数覆盖下拉里选中的那个预设">覆盖预设</button>
+            <select class="tl-sel" id="cvPreset" style="flex:1 1 auto;min-width:0;max-width:260px" title="选中即加载"><option value="">（未选择）</option></select>
+            <button class="tl-btn" id="cvPresetSave" title="把当前参数存成一个新预设">新建</button>
+            <button class="tl-btn" id="cvPresetOverwrite" title="用当前参数覆盖选中的预设">覆盖</button>
             <button class="tl-btn" id="cvPresetDelete">删除</button>
           </div>
-          <div class="tl-hint">只作用于「画布合成」这一页的合成参数（输出设置、开始按钮在下方独立一份）。</div>
         </div>
       </div>
     </div>
@@ -496,6 +482,24 @@
             <option value="skip">跳过</option>
           </select>
         </div>
+        <!-- 输出编码：**只服务画布合成**（存在 cv.params）。后处理有自己的「转码 / 码率」步骤参数，
+             因此这一行只在画布标签页出现（切页时由 syncOutputRows 控制显隐）。 -->
+        <div class="tl-out__row" id="cvEncRow">
+          <span class="tl-label">输出编码</span>
+          <select class="tl-sel" id="cvEncCodec" style="max-width:130px" title="H.264 兼容性最好；H.265 体积约小一半；AV1 体积最小但支持面窄">
+            <option>H.264</option>
+            <option>H.265 / HEVC</option>
+            <option>AV1</option>
+          </select>
+          <span class="tl-label" style="margin-left:10px">CQ</span>
+          <input type="range" id="cvEncCq" min="0" max="51" step="1" value="26" style="flex:0 0 110px;width:110px" title="恒定质量：数值越大体积越小、画质越低（0~51）">
+          <span class="cv-val" id="cvEncCqVal">26</span>
+          <span class="tl-label" style="margin-left:10px">格式</span>
+          <select class="tl-sel" id="cvContainer" style="max-width:100px" title="MP4 通用；MOV 便于进剪辑软件">
+            <option value="mp4">MP4</option>
+            <option value="mov">MOV</option>
+          </select>
+        </div>
         <div class="tl-sep"></div>
         <div class="tl-out__row">
           <label class="opt-check opt-check--sm"><input type="checkbox" id="outBackup"><span class="opt-check__box"></span><span>处理前备份原文件</span></label>
@@ -505,7 +509,7 @@
         </div>
         <div class="tl-hint" id="outHint"></div>
         <div class="tl-sep"></div>
-        <!-- 状态 + 开始按钮：收进输出设置框内 —— 原先单独占一条底部栏，只为塞这个按钮，白费一栏纵向空间 -->
+        <!-- 状态 + 开始按钮：收进输出设置框内 —— 单独占一条底部栏只为塞这个按钮，会白费一栏纵向空间 -->
         <div class="tl-out__row tl-out__row--run">
           <span class="tl-status" id="status">正在读取处理能力…</span>
           <button class="tl-run" id="btnRun" disabled><i data-icon="play" data-size="16"></i>开始处理</button>

@@ -94,7 +94,7 @@ async function run(spec, ctx, lockUtils) {
 
   // ── 编码参数（与后处理「转码 / 码率」同一套取值）──
   // 编码格式文案 → NVENC 键。文案与后处理保持一致，用户在两个模块看到的是同一组选项。
-  const CODEC_KEYS = { 'H.265 / HEVC（体积更小）': 'hevc', 'H.265': 'hevc', 'HEVC': 'hevc', 'AV1（体积最小）': 'av1', 'AV1': 'av1' };
+  const CODEC_KEYS = { 'H.264': 'h264', 'H.265 / HEVC': 'hevc', 'H.265': 'hevc', 'HEVC': 'hevc', 'AV1': 'av1' };
   const codecKey = CODEC_KEYS[String(params.encCodec || '')] || 'h264';
   const encCqRaw = Number(params.encCq);
   const encCq = isFinite(encCqRaw) ? Math.min(51, Math.max(0, Math.round(encCqRaw))) : 26;

@@ -420,11 +420,11 @@
     var hint = $('inputHint');
     if (state.files.length) {
       hint.className = 'tl-hint';
-      hint.textContent = '已选 ' + state.files.length + ' 个视频文件（按文件清单处理，不再按文件夹扫描）';
+      hint.textContent = '已选 ' + state.files.length + ' 个视频文件';
     } else if (state.root) {
       hint.className = 'tl-hint';
       hint.textContent = '将' + (state.recursive ? '递归' : '仅在本层') + '扫描该文件夹下的视频'
-        + '（自动跳过应用自身的输出与备份文件夹）';
+        + '（跳过输出与备份文件夹）';
     } else {
       hint.className = 'tl-hint';
       hint.textContent = '请选择文件夹，或直接选择若干视频文件';
@@ -496,12 +496,17 @@
     // 文件名选「原名」时不需要后缀框（后缀只对「原名 + 后缀」有意义）
     var sfx = $('outSuffix');
     if (sfx) sfx.hidden = $('outNameMode').value !== 'suffix';
+    // 输出编码行只属于画布合成：参数存在 cv.params，后处理用的是「转码 / 码率」步骤参数。
+    // ⚠ 用 tl-out__row--hide 类而不是 hidden 属性 —— 本行是 display:flex，
+    //   hidden 属性会被 flex 布局覆盖（[hidden] 的 UA 样式优先级低于类选择器）。
+    var encRow = $('cvEncRow');
+    if (encRow) encRow.classList.toggle('tl-out__row--hide', outBound !== 'canvas');
     $('outModeHint').textContent = dirMode
       ? '空文件夹 → 直接输出；已有文件 → 自动新建子文件夹'
       : '处理结果直接替换原文件（有备份可还原）';
-    $('outHint').textContent = $('outBackup').checked
-      ? '备份文件夹留空时落在应用数据文件夹下（源文件夹之外，不会被当成素材再次处理）'
-      : '已关闭备份：覆盖后原文件不可恢复';
+    // 开启备份时不额外说明：默认落点属于"看过一次就够"的信息，常驻界面只会挤占空间。
+    // 只在**关闭**备份时提示 —— 那是有后果的信息（覆盖后不可恢复），值得留在视线里。
+    $('outHint').textContent = $('outBackup').checked ? '' : '已关闭备份：覆盖后原文件不可恢复';
   }
 
   function bindOutputEvents() {
@@ -1706,7 +1711,7 @@
     confirmPopover({
       title: '保存参数预设',
       okLabel: '保存',
-      input: { value: cur, placeholder: '预设名称，例如：带货竖版·0.74' },
+      input: { value: cur, placeholder: '预设名称' },
     }, $('cvPresetSave')).then(function (v) {
       if (v == null || v === false) return;
       var name = String(v).trim();
@@ -1785,6 +1790,19 @@
   }
 
   /** 把参数写回全部控件（用于预设加载与初始化） */
+  /**
+   * 编码格式名的**旧取值规范化**。
+   * 下拉选项曾经带括号说明（如 `H.264（最通用）`），后来去掉了括号；
+   * 而已存的预设里仍是旧字符串 —— 直接写进 select 会因匹配不到 option 而变成空值，
+   * 于是"加载预设"看起来正常、实际把编码格式丢了。这里统一收敛到新取值。
+   */
+  function cvNormCodec(v) {
+    var s = String(v == null ? '' : v);
+    if (s.indexOf('H.265') >= 0 || s.toUpperCase().indexOf('HEVC') >= 0) return 'H.265 / HEVC';
+    if (s.toUpperCase().indexOf('AV1') >= 0) return 'AV1';
+    return 'H.264';
+  }
+
   function cvApplyParamsToInputs() {
     cv.syncing = true;
     try {
@@ -1802,6 +1820,12 @@
       set('cvBorderW', p.borderW); set('cvBorderWVal', p.borderW);
       set('cvBorderColor', p.borderColor);
       set('cvWm', p.watermark);
+      // 输出编码三项（与后处理同义的选项）：预设里也存着它们，应用预设时必须一并回到界面。
+      // ⚠ 此处漏掉的表现很隐蔽：加载预设看着正常，编码格式 / CQ / 格式却仍停在上一次的取值上，
+      //   用户以为"预设带着这些"，实际下一次提交用的是界面上残留的旧值。
+      set('cvEncCodec', cvNormCodec(p.encCodec));
+      set('cvEncCq', p.encCq); set('cvEncCqVal', p.encCq);
+      set('cvContainer', String(p.container || 'mp4') === 'mov' ? 'mov' : 'mp4');
     } finally { cv.syncing = false; }
     cvSyncBgRows();
   }
