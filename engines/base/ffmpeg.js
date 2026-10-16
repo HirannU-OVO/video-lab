@@ -10,22 +10,22 @@ const { spawn } = require('node:child_process');
 //   部分剪辑软件与预览组件不认，产物会"打不开"，进而拖垮下游模块 —— 兼容性硬保障）
 // · AV1 —— 体积最小；mp4 内默认 av01 标签即通用写法
 const NVENC_CODECS = {
-  h264: ['-c:v', 'h264_nvenc', '-preset', 'p4', '-rc', 'vbr', '-cq', '27', '-profile:v', 'high', '-level', '4.1'],
-  hevc: ['-c:v', 'hevc_nvenc', '-preset', 'p4', '-rc', 'vbr', '-cq', '27', '-tag:v', 'hvc1'],
-  av1: ['-c:v', 'av1_nvenc', '-preset', 'p4', '-rc', 'vbr', '-cq', '27'],
+  h264: ['-c:v', 'h264_nvenc', '-preset', 'p4', '-rc', 'vbr', '-cq', '26', '-profile:v', 'high', '-level', '4.1'],
+  hevc: ['-c:v', 'hevc_nvenc', '-preset', 'p4', '-rc', 'vbr', '-cq', '26', '-tag:v', 'hvc1'],
+  av1: ['-c:v', 'av1_nvenc', '-preset', 'p4', '-rc', 'vbr', '-cq', '26'],
 };
 const NVENC_ARGS = NVENC_CODECS.h264;
 
 /**
  * 按 CQ（+ 可选编码格式）生成编码参数（其余参数一律用硬约束值，**不开放调整**）。
  * 工具侧的「转码 / 码率」步骤只改 CQ 与编码格式，其余由本源统一注入 —— 避免各处手写参数写出偏门组合。
- * @param {number|null|undefined} cq 传 null/undefined 时用默认 27
+ * @param {number|null|undefined} cq 传 null/undefined 时用默认 26（全项目统一值）
  * @param {'h264'|'hevc'|'av1'} [codec] 编码格式，缺省 h264（向后兼容既有调用）
  */
 function nvencArgs(cq, codec) {
-  const q = (cq == null || !isFinite(Number(cq))) ? '27' : String(Math.round(Number(cq)));
+  const q = (cq == null || !isFinite(Number(cq))) ? '26' : String(Math.round(Number(cq)));
   const args = NVENC_CODECS[String(codec || 'h264')] || NVENC_CODECS.h264;
-  return args.map((x) => (x === '27' ? q : x));
+  return args.map((x) => (x === '26' ? q : x));
 }
 
 /**

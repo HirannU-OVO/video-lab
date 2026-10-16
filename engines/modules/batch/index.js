@@ -1327,7 +1327,7 @@ async function run(ctx, env = process.env) {
       const encArgs = [
         '-filter_complex', filterComplex,
         '-map', mapV, '-map', mapA,
-        '-c:v', 'h264_nvenc', '-preset', 'p4', '-rc', 'vbr', '-cq', '27',
+        '-c:v', 'h264_nvenc', '-preset', 'p4', '-rc', 'vbr', '-cq', '26',
         '-profile:v', 'high', '-level', '4.1',
         '-c:a', 'aac', '-b:a', '192k',
         '-f', 'mp4',

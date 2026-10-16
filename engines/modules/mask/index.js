@@ -273,7 +273,7 @@ async function run(ctx, env = process.env) {
           '-i', j.vidPath, '-i', cfg.watermark,
           '-filter_complex', filter,
           '-map', '[outv]', '-map', '0:a?',
-          '-c:v', 'h264_nvenc', '-preset', 'p4', '-rc', 'vbr', '-cq', '25',
+          '-c:v', 'h264_nvenc', '-preset', 'p4', '-rc', 'vbr', '-cq', '26',
           '-c:a', 'aac', '-b:a', '192k', '-shortest',
           // 临时名无扩展名可推断容器 → 必须显式 -f mp4（与 batch/replica 同）
           '-f', 'mp4',
@@ -372,7 +372,7 @@ async function run(ctx, env = process.env) {
           // 音频来源：遮罩自带音轨时用遮罩音轨；遮罩没有音频流时回退原视频音轨，
           // ⚠ 否则成片会完全没有声音（固定取 1:a? 时，遮罩无声即输出无音轨）
           '-map', '[outv]', '-map', maskHasAudio ? '1:a?' : '0:a?',
-          '-c:v', 'h264_nvenc', '-preset', 'p4', '-rc', 'vbr', '-cq', '25',
+          '-c:v', 'h264_nvenc', '-preset', 'p4', '-rc', 'vbr', '-cq', '26',
           '-c:a', 'aac', '-b:a', '192k',
           // 临时名无扩展名可推断容器 → 必须显式 -f mp4（与 batch/replica 同）
           '-f', 'mp4',

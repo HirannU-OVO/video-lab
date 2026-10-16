@@ -48,7 +48,7 @@ module.exports = {
     { key: 'mode', label: '方式', type: 'select', default: '恒定质量',
       options: ['恒定质量', '码率上限', '目标体积'],
       hint: '恒定质量 = 只管画质；另两种按大小压' },
-    { key: 'cq', label: 'CQ 值', type: 'number', default: 27, min: 0, max: 51,
+    { key: 'cq', label: 'CQ 值', type: 'number', default: 26, min: 0, max: 51,
       hint: '越大文件越小、画质越差（0~51，默认 27）',
       showWhen: { key: 'mode', in: ['恒定质量'] } },
     { key: 'bitrateKbps', label: '码率上限(kbps)', type: 'number', default: 5000, min: 100, step: 100,
@@ -89,7 +89,7 @@ module.exports = {
     const resNote = resOff ? '分辨率归位 ' + curW + '×' + curH + ' → ' + want[0] + '×' + want[1] : '';
 
     if (mode === '恒定质量') {
-      const cq = num(params.cq, 27);
+      const cq = num(params.cq, 26);
       return Object.assign(base, {
         cq,
         note: ['重编码为 ' + codecName + '（CQ ' + cq + '）', resNote].filter(Boolean).join('；'),

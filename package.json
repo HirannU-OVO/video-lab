@@ -24,7 +24,7 @@
       }
     ],
     "directories": {
-      "output": "dist"
+      "output": "../../../Setup"
     },
     "afterPack": "build/afterPack.js",
     "files": [

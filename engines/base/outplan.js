@@ -128,6 +128,40 @@ function tempPathFor(finalPath) {
 }
 
 /**
+ * 把编码完成的临时产物**原子地**放到最终位置 —— 画布与后处理的唯一落盘入口。
+ *
+ * 同目录：直接原子改名（同分区内必原子），并套 renameWithRetry 抗 Windows 上
+ *   杀软 / 索引服务对「刚写完的大文件」的瞬时占用 —— 单次失败会把**已编码成功**的
+ *   成片误判为失败，那是白跑一遍编码。
+ * 跨目录（可能跨盘，rename 会 EXDEV 失败）：先复制到**目标目录内的临时名**，再原子改名过去。
+ *
+ * ⚠ 为什么不直接 copy 到正式名：copy 大文件耗时可观，中途中断或失败会在目标位置留下
+ *   一个顶着**正式名**、看起来像成品的半截文件 —— 下游按扩展名解码必然出错，
+ *   而且它不会被「临时产物清理」识别（形态是正式名，不是 .tmp）。
+ *   经目标目录内的临时名中转后，目标位置要么不存在、要么就是完整文件。
+ *
+ * @param {string} tmp  编码产出的临时文件（tempPathFor 生成）
+ * @param {string} dest 最终路径
+ * @returns {Promise<Error|null>} null 表示成功
+ */
+async function placeFile(tmp, dest) {
+  const sameDir = path.dirname(String(tmp)) === path.dirname(String(dest));
+  if (sameDir) return paths.renameWithRetry(tmp, dest);
+  const staged = paths.tempNameFor(dest);
+  try {
+    fs.copyFileSync(tmp, staged);
+  } catch (e) {
+    try { fs.unlinkSync(staged); } catch (e2) { /* 清理失败不影响返回值 */ }
+    return e;
+  }
+  const err = await paths.renameWithRetry(staged, dest);
+  if (err) { try { fs.unlinkSync(staged); } catch (e2) { /* 同上 */ } return err; }
+  // 源临时文件用完即删（跨目录路径下才需要；同目录分支已由 rename 移走）
+  try { fs.unlinkSync(tmp); } catch (e2) { /* 残留由续跑清理兜底 */ }
+  return null;
+}
+
+/**
  * 扫描阶段应排除的目录名 —— 备份/预览等应用自管产物**绝不能**被当素材再处理。
  * @param {string} storageDir 数据根
  * @param {string} scanRoot   被扫描的根
@@ -147,5 +181,5 @@ function excludedFromScan(storageDir, scanRoot) {
 module.exports = {
   MODE_OVERWRITE, MODE_DIRECTORY,
   isEmptyDir, resolveRunDir, uniqueSubdir,
-  backupDirFor, targetPath, tempPathFor, excludedFromScan,
+  backupDirFor, targetPath, tempPathFor, placeFile, excludedFromScan,
 };

@@ -241,7 +241,10 @@
     // 获取浏览器访问地址（含 token）：本体/浏览器侧都可调用，便于开发测试拿到真实 token
     get_browser_url: function () { return invoke('get_browser_url', []); },
     // 关闭设置内嵌模态（未保存确认放弃修改后调用，本体为真正关闭设置窗口）
-    force_close_settings: function () { closeEmbeddedModal(); return Promise.resolve({ ok: true }); },
+    // 关设置：先收起内嵌模态，再真正关窗口。
+    // ⚠ 这是一个**两步动作**，必须成对出现：只收起内嵌模态则窗口还在，
+    //   只通知后端关闭窗口则模态仍浮在窗口上。两种残缺都表现为「关不掉」。
+    force_close_settings: function () { closeEmbeddedModal(); return invoke('force_close_settings', []); },
     tray_menu_click: function (action) { return invokeArgs('tray_menu_click', action); },
     clean_duplicate_star: function (commit) { return invokeArgs('clean_duplicate_star', commit); },
     open_external: function (url) { return invokeArgs('open_external', url); },
@@ -271,7 +274,7 @@
     on_settings_saved: function (cb) { return onEvent('settings_saved', cb); },
     notify_dirty: function (d) { /* 浏览器侧无需通知主进程脏标记 */ },
     on_confirm_discard: function (cb) { return onEvent('confirm_discard_request', cb); },
-    force_close_settings: function () { return invoke('force_close_settings', []); },
+
     on_settings_flash_close: function (cb) { return onEvent('settings_flash_close', cb); },
     on_settings_window_opened: function (cb) { return onEvent('settings_window_opened', cb); },
     on_settings_window_closed: function (cb) { return onEvent('settings_window_closed', cb); },

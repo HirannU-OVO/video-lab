@@ -263,8 +263,10 @@ async function processFile(file, steps, opts) {
   try {
     const st = fs.statSync(tmp);
     if (!st.size) throw new Error('产物为空');
-    if (o.mode === outplan.MODE_OVERWRITE) fs.renameSync(tmp, finalPath.path);
-    else { fs.copyFileSync(tmp, finalPath.path); fs.unlinkSync(tmp); }
+    // 统一落盘入口（同 outplan.placeFile）：覆盖模式下与临时文件同目录 → 原子改名；
+    // 输出到别处 → 先复制到目标目录内的临时名再原子改名，避免留下顶着正式名的半截产物。
+    const placeErr = await outplan.placeFile(tmp, finalPath.path);
+    if (placeErr) throw placeErr;
   } catch (e) {
     try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch (e2) {}
     return { ok: false, reason: '落盘失败：' + e.message, encodes, notes };

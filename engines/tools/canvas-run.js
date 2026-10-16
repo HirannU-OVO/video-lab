@@ -292,8 +292,10 @@ async function run(spec, ctx, lockUtils) {
       try {
         const st = fs.statSync(tmp);
         if (!st.size) throw new Error('产物为空');
-        if (String(dest) !== String(file)) { fs.copyFileSync(tmp, dest); fs.unlinkSync(tmp); }
-        else fs.renameSync(tmp, dest);
+        // 统一落盘入口：同目录原子改名（带重试）；跨目录先复制到目标目录内的临时名再改名。
+        // 覆盖原文件时 dest 与 tmp 同目录，走的也是原子改名。
+        const placeErr = await outplan.placeFile(tmp, dest);
+        if (placeErr) throw placeErr;
       } catch (e) {
         try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch (e2) {}
         failed++;
