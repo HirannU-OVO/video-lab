@@ -1464,6 +1464,7 @@
     // 参数预设：**选中即加载**（不必再点一次「加载」按钮）
     $('cvPreset').addEventListener('change', function () { if (String(this.value || '')) cvApplyPreset(); });
     $('cvPresetSave').addEventListener('click', cvSavePreset);
+    $('cvPresetOverwrite').addEventListener('click', cvOverwritePreset);
     $('cvPresetDelete').addEventListener('click', cvDeletePreset);
     cvBindDrag();
   }
@@ -1731,6 +1732,32 @@
       cvRequestPreview({ immediate: true, force: true });
       toast('已加载预设：' + name, 'ok');
     }).catch(function (e) { toast('加载预设失败：' + ((e && e.message) || e), 'error'); });
+  }
+
+  /**
+   * 用当前参数**覆盖**下拉里选中的预设。
+   * 与「新建预设」分开是因为两者语义完全不同：新建要起名、不动任何既有预设；
+   * 覆盖会丢掉那个预设的旧参数 —— 所以这里是**破坏性操作**，必须二次确认。
+   */
+  function cvOverwritePreset() {
+    var sel = $('cvPreset');
+    var name = sel ? String(sel.value || '') : '';
+    if (!name) { toast('请先在上方选择一个要覆盖的预设', 'info'); return; }
+    // 气泡二次确认（不用大窗）：就地确认、不打断视线；danger 让主按钮标红以示破坏性
+    confirmPopover({
+      title: '覆盖预设',
+      message: '用当前画布参数覆盖预设「' + name + '」？该预设原有的参数会被替换，无法撤销。',
+      okLabel: '覆盖',
+      danger: true,
+    }, $('cvPresetOverwrite')).then(function (ok) {
+      if (ok !== true) return;
+      if (!api || !api.canvas_preset_save) return;
+      api.canvas_preset_save(name, cv.params).then(function (r) {
+        if (!r || !r.ok) { toast('覆盖预设失败：' + ((r && r.error) || '未知原因'), 'error'); return; }
+        toast('已覆盖预设：' + name, 'ok');
+        cvLoadPresets(name);
+      }).catch(function (e) { toast('覆盖预设失败：' + ((e && e.message) || e), 'error'); });
+    });
   }
 
   function cvDeletePreset() {

@@ -3650,7 +3650,7 @@ class Api {
     } catch (e) { /* 还原失败则交由引擎按原样报错 */ }
   }
 
-  _createTask(type, title, env, srcPath, specSummary) {
+  _createTask(type, title, env, srcPath) {
     const id = 'task_' + (++this.taskSeq) + '_' + Date.now().toString(36);
     const task = {
       id, type, title, env: Object.assign({}, env),
@@ -3663,29 +3663,15 @@ class Api {
     };
     this.tasks.set(id, task);
     this._snapshotTaskTxt(task);
-    // ★ 任务参数摘要进任务日志（用户看的那份）。
-    //   为什么用独立的 specSummary 参数而不是从 env 反推：参数语义只有提交方清楚
-    //   （引擎只知道扁平 env 键），而且并非所有任务都有可读参数（续跑等）。
-    //   放在 `[开始运行]` 之前，读起来是「先交代这次做什么，再开始执行」。
-    //   ⚠ 与人话无关的完整技术存档另走 log/task-<date>.log（见 _taskSpecText）——
-    //   详略分两版正是「日志分离」：混一起时人看的被字段名淹没、机器要的又被人读排版变形。
-    let summary = specSummary;
-    // env 型任务（批量拼接 / 遮罩叠加 / 复刻）没有 spec 对象，摘要与快照都由 env 派生。
-    // ⚠ 放在 _createTask 里而不是各 runXxx 里逐个调用：**一处覆盖全部任务类型**，
-    //   以后新增任务类型也不会漏 —— 逐处补是最容易漏的做法（本次就漏过三类）。
-    if (!summary && env && typeof env === 'object') {
-      try { summary = this._taskSpecHumanEnv(title, env, type); } catch (e3) { summary = ''; }
-    }
-    if (summary) {
-      try {
-        task.specSummary = String(summary);
-        for (const line of task.specSummary.split('\n')) task.log.push(line);
-      } catch (e2) { /* 摘要失败不影响任务 */ }
-    }
-    // 完整技术快照落盘（log/task-<date>.log）—— 与上面的人话摘要互为详略两版
+    // 任务参数快照 → 既有 app-<date>.log（**不另开文件种类**）。
+    // ⚠ 为什么不独立成 task-*.log：.log 一族的定位是「机器看的运行日志」，
+    //   再按"任务"切一种出来，就与 app/engine 两类职责重叠 —— 事后排查也要多点开一份。
+    //   runlog 的分片机制（超长不截断、以 ↳[i/n] 续行）本来就能承载完整快照，语义不丢，
+    //   且字段化后正好是"给机器读"的形态。
+    // ⚠ 环境型任务（批量拼接 / 遮罩叠加 / 复刻）没有 spec 对象，快照由 env 派生。
     try {
       if (env && typeof env === 'object' && !env.TOOL_SPEC) {
-        this._ensureRunLog().writeTaskSpec(task.id, this._taskSpecTextEnv(task, title, env));
+        this._lg('RUN', 'task.spec', '任务参数快照 · ' + title, { spec: this._taskSpecTextEnv(task, title, env) });
       }
     } catch (e4) { /* 快照失败不影响任务 */ }
     this._emitTasks();
@@ -5750,10 +5736,10 @@ class Api {
           else if (status === 'error') rs.error++;
           // 视频处理任务结束后按设置清理过期备份（仅开启时执行）
           if (task.type === 'tool') this._cleanupBackups();
-          // ★ 结果快照（回到 task-<date>.log）：提交时那份只答「打算做什么」，
+          // ★ 结果快照（追加进既有 .log）：提交时那份只答「打算做什么」，
           //   这份答「实际发生了什么」—— 耗时 / 成败 / 失败原因 / 产出规模。
           //   两者合起来才是完整的一次任务记录；只有提交侧快照时，"为什么失败"是缺失的。
-          try { this._ensureRunLog().writeTaskSpec(task.id, this._taskResultText(task, status)); } catch (e4) { /* 快照失败不影响主流程 */ }
+          try { this._lg('RUN', 'task.result', '任务结果快照 · ' + String(task.title || ''), { spec: this._taskResultText(task, status) }); } catch (e4) { /* 快照失败不影响主流程 */ }
           if (status === 'error') this._notifyFailSoon(task);
           // 队列已无待运行任务（queued 空）即视为「本轮跑完」——此时可能还有**暂停待续**的任务
           // （用户主动暂停 / 软暂停让位），这类不在执行队列里，需在通知里明确提醒，避免误以为全做完
@@ -6807,176 +6793,21 @@ class Api {
       TOOL_SPEC: JSON.stringify(toolSpec),
       VL_STORAGE_DIR: this.storageDir || '',
     };
-    const task = this._createTask('tool', title, env, files.length ? files[0] : root,
-      this._taskSpecHuman(title, toolSpec, isCanvas ? s : null));
+    const task = this._createTask('tool', title, env, files.length ? files[0] : root);
     // 进度总量按**产物数**：批量时是 内容 × 背景，否则按内容数
     task.progress.total = (bgList.length > 1) ? (files.length * bgList.length) : (files.length || 0);
     this._enqueueTask(task);
-    // ★ 完整技术快照独立落盘（task-<date>.log）：env 会随任务记录一起被清除，
-    //   而任务要"按同样参数重跑 / 复现"时，这份快照是唯一凭据。与人话摘要互为详略两版。
-    try { this._ensureRunLog().writeTaskSpec(task.id, this._taskSpecText(task, title, toolSpec, isCanvas ? s : null)); } catch (e3) {}
+    // ★ 完整技术快照 → 既有 app-<date>.log（不另开文件种类）：env 会随任务记录一起被清除，
+    //   而任务要「按同样参数重跑 / 复现」时，这份快照是唯一凭据。
+    try { this._lg('RUN', 'tool.spec', '任务参数快照 · ' + title, { spec: this._taskSpecText(task, title, toolSpec, isCanvas ? s : null) }); } catch (e3) {}
     this._lg('RUN', 'tool.start', toolName + '任务 · ' + title,
       { id: task.id, mode: isCanvas ? 'canvas' : 'steps', stepIds, files: files.length, output, 背景数: bgList.length });
     // ⚠ 仍返回 taskIds（单元素）：前端沿用同一套"逐条告知"的分支逻辑，不必分两路
     return { ok: true, taskId: task.id, taskIds: [task.id] };
   }
 
-  /**
-   * 「人话」版任务参数摘要（**env 型任务**：批量拼接 / 遮罩叠加 / 复刻）—— 进任务日志开头。
-   *
-   * 为什么单独一套：这三类任务的参数不在一个 spec 对象里，而是散在 env 的一堆扁平键上
-   * （见 runBatch / runMask / runReplica 的 env 组装）。它们的"参数语义"只有提交方清楚，
-   * 所以摘要必须在**提交侧**组装好，而不是等引擎去猜。
-   *
-   * 刻意记三类信息（对应"只给 log 就能还原"的三问）：
-   *   · 做了什么   → 标题行（项目 / 配置 / 主题）
-   *   · 什么参数   → 逐项中文名 + 值
-   *   · 走了什么流程 → 末行的「流程」说明（如遮罩的 笛卡尔积组合数、批量的分段拼接）
-   */
-  _taskSpecHumanEnv(title, env, taskType) {
-    const E = env || {};
-    const L = [];
-    const has = (k) => E[k] !== undefined && E[k] !== null && String(E[k]) !== '';
-    // ⚠ 必须**按 task.type 分派，不能靠 env 字段猜**：runBatch 的 env 里也有 REPLICA_TXT
-    //   （那是配置 TXT 的路径，字段名是历史遗留），用 has('REPLICA_TXT') 判会把批量拼接
-    //   误判成复刻 —— 实测踩到过。type 是任务创建时给定的，唯一可靠。
-    const isMask = String(taskType) === 'mask' || (!taskType && has('MASK_RAW_DIRS'));
-    const isReplica = String(taskType) === 'replica';
-    if (isMask) {
-      const MODE = { 1: '遮罩 + 水印', 2: '仅水印', 3: '仅遮罩' };
-      L.push('参数：遮罩叠加 · ' + (MODE[String(E.MASK_MODE)] || E.MASK_MODE));
-      const rawDirs = String(E.MASK_RAW_DIRS || '').split(';').filter(Boolean);
-      const vids = String(E.MASK_VIDEOS || '').split(';').filter(Boolean);
-      const masks = String(E.MASK_MASKS || '').split(';').filter(Boolean);
-      const maskDirs = String(E.MASK_MASK_DIRS || '').split(';').filter(Boolean);
-      L.push('  项目 ' + (E.MASK_PROJECT_NAME || '（未命名）'));
-      // ⚠ 原片与遮罩数量的乘积就是成片数 —— 这是遮罩最该被看见的"流程"信息
-      L.push('  原片 ' + (vids.length ? vids.length + ' 个勾选' : rawDirs.length + ' 个目录（全量扫描）')
-        + '   遮罩 ' + (masks.length ? masks.length + ' 个' : maskDirs.length + ' 个目录')
-        + '   → 组合 ' + ((vids.length || 0) * (masks.length || 1) || '按扫描结果') + ' 条成片');
-      if (has('MASK_WATERMARK')) L.push('  水印 ' + path.basename(String(E.MASK_WATERMARK)) + '  透明度 ' + (E.MASK_WATERMARK_ALPHA || '默认'));
-      if (has('MASK_SUFFIX_MARK')) L.push('  后缀标记 ' + E.MASK_SUFFIX_MARK);
-      L.push('  输出 ' + E.MASK_OUTPUT_DIR);
-      if (has('MASK_ONLY_NAMES')) {
-        const n = String(E.MASK_ONLY_NAMES).split(';').filter(Boolean).length;
-        L.push('  ★ 续跑：只补做 ' + n + ' 条（其余已完成，不重做）');
-        L.push('流程：按勾选清单逐条叠加 → 水印（模式 1/2）→ 输出 mp4 → 写使用片段日志');
-      } else {
-        L.push('流程：扫描原片与遮罩 → 两两组合逐条叠加 → 水印（模式 1/2）→ 输出 mp4 → 写使用片段日志');
-      }
-      return L.join('\n');
-    }
-    if (isReplica) {
-      L.push('参数：复刻 · ' + (String(E.REPLICA_MODE) === '2' ? '去重模式' : '原片模式'));
-      L.push('  源日志 ' + E.REPLICA_TXT);
-      if (has('REPLICA_ONLY_NAME')) L.push('  ★ 只复刻 ' + E.REPLICA_ONLY_NAME + ' 这一条');
-      if (has('REPLICA_DEDUP_MIN')) {
-        L.push('  重复度区间 ' + E.REPLICA_DEDUP_MIN + ' ~ ' + (E.REPLICA_DEDUP_MAX || E.REPLICA_DEDUP_MIN)
-          + '（下限' + (String(E.REPLICA_DEDUP_MIN_ON) === '0' ? '关' : '开')
-          + ' / 上限' + (String(E.REPLICA_DEDUP_MAX_ON) === '0' ? '关' : '开') + '）');
-      }
-      L.push('  时长上限 ' + (E.BATCH_MAX_DURATION || '-') + 's   加速阈值 ' + (E.BATCH_SPEED_LIMIT || '-') + '   重试 ' + (E.BATCH_MAX_RETRY || '-'));
-      L.push('流程：读源日志 → 按重复度区间替换片段（去重模式）→ 按原命名规则复刻成片');
-      return L.join('\n');
-    }
-    // 批量拼接（默认）
-    L.push('参数：批量拼接');
-    if (has('REPLICA_TXT')) L.push('  配置 ' + E.REPLICA_TXT);
-    const seg = [];
-    if (has('BATCH_COUNT')) seg.push('成片数 ' + E.BATCH_COUNT);
-    if (has('BATCH_GROUP')) seg.push('分组数 ' + E.BATCH_GROUP);
-    if (seg.length) L.push('  ' + seg.join('   '));
-    if (has('BATCH_PRODUCER')) L.push('  创作者名 ' + E.BATCH_PRODUCER);
-    if (has('BATCH_SUFFIX_MARK')) L.push('  后缀标记 ' + E.BATCH_SUFFIX_MARK);
-    const seg2 = [];
-    if (has('BATCH_MAX_DURATION')) seg2.push('时长上限 ' + E.BATCH_MAX_DURATION + 's');
-    if (has('BATCH_SPEED_LIMIT')) seg2.push('加速阈值 ' + E.BATCH_SPEED_LIMIT);
-    if (has('BATCH_MAX_RETRY')) seg2.push('重试 ' + E.BATCH_MAX_RETRY);
-    if (seg2.length) L.push('  ' + seg2.join('   '));
-    if (has('BATCH_TXT_PREFIX')) {
-      const pfx = String(E.BATCH_TXT_PREFIX).split(';').filter(Boolean);
-      if (pfx.length) L.push('  提取前缀 ' + pfx.join(' / '));
-    }
-    if (has('BATCH_ONLY_NAMES')) {
-      const n = String(E.BATCH_ONLY_NAMES).split(';').filter(Boolean).length;
-      L.push('  ★ 续跑：只补做 ' + n + ' 条（其余已完成，不重做）');
-    }
-    L.push('流程：读配置逐条取片段 → 按时长上限拼到目标时长 → 加创作者名与后缀 → 写日志与成片');
-    return L.join('\n');
-  }
-
-  /**
-   * 「人话」版任务参数摘要 —— 进任务日志开头，给用户看。
-   *
-   * 与 _taskSpecText 的分工（这就是「日志分离」的落点）：
-   *   · 本方法：任务窗口里那份输出日志的开头，讲清「做了什么、什么参数、写到哪」，
-   *     参数只列**实际有意义的**（非默认值），一行一义，不出现 JSON 与内部字段名；
-   *   · _taskSpecText：写入 log/task-<date>.log 的完整技术存档（逐项 + 来源 + 原始 JSON）。
-   *   两者详略不同是刻意的 —— 用户不会去翻 .log，也不该在人话里读字段名。
-   */
-  _taskSpecHuman(title, spec, rawSpec) {
-    const L = [];
-    const S = spec || {};
-    const o = S.output || {};
-    const f = S.files || [];
-    // 输入
-    if (f.length) {
-      L.push('输入：' + f.length + ' 个文件');
-      f.slice(0, 6).forEach((p, i) => L.push('  ' + (i + 1) + '. ' + path.basename(p)));
-      if (f.length > 6) L.push('  …其余 ' + (f.length - 6) + ' 个');
-    } else {
-      L.push('输入：目录 ' + (S.root || '') + (S.recursive ? '（含子目录）' : ''));
-    }
-    // 参数：只列非默认值 + 关键项，用中文名
-    const cv = (S.params && S.params.canvas) || {};
-    const preset = rawSpec && rawSpec.params && rawSpec.params.presetName;
-    if (S.mode === 'canvas') {
-      const CN = {
-        targetW: '成片宽', targetH: '成片高', scale: '内容缩放', posMode: '位置',
-        bgMode: '背景类型', bgPath: '背景文件', bgDir: '背景目录', bgColor: '底色',
-        bgFit: '背景适合', dx: '水平偏移', dy: '垂直偏移', radius: '圆角',
-        borderW: '边框宽', borderColor: '边框色', bgBlur: '背景模糊', watermark: '水印',
-      };
-      const POS = { center: '居中', tl: '左上', tr: '右上', bl: '左下', br: '右下', custom: '自定义' };
-      L.push('参数：画布合成' + (preset ? '（预设「' + preset + '」）' : ''));
-      const parts = [];
-      if (cv.targetW && cv.targetH) parts.push(cv.targetW + '×' + cv.targetH);
-      if (cv.scale != null) parts.push('缩放 ' + cv.scale);
-      if (cv.posMode) parts.push('位置 ' + (POS[cv.posMode] || cv.posMode));
-      if (parts.length) L.push('  ' + parts.join('  '));
-      const parts2 = [];
-      if (cv.bgMode === 'image') parts2.push('背景 图片 ' + (cv.bgPath ? path.basename(cv.bgPath) : ''));
-      else if (cv.bgMode === 'video') parts2.push('背景 视频 ' + (cv.bgPath ? path.basename(cv.bgPath) : ''));
-      else if (cv.bgMode === 'color') parts2.push('背景 纯色 ' + (cv.bgColor || ''));
-      else parts2.push('背景 目录随机');
-      if (cv.bgFit) parts2.push('适合 ' + cv.bgFit);
-      if (cv.radius) parts2.push('圆角 ' + cv.radius);
-      if (cv.borderW) parts2.push('边框 ' + cv.borderW + 'px');
-      if (cv.bgBlur) parts2.push('模糊 ' + cv.bgBlur);
-      if (cv.watermark) parts2.push('水印 ' + path.basename(cv.watermark));
-      if (parts2.length) L.push('  ' + parts2.join('   '));
-      // 输出编码：与后处理同义的选项，用户需要一眼看出这次用的哪套（体积/兼容性差异很大）
-      const encParts = [];
-      encParts.push('编码 ' + (cv.encCodec ? String(cv.encCodec).replace(/（.*?）/g, '') : 'H.264'));
-      if (cv.encCq != null && cv.encCq !== '') encParts.push('CQ ' + cv.encCq);
-      encParts.push('容器 ' + (String(cv.container || 'mp4').toUpperCase()));
-      L.push('  ' + encParts.join('   '));
-      if (cv.eachBackground === true) L.push('  每个背景各出一批（内容 × 背景，逐条出片）');
-      if (cv.bgList && cv.bgList.length) L.push('  背景候选 ' + cv.bgList.length + ' 个');
-      Object.keys(cv).forEach((k) => { if (!CN[k] && k !== 'touched' && k !== 'presetName') L.push('  ' + k + ' = ' + cv[k]); });
-    } else {
-      if (Array.isArray(S.stepIds) && S.stepIds.length) L.push('参数：处理步骤 ' + S.stepIds.join(' → '));
-    }
-    // 输出
-    const NAMEMODE = { suffix: '加后缀 ' + (o.suffix || ''), keep: '保持原名' };
-    const CONFLICT = { overwrite: '覆盖', skip: '跳过已有', index: '加序号' };
-    L.push('输出：' + (o.mode === 'directory' ? '写入目录 ' + (o.dir || '') : '覆盖原文件'));
-    L.push('  ' + (NAMEMODE[o.nameMode] || '') + '   冲突时 ' + (CONFLICT[o.onConflict] || '') + '   备份 ' + (o.backup ? '开' : '关'));
-    return L.join('\n');
-  }
-
-  /**
-   * 组装「可完全还原」的任务参数快照文本（写入 task-<date>.log）。
+      /**
+   * 组装「可完全还原」的任务参数快照文本（作为字段写入 app-<date>.log）。
    *
    * 为什么要求这么细：任务记录会被清除、成片会被删，只有这份快照能回答
    * 「当时到底用了什么参数、喂了哪些文件、结果写到哪」。
@@ -6987,7 +6818,7 @@ class Api {
    *   ③ 输出策略（目录/命名/冲突/备份）全列，否则无法解释文件为什么落在那儿。
    */
   /**
-   * 结果快照 —— 任务终态时写回同一份 task-<date>.log。
+   * 结果快照 —— 任务终态时追加进同一份 app-<date>.log。
    *
    * 为什么必须有：提交时那份快照只回答「**打算**做什么」；而"当时到底发生了什么"——
    * 跑成功了几条、失败的是哪几条、为什么失败、耗时多久 —— 只有终态时才知道。
@@ -7124,10 +6955,10 @@ class Api {
       push(k + (CN[k] ? '（' + CN[k] + '）' : ''), E[k]);
     });
 
-    // 流程：把"这批任务实际会怎么跑"写清楚 —— 用户明确要求能看出走了什么流程
+    // 流程：把"这批任务实际会怎么跑"写清楚，使日志能自证执行路径
     L.push('');
     L.push('【流程】');
-    // ⚠ 同 _taskSpecHumanEnv：按 task.type 判，不能靠 env 字段猜（批量 env 里也有 REPLICA_TXT）
+    // ⚠ 按 task.type 判，不能靠 env 字段猜（批量 env 里也有 REPLICA_TXT）
     const isMask = String(task && task.type) === 'mask' || (!(task && task.type) && has('MASK_RAW_DIRS'));
     const isReplica = String(task && task.type) === 'replica';
     if (isMask) {
@@ -7209,17 +7040,27 @@ class Api {
     let CV_DEFAULTS = {};
     try { CV_DEFAULTS = require(path.join(this.enginesDir, 'tools', 'canvas-plan.js')).DEFAULTS || {}; } catch (e) { CV_DEFAULTS = {}; }
     const presetName = rawSpec && rawSpec.params && rawSpec.params.presetName;
+    // 参数来源判定 + **当时生效的默认值**一并留档。
+    // ⚠ 为什么要写「当时默认」而不是只写「默认值」三个字：默认值会随版本变
+    //   （例如某版把 scale 的默认从 0.74 调成 0.8）。若快照只标「默认值」，
+    //   以后拿新版本的默认值去比对旧快照，就会把「当时用了默认值」误判成
+    //   「用户改过」—— 排查时直接把人带偏。写死当时的数值，这条信息就与后续版本解耦。
     const srcOf = (k, v) => {
-      if (!(k in CV_DEFAULTS)) return '界面设置（无默认值可对比）';
-      return String(CV_DEFAULTS[k]) === String(v)
-        ? (presetName ? '预设「' + presetName + '」或默认值' : '默认值')
-        : '界面改过（默认 ' + CV_DEFAULTS[k] + '）';
+      if (!(k in CV_DEFAULTS)) return '界面设置（该键无引擎默认值）';
+      const dft = CV_DEFAULTS[k];
+      const same = String(dft) === String(v);
+      if (same) return (presetName ? '预设「' + presetName + '」或默认值' : '默认值') + '｜当时默认 ' + String(dft);
+      return '界面改过｜当时默认 ' + String(dft);
     };
     const fmt = (obj, skip) => Object.keys(obj || {}).sort().forEach((k) => {
       if (skip && skip.indexOf(k) >= 0) return;
       L.push('  ' + k.padEnd(16) + String(obj[k]) + '   ← ' + srcOf(k, obj[k]));
     });
-    if (spec && spec.mode === 'canvas') { L.push('  （画布合成参数）'); fmt(cv, ['touched', 'presetName']); }
+    // ⚠ 以引擎 DEFAULTS 为基准**补全**：cv 里没出现的键也照样列出来（值即引擎默认）。
+    //   否则「用户没动过这一项」在快照里是**空白** —— 而"当时这项就是默认值"本身是事实，
+    //   缺了它便答不出「这个参数当时到底是多少」，也没法解释成片为什么长这样。
+    const cvMerged = Object.assign({}, CV_DEFAULTS, cv);
+    if (spec && spec.mode === 'canvas') { L.push('  （画布合成参数）'); fmt(cvMerged, ['touched', 'presetName']); }
     else if (spec && Array.isArray(spec.stepIds) && spec.stepIds.length) { L.push('  处理步骤  ' + spec.stepIds.join(' → ')); }
     // 输出策略
     L.push('');
@@ -9072,7 +8913,7 @@ class Api {
   //   · **toastXml 独占** —— 一旦给出它，title/body/icon 三个属性就被忽略，只能四选一。
   //     这里是刻意的：只有 toastXml 才能控制声音（audio）、停留时长（duration）与署名行。
   //   · **纯文字 ToastGeneric** —— 不加图标也不用 emoji：通知区域已经显示 exe 的图标，
-  //     内容区再塞图只会显杂乱（用户明确要求）。
+  //     内容区再塞图只会显杂乱。
   //   · **声音用系统音**（ms-winsoundevent:*）—— WinRT 不接受自定义音频，但这三个的
   //     区分度足够：Critical 最刺耳（失败）、Default 轻（成功）、SMS 柔和（有暂停待续）。
   //   · **文字分三层**：标题只说「什么任务出了什么事」，正文给原因与定位信息，
