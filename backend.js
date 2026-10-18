@@ -7788,6 +7788,64 @@ class Api {
       });
   }
 
+  /** 全局现场包：没有可用任务时的诊断导出。
+   *  普通用户不知道任务 id，且不少问题（提示看不懂、点了没反应）根本没有失败任务 ——
+   *  此时若只能报错，最需要日志的场景反而导不出来。 */
+  _exportGlobalDiagPack(opts) {
+    try {
+      const since = Date.now() - 24 * 60 * 60 * 1000;
+      const parts = [];
+      parts.push('Video Lab 诊断包（全局现场）');
+      parts.push('生成时间: ' + new Date().toLocaleString());
+      parts.push('⚠ 包内含本机路径与任务信息，请勿随意分享；外发前可自行将路径打码。');
+      parts.push('');
+      parts.push('════ 环境快照（已脱敏）════');
+      try { parts.push(this._ensureRunLog().scrub(JSON.stringify(this._envBrief({}), null, 1))); } catch (e) { parts.push('(取不到)'); }
+      parts.push('');
+      parts.push('════ 最近任务（最多 30 条）════');
+      try {
+        const list = Array.from(this.tasks.values())
+          .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 30);
+        parts.push(list.length ? list.map((t) => [
+          String(t.id || '').slice(0, 40), String(t.type || ''), String(t.status || ''),
+          new Date(t.createdAt || 0).toLocaleString(),
+          t.endedAt ? new Date(t.endedAt).toLocaleString() : '进行中',
+          String(t.title || '').slice(0, 40),
+        ].join(' · ')).join('\n') : '(无任务)');
+      } catch (e) { parts.push('(取不到)'); }
+      parts.push('');
+      const ro = { tail: 20000, maxBytes: 16 * 1024 * 1024 };
+      for (const name of ['app', 'error', 'engine']) {
+        let r = null;
+        try { r = this._ensureRunLog().readLog(Object.assign({ file: name }, ro)); } catch (e) {}
+        parts.push('════ ' + name + '-*.log 尾部（' + (r && r.lines ? r.lines.length : 0) + ' 行）════');
+        parts.push(r && r.lines && r.lines.length ? r.lines.join('\n') : '(无)');
+        parts.push('');
+      }
+      try {
+        const all = this._ensureRunLog().readLog({ file: 'app', tail: 60000, maxBytes: 32 * 1024 * 1024 });
+        const toTs = (ln) => {
+          const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})\.(\d{3})/.exec(ln);
+          return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6], +m[7]).getTime() : 0;
+        };
+        const uiLines = (all.lines || [])
+          .filter((ln) => ln.indexOf('"verb":"UIA"') >= 0 && toTs(ln) >= since).slice(-5000);
+        parts.push('════ 近 24 小时用户操作时间线（' + uiLines.length + ' 行）════');
+        parts.push(uiLines.length ? uiLines.join('\n') : '(无)');
+        parts.push('');
+      } catch (e) {}
+      const dir = path.join(this._ensureRunLog().getDir(), '..', 'diag');
+      try { fs.mkdirSync(dir, { recursive: true }); } catch (e2) {}
+      const file = path.join(dir, 'diag-global-' + Date.now().toString(36) + (opts && opts.maskPaths ? '-masked' : '') + '.txt');
+      const body = (opts && opts.maskPaths) ? this._maskDiagPaths(parts.join('\n')) : parts.join('\n');
+      fs.writeFileSync(file, body, 'utf8');
+      this._lg('SYS', 'diag.export', '导出诊断包 · 全局现场'
+        + (opts && opts.maskPaths ? ' · 路径已打码' : '') + ' · ' + path.basename(file),
+        { path: file, masked: !!(opts && opts.maskPaths), scope: 'global' });
+      return { ok: true, path: file, masked: !!(opts && opts.maskPaths), scope: 'global' };
+    } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+  }
+
   exportDiagPack(id, opts) {
     try {
       let t = id ? this.tasks.get(id) : null;
@@ -7797,9 +7855,11 @@ class Api {
           if (!['error', 'interrupted', 'stopped'].includes(t2.status)) continue;
           if (!t || (t2.endedAt || 0) > (t.endedAt || 0)) t = t2;
         }
-        if (!t) return { ok: false, error: '最近没有失败任务，请填写任务 id' };
       }
-      if (!t) return { ok: false, error: '任务不存在' };
+      // 没有可用任务时导出「全局现场包」：普通用户并不知道任务 id，而"点了没反应""提示看不懂"
+      // 这类问题往往根本没有失败任务；若此时只能报错，就等于把最需要日志的场景挡在门外。
+      if (id && !t) return { ok: false, error: '任务不存在' };
+      if (!t) return this._exportGlobalDiagPack(opts);
       id = t.id;
       const opts = { grep: id, tail: 20000, maxBytes: 16 * 1024 * 1024 };
       const app = this._ensureRunLog().readLog(Object.assign({ file: 'app' }, opts));
