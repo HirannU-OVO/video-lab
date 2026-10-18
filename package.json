@@ -66,9 +66,6 @@
         "dir"
       ]
     },
-    "portable": {
-      "artifactName": "${productName}.exe"
-    },
     "nsis": {
       "oneClick": false,
       "perMachine": false,
@@ -83,7 +80,7 @@
     }
   },
   "devDependencies": {
-    "electron": "44.3.0",
+    "electron": "44.9.0",
     "electron-builder": "^26.15.3"
   },
   "dependencies": {
