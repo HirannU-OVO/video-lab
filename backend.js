@@ -2557,30 +2557,32 @@ class Api {
           + (legacyN ? '；另含程序目录里的遗留文件' : '') });
     } catch (e) {}
 
-    // ② TXT 提交快照：只清「任务已不存在 / 已完成 / 超 30 天」三类（含旧版本数据根里的残留）
+    // ② TXT 提交快照：只清「任务记录已不存在 / 任务已完成」两类（含旧版本数据根里的残留）。
+    //   ⚠ 不按时间清理 —— 失败 / 停止 / 中断的任务会常驻在任务列表里，用户可能很久以后
+    //     才想起要续跑；那时快照若已被按时间删掉，配置就还原不出来了。
+    //     快照的寿命完全跟随任务记录：**任务在，快照就在；用户清除任务时才一并删除**。
+    //     （单条清除走 clearTask、统一回收走 persistTasks，两处都会删，不需要这里兜时间。）
     try {
       // ⚠ 用绝对路径列表（跨根）：旧版本数据根里的快照，其任务必然已不在当前任务表内，
       //   会落到 dead 分支 —— 正是我们要的；仍在跑/排队的（跨根同名）照旧保留。
       const all = walkRoots('txt-snap', (n) => /\.txt$/i.test(n));
-      const DEAD = 30 * 24 * 3600 * 1000, now = Date.now();
       const dead = [], keep = [];
       for (const p of all) {
         const n = path.basename(p);
         const t = tasks.get(n.replace(/\.txt$/i, ''));
-        let age = 0;
-        try { age = now - fs.statSync(p).mtimeMs; } catch (e) { age = 0; }
-        if (!t || t.status === 'done' || age > DEAD) dead.push(p);   // 任务没了 / 已完成 / 早已过期
-        else keep.push(n);                                            // 未完成：续跑与启动前还原还要用
+        // 任务没了 ⇒ 孤儿；已完成 ⇒ 不可能再续跑（续跑只对失败/中断/停止开放）
+        if (!t || t.status === 'done') dead.push(p);
+        else keep.push(n);              // 失败/中断/停止/暂停/在跑：续跑与启动前还原还要用
       }
       // ⚠ 必须写 files: dead —— 这条曾是 `files` 简写（该作用域无此变量），
       //   ReferenceError 被外层 catch 静默吞掉，导致整项从清单里消失且毫无提示（已被隔离测试抓出）。
       add({ key: 'txtsnap', label: 'TXT 提交快照（已无用）', files: dead, legacyN,
-        desc: '快照只在任务启动前用于还原配置；任务已完成、已不存在或超过 30 天时它再无用途'
+        desc: '快照只在任务启动前用于还原配置；任务记录已不存在或任务已完成时它再无用途'
           + (legacyN ? '；另含程序目录里的遗留文件' : '') });
       if (keep.length) {
         add({ key: 'txtsnap-live', label: 'TXT 提交快照（保留中）', cleanable: false, count: keep.length,
-          reason: '有 ' + keep.length + ' 个任务在跑 / 排队 / 未完成，它们启动或续跑时要按快照还原配置',
-          desc: '这些任务结束后会自动清理，不必手动处理' });
+          reason: '有 ' + keep.length + ' 个任务未完成（失败/中断/停止/暂停/在跑），它们续跑时要按快照还原配置',
+          desc: '这些快照会一直保留到你把对应任务从列表清除为止' });
       }
     } catch (e) {}
 
@@ -8797,20 +8799,20 @@ class Api {
   // 判定与 acquireLock 的过期规则一致：pid 不存活 或 写入时间超过 60 秒
   // 旧版遗留的**自动**兜底清理（手动清单之外的另一路）：只清「确定无价值且无争议」的两类 ——
   //   · preview\ 下的预览图（png/jpg）：本版已改为生成后即删，留着即无用途
-  //   · txt-snap\ 里**超 30 天**的快照：任务早已不存在，续跑/还原都不可能再用到
+  //   · txt-snap\ 里**任务记录已不存在**的快照：任务没了，续跑/还原都不可能再用到
   // 为什么必须自动（而不是只留在手动清单里）：
   //   preview 那一份只有"用户再次打开画布预览"才会被 trim(0) 顺带清掉 —— 从不打开预览的用户
-  //   那份残留就永远躺着；txt-snap 的 30 天兜底若只写在手动扫描项里，任务列表被清空后就
+  //   那份残留就永远躺着；txt-snap 的孤儿若只写在手动扫描项里，任务列表被清空后就
   //   再没有人删它。
   // ⚠ 刻意不做的（避免"自动"越界）：
-  //   · 不动 30 天内的快照 —— 任务可能还在列表里、还在续跑
+  //   · **不按时间清理快照** —— 失败/停止的任务常驻列表，用户可能很久以后才续跑，
+  //     按时间删等于让"以后想跑"变成无法还原配置。快照寿命完全跟随任务记录。
   //   · 不动 ffmpeg\（那份可能是用户唯一的可用组件，交给 cleanupLegacyFfmpeg 的严格判据）
   //   · 不动 log\ / backup\（属用户证据，各按保留期自清理）
   // 删除一律走回收站（项目硬约束），并跨"当前 + 历史"数据根。
   async _sweepLegacyAuto() {
     try {
       const roots = [String(this.storageDir || '')].concat(this._legacyDirs || []);
-      const DEAD = 30 * 24 * 3600 * 1000, now = Date.now();
       let n = 0, freed = 0;
       const drop = async (p) => {
         try { const sz = this._ddSize(p); await this._trash(p); n++; freed += (sz || 0); } catch (e) {}
@@ -8828,16 +8830,17 @@ class Api {
             try { if (fs.readdirSync(pv).length === 0) fs.rmdirSync(pv); } catch (e) {}
           }
         } catch (e) {}
-        // ② 超 30 天的任务快照
+        // ② 孤儿任务快照：只有「任务记录已不存在」或「任务已完成」才删。
+        //   ⚠ 不按时间清理 —— 失败 / 停止 / 中断的任务会常驻在任务列表里，
+        //     用户可能很久以后才想起要续跑；那时快照若已被按时间删掉，配置就还原不出来了。
+        //     跨根同理：历史数据根里的快照，其任务必然不在当前任务表内，会落到这里。
         try {
           const sd = path.join(r, 'txt-snap');
           if (fs.existsSync(sd) && fs.statSync(sd).isDirectory()) {
             for (const f of fs.readdirSync(sd)) {
               if (!/\.txt$/i.test(f)) continue;
-              const p = path.join(sd, f);
-              let age = 0;
-              try { age = now - fs.statSync(p).mtimeMs; } catch (e) { age = 0; }
-              if (age > DEAD) await drop(p);
+              const t = this.tasks.get(f.replace(/\.txt$/i, ''));
+              if (!t || t.status === 'done') await drop(path.join(sd, f));
             }
           }
         } catch (e) {}
