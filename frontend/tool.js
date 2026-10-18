@@ -125,11 +125,17 @@
   // ── 表单渲染 ──
   // ── 转分辨率专用交互：常用比例 + 宽高联动 + 锁链 ──
   // resize 是表单自动渲染的**唯一特例**：比例/锁链是纯前端交互，引擎只收最终 width/height。
-  const RESIZE_RATIOS = { '9:16': [9, 16], '16:9': [16, 9], '4:3': [4, 3], '3:4': [3, 4], '1:1': [1, 1] };
+  // 比例表、标准档位、比例判定都在 vl-common.js —— 画布与后处理共用同一份
+  const RESIZE_RATIOS = VL.RATIO_RATIOS;
+  const RATIO_PRESETS = VL.RATIO_PRESETS;
+  // 画布的锁链状态提到模块级：cvSyncSizeUI() 在 IIFE 之外，也要读它判断是否点亮锁链
+  const cvLinkState = VL.createSizeLink(true);
   const even = (n) => Math.max(2, Math.round(n / 2) * 2);   // 编码要求宽高为偶数
 
+  // 锁链状态机与画布共用同一份（vl-common.js），避免两边各自维护给出不同答案
+  const resizeLink = VL.createSizeLink(true);
   function resizeLinked() {
-    return !!state.link.resize && state.values.resize.ratio !== '自定义';
+    return resizeLink.isLinked(state.values.resize.ratio);
   }
   /** 锁定状态下按比例联动（改宽算高 / 改高算宽），结果取偶 */
   function resizePairByWidth(w) {
@@ -173,20 +179,39 @@
    * 匹配判定**严格相等**（交叉相乘的整数比较，无任何容差）：
    * 1080×1920 = 9:16，但 1081×1920 就是「自定义」。
    */
+  // 比例判定（命中常用比例返回其名字，否则返回 1.43:1 这类实际比值）
+  const ratioLabelOf = VL.ratioLabelOf;
+
+  /**
+   * 把「自定义」那一项的文字换成实际比值（保留 value 不变，逻辑照旧）。
+   * real 为空或等于「自定义」时恢复为原始文案。
+   */
+  function setCustomRatioLabel(sel, real) {
+    if (!sel || !sel.options) return;
+    for (var i = 0; i < sel.options.length; i++) {
+      var o = sel.options[i];
+      if (o.value !== '自定义') continue;
+      o.textContent = (real && real !== '自定义') ? real : '自定义';
+      return;
+    }
+  }
+
   function syncResizeRatioDisplay() {
     if (resizeLinked()) return;                     // 锁定时下拉由用户选择，不反推
     var w = parseInt(state.values.resize.width, 10);
     var h = parseInt(state.values.resize.height, 10);
     if (!(w > 0) || !(h > 0)) return;
-    var match = '自定义';
-    for (var k in RESIZE_RATIOS) {
-      var a = RESIZE_RATIOS[k][0], b = RESIZE_RATIOS[k][1];
-      if (w * b === h * a) { match = k; break; }    // 交叉相乘相等才算该比例
-    }
-    if (state.values.resize.ratio !== match) {
-      state.values.resize.ratio = match;
-      var sel = $('stepGroups').querySelector('select[data-step="resize"][data-key="ratio"]');
-      if (sel) sel.value = match;
+    var match = ratioLabelOf(w, h);
+    var sel = $('stepGroups').querySelector('select[data-step="resize"][data-key="ratio"]');
+    if (state.values.resize.ratio !== match) state.values.resize.ratio = match;
+    if (sel) {
+      // 常用比例是固定选项；非常用比例没有对应 option ⇒ 落到「自定义」并把它标成实际比值
+      // ⚠ 判断的是「下拉里有没有这一项」（presets），不是「识别表里有没有」（ratios）：
+    //   21:9 能被识别出来，但下拉没有这个 option —— 那就该显示在「自定义」项上，
+    //   而不是把 value 设成一个不存在的选项（那会让下拉变空）。
+    var known = VL.isPresetRatio(match);
+      sel.value = known ? match : '自定义';
+      setCustomRatioLabel(sel, known ? '' : match);
     }
   }
 
@@ -237,6 +262,15 @@
       input = '<select class="tl-sel" data-step="' + stepId + '" data-key="' + sc.key + '">' + opts + '</select>';
     } else if (type === 'bool') {
       input = '<label class="opt-check opt-check--nolabel"><input type="checkbox" data-step="' + stepId + '" data-key="' + sc.key + '" data-bool="1"' + (v ? ' checked' : '') + '><span class="opt-check__box"></span></label>';
+    } else if (type === 'color') {
+      // 颜色值在引擎侧归一化为 0xRRGGBB，界面用原生取色器 + 文本双通道：
+      // 取色器方便挑色，文本框允许直接粘贴色值（两处指向同一个 data-key）
+      var cv = String(v == null ? '' : v);
+      var hex = /^0x([0-9a-fA-F]{6})$/.exec(cv) ? '#' + cv.slice(2) : (cv || '#000000');
+      input = '<span class="tl-field__row">'
+        + '<input class="tl-color" type="color" data-color-for="' + sc.key + '" value="' + esc(hex) + '">'
+        + '<input class="tl-path" type="text" data-step="' + stepId + '" data-key="' + sc.key + '" value="' + esc(cv) + '">'
+        + '</span>';
     } else if (type === 'file') {
       input = '<span class="tl-field__row">'
         + '<input class="tl-path" type="text" data-step="' + stepId + '" data-key="' + sc.key + '" value="' + esc(v) + '" placeholder="选择文件…">'
@@ -322,8 +356,8 @@
       // 转分辨率锁链：切换"按比例联动 / 自由宽高"
       var lk = e.target.closest('[data-link="resize"]');
       if (lk) {
-        state.link.resize = !state.link.resize;
-        if (state.link.resize && state.values.resize.ratio !== '自定义') {
+        resizeLink.toggle();
+        if (resizeLink.isUserLocked() && state.values.resize.ratio !== '自定义') {
           // 重新锁定：以当前宽为基准按比例校正高
           var w = parseInt(state.values.resize.width, 10);
           if (w > 0) { state.values.resize.height = resizePairByWidth(w); syncResizeInputs(); }
@@ -369,10 +403,14 @@
       if (dep) rerenderStepParams(step);
       // 比例下拉变化：选「自定义」即解绑；选常用比例即锁定并按当前宽校正高
       if (step === 'resize' && key === 'ratio') {
-        state.link.resize = state.values.resize.ratio !== '自定义';
-        if (state.link.resize) {
-          var w0 = parseInt(state.values.resize.width, 10);
-          if (w0 > 0) { state.values.resize.height = resizePairByWidth(w0); syncResizeInputs(); }
+        // ⚠ 这里**不改** state.link.resize：锁链是用户的选择，选比例只是"换画幅"。
+        //   若在此把它设回 true，用户"先解绑、再挑个常用画幅、然后自由微调"的用法
+        //   会被重新锁上，改宽就自动改高 —— 与他的意图相反。
+        var pr = RATIO_PRESETS[state.values.resize.ratio];
+        if (pr) {
+          state.values.resize.width = pr[0];
+          state.values.resize.height = pr[1];
+          syncResizeInputs();
         }
         refreshResizeLink();
       }
@@ -1316,35 +1354,60 @@
       var ratioEl = $('cvRatio'), wEl = $('cvTW'), hEl = $('cvTH'), linkEl = $('cvLink');
       if (!ratioEl || !wEl || !hEl) return;
       var pairOf = function (r) { return RESIZE_RATIOS[r] || null; };
-      var linked = function () { return ratioEl.value !== '自定义'; };   // 唯一判据：自定义 = 已解绑
+      // 锁链状态是**用户的选择**，与"当前选了哪个比例"是两件事：
+      // 解绑后先挑一个常用画幅当起点、再自由微调宽高，是很自然的用法 ——
+      // 若把"选了常用比例"当成"要锁定"，这个用法会被一直锁住，改宽就自动改高。
+      var linkState = cvLinkState;
+      var linked = function () { return linkState.isLinked(ratioEl.value); };
       var paintLink = function () { if (linkEl) linkEl.classList.toggle('tl-link--on', linked()); };
       var sync = function () {
         cv.params.targetW = even(Math.max(16, cvNum(wEl, 1920)));
         cv.params.targetH = even(Math.max(16, cvNum(hEl, 1080)));
       };
-      var guessRatio = function () {          // 按当前宽高反推常用比例（交叉相乘，避开浮点）
-        var rr = '自定义';
-        Object.keys(RESIZE_RATIOS).forEach(function (k) {
-          var a = RESIZE_RATIOS[k];
-          if (a[0] * cv.params.targetH === a[1] * cv.params.targetW) rr = k;
-        });
-        return rr;
+      // 按当前宽高反推比例：命中常用比例返回其名字，否则返回实际比值（如 1.43:1）
+      var guessRatio = function () {
+        return ratioLabelOf(cv.params.targetW, cv.params.targetH) || '自定义';
       };
       ratioEl.addEventListener('change', function () {
         paintLink();
-        var a = pairOf(ratioEl.value);
-        if (a) hEl.value = String(even(Math.round(Math.max(16, cvNum(wEl, 1920)) * a[1] / a[0])));
+        var pr = RATIO_PRESETS[ratioEl.value];
+        if (pr) {
+          // 切常用比例 ⇒ 直接套标准档位（宽高一起换），不按当前宽推算
+          wEl.value = String(pr[0]);
+          hEl.value = String(pr[1]);
+        } else {
+          setCustomRatioLabel(ratioEl, '');   // 手动选「自定义」⇒ 该项文字恢复原样
+        }
         sync();
         cvRequestPreview({ immediate: false });
       });
       if (linkEl) linkEl.addEventListener('click', function () {
-        if (linked()) { ratioEl.value = '自定义'; toast('已解绑：画布宽高可自由填写', 'info'); }
-        else {
-          var g = guessRatio();
-          ratioEl.value = (g === '自定义') ? '16:9' : g;
-          var a = pairOf(ratioEl.value);
-          hEl.value = String(even(Math.round(Math.max(16, cvNum(wEl, 1920)) * a[1] / a[0])));
-          toast('已锁定比例：改宽/高会按比例联动', 'info');
+        if (linked()) {
+          // 解绑：只解除联动，**不动当前选中的比例** —— 用户可能就想在这个画幅上自由微调
+          linkState.setUserLocked(false);
+          toast('已解绑：画布宽高可自由填写', 'info');
+        } else {
+          var g = guessRatio();                       // 常用比例名 / 实际比值 / 自定义
+          var known = VL.isPresetRatio(g);
+          if (known) {
+            linkState.setUserLocked(true);
+            ratioEl.value = g;
+            setCustomRatioLabel(ratioEl, '');
+            var pr = RATIO_PRESETS[g];
+            if (pr) { wEl.value = String(pr[0]); hEl.value = String(pr[1]); }
+            toast('已锁定比例：改宽/高会按比例联动', 'info');
+          } else if (g === '自定义') {
+            // 宽高不可用（清空/非法）⇒ 回到默认画幅
+            linkState.setUserLocked(true);
+            ratioEl.value = '16:9';
+            setCustomRatioLabel(ratioEl, '');
+            var pr2 = RATIO_PRESETS['16:9'];
+            wEl.value = String(pr2[0]); hEl.value = String(pr2[1]);
+            toast('已锁定为 16:9：改宽/高会按比例联动', 'info');
+          } else {
+            // 非常用比例没有整数比，无法按比例联动 —— 明说，不要表现成"点了没反应"
+            toast('当前是自定义比例（' + g + '），无法按比例联动；请先选一个常用比例', 'info');
+          }
         }
         paintLink();
         sync();
@@ -1355,6 +1418,7 @@
         var a = linked() ? pairOf(ratioEl.value) : null;
         if (a) hEl.value = String(even(Math.round(w * a[1] / a[0])));
         sync();
+        if (!a) cvSyncSizeUI();   // 解绑状态下，下拉跟着显示当前实际比例
         cvRequestPreview({ immediate: false });
       });
       hEl.addEventListener('input', function () {
@@ -1362,6 +1426,7 @@
         var a = linked() ? pairOf(ratioEl.value) : null;
         if (a) wEl.value = String(even(Math.round(h * a[0] / a[1])));
         sync();
+        if (!a) cvSyncSizeUI();   // 同上
         cvRequestPreview({ immediate: false });
       });
       paintLink();
@@ -1782,13 +1847,14 @@
   function cvSyncSizeUI() {
     var ratioEl = $('cvRatio'), linkEl = $('cvLink');
     if (!ratioEl) return;
-    var rr = '自定义';
-    Object.keys(RESIZE_RATIOS).forEach(function (k) {
-      var a = RESIZE_RATIOS[k];
-      if (a[0] * Number(cv.params.targetH) === a[1] * Number(cv.params.targetW)) rr = k;   // 交叉相乘，避开浮点
-    });
-    ratioEl.value = rr;
-    if (linkEl) linkEl.classList.toggle('tl-link--on', rr !== '自定义');
+    var rr = ratioLabelOf(cv.params.targetW, cv.params.targetH) || '自定义';
+    var known = VL.isPresetRatio(rr);
+    // 常用比例有对应选项；非常用比例落到「自定义」，并把该项文字标成实际比值
+    ratioEl.value = known ? rr : '自定义';
+    setCustomRatioLabel(ratioEl, known ? '' : rr);
+    // ⚠ 必须走状态机：只看 known 的话，用户在解绑后手输宽高、恰好凑成常用比例时，
+    //   锁链会被点亮（视觉上"锁上了"），而实际并未联动 —— 用户还得再点一下才能改。
+    if (linkEl) linkEl.classList.toggle('tl-link--on', cvLinkState.isLinked(known ? rr : '自定义'));
   }
 
   /** 把参数写回全部控件（用于预设加载与初始化） */

@@ -23,91 +23,72 @@
 'use strict';
 
 /** 参数默认值 */
-const DEFAULTS = {
-  bgMode: 'dir',          // dir=背景目录随机 | image | video | color=纯色
-  bgDir: '',              // 背景目录（bgMode=dir 时用于枚举候选）
-  bgPath: '',             // 背景文件（bgMode=image|video 时直接指定）
-  bgColor: '#000000',     // 纯色背景（bgMode=color）
-  watermark: '',          // 水印 PNG，可留空
-  targetW: 1920,          // 成片画布宽（输出分辨率）
-  targetH: 1080,          // 成片画布高（输出分辨率）
-  scale: 0.74,            // 内容等比缩放系数（决定视频在画布中的大小）
-  bgFit: 'cover',         // 背景适合方式（与 Windows 桌面背景同名）：cover=填充 | contain=适应 | stretch=拉伸
-  posMode: 'center',      // center | tl | tr | bl | br | custom
-  dx: 0,                  // 相对基准的水平偏移（像素；custom 时为绝对 X）
-  dy: 160,                // 相对基准的垂直偏移（像素；custom 时为绝对 Y）
-  radius: 0,              // 内容圆角半径（像素，0=直角）
-  borderW: 0,             // 内容边框宽度（像素，0=无边框）
-  borderColor: '#ffffff', // 边框颜色
-  bgBlur: 0,              // 背景高斯模糊 sigma（0=不模糊）
-  // 批量：勾选后，每个背景各出一条成片（内容 × 背景，在一个任务内逐条编码）。
-  // 语义放在这里而不是只在界面：引擎要按它决定「每个内容配一个随机背景」还是「遍历全部背景」。
-  eachBackground: false,
-  // ── 编码（与后处理「转码 / 码率」同一套语义，取值同样）──
-  // ⚠ 默认值与后处理保持一致（恒定质量 + CQ 26 + h264），否则同一素材在两个模块
-  //   跑出来的体积/画质会有差异，用户无从解释。
-  encCodec: 'H.264',            // H.264 | H.265 / HEVC | AV1（界面下拉不带括号，此处必须同形）
-  encMode: 'cq',                // cq=恒定质量 | abr=码率上限 | size=目标体积
-  encCq: 26,                    // 恒定质量的 CQ（0~51，越大越省体积）
-  encBitrateKbps: 0,            // 码率上限（kbps，abr 模式用）
-  encTargetMB: 0,               // 目标体积（MB，size 模式用）
-  // 容器格式：mp4 通用；mov 便于进剪辑软件（ProRes 管线）或承接 .mov 素材的既有流程
-  container: 'mp4',             // mp4 | mov
-};
+const paramsBase = require('../base/params');
 
-const NUM_RANGES = {
-  targetW: [16, 7680], targetH: [16, 7680],
-  scale: [0.05, 3],
-  dx: [-7680, 7680], dy: [-7680, 7680],
-  radius: [0, 2000], borderW: [0, 400], bgBlur: [0, 200],
-};
+// 参数声明（唯一来源）：默认值、类型、范围、枚举、颜色、偶数对齐都在这里。
+// 归一化交给 engines/base/params.js —— 与后处理步骤共用同一套「声明 → 归一化」，
+// 加参数只改这张表，不必在默认值、范围、校验三处各写一遍。
+const SCHEMA = [
+  { key: 'bgMode', type: 'select', default: 'dir', label: '背景方式',
+    options: ['dir', 'image', 'video', 'color'],
+    hint: 'dir=背景目录随机 | image | video | color=纯色' },
+  { key: 'bgDir', type: 'text', default: '', label: '背景目录' },
+  { key: 'bgPath', type: 'text', default: '', label: '背景文件' },
+  { key: 'bgColor', type: 'color', default: '#000000', label: '背景颜色' },
+  { key: 'watermark', type: 'file', default: '', label: '水印图片' },
+  { key: 'targetW', type: 'number', default: 1920, min: 16, max: 7680, evenAlign: true, label: '画布宽' },
+  { key: 'targetH', type: 'number', default: 1080, min: 16, max: 7680, evenAlign: true, label: '画布高' },
+  { key: 'scale', type: 'number', default: 0.74, min: 0.05, max: 3, label: '内容缩放' },
+  { key: 'bgFit', type: 'select', default: 'cover', label: '背景适合方式',
+    options: ['cover', 'contain', 'stretch'], hint: '填充 / 适应 / 拉伸' },
+  { key: 'posMode', type: 'select', default: 'center', label: '内容位置',
+    options: ['center', 'tl', 'tr', 'bl', 'br', 'custom'] },
+  { key: 'dx', type: 'number', default: 0, min: -7680, max: 7680, label: '水平偏移' },
+  { key: 'dy', type: 'number', default: 160, min: -7680, max: 7680, label: '垂直偏移' },
+  { key: 'radius', type: 'number', default: 0, min: 0, max: 2000, label: '圆角' },
+  { key: 'borderW', type: 'number', default: 0, min: 0, max: 400, label: '边框宽度' },
+  { key: 'borderColor', type: 'color', default: '#ffffff', label: '边框颜色' },
+  { key: 'bgBlur', type: 'number', default: 0, min: 0, max: 200, label: '背景模糊' },
+  // 勾选后每个背景各出一条成片（内容 × 背景，一个任务内逐条编码）。
+  // 语义放在引擎而不是只在界面：引擎要按它决定「每个内容配一个随机背景」还是「遍历全部背景」。
+  { key: 'eachBackground', type: 'bool', default: false, label: '每个背景各出一条' },
+  // 编码：与后处理「转码 / 码率」同一套语义与默认值（恒定质量 + CQ 26 + H.264），
+  // 否则同一素材在两个模块跑出来的体积/画质会有差异，用户无从解释。
+  { key: 'encCodec', type: 'text', default: 'H.264', label: '编码格式' },
+  { key: 'encMode', type: 'text', default: 'cq', label: '码率控制' },
+  { key: 'encCq', type: 'number', default: 26, min: 0, max: 51, label: 'CQ' },
+  { key: 'encBitrateKbps', type: 'number', default: 0, min: 0, label: '码率上限(kbps)' },
+  { key: 'encTargetMB', type: 'number', default: 0, min: 0, label: '目标体积(MB)' },
+  { key: 'container', type: 'text', default: 'mp4', label: '容器格式' },
+];
 
-/** 偶数对齐：h264 要求宽高为偶数，非偶数会让正式处理失败（预览无此要求，但两处共用同一表达式） */
+/** 默认值派生自 SCHEMA（对外导出的形态保持不变） */
+const DEFAULTS = paramsBase.defaultsOf(SCHEMA);
+
+/** 偶数对齐：h264 要求宽高为偶数（与参数归一化共用底座实现，避免两处判断不一致） */
 function evenRound(v) {
-  const n = Math.round(Number(v) || 0);
-  return n % 2 === 0 ? n : n + 1;
+  return paramsBase.evenAlign(v);
 }
 
 /** 颜色归一化为 ffmpeg 的 0xRRGGBB（非法值回退默认并记警告） */
 function toFfmpegColor(v, fallback, warnings, label) {
-  const s = String(v == null ? '' : v).trim();
-  const m = /^#?([0-9a-fA-F]{6})$/.exec(s) || /^0x([0-9a-fA-F]{6})$/.exec(s);
-  if (m) return '0x' + m[1].toLowerCase();
-  if (s && warnings) warnings.push(label + '颜色格式无法识别（' + s + '），已按默认值处理');
-  return '0x' + String(fallback).replace('#', '').toLowerCase();
+  return paramsBase.toFfmpegColor(v, fallback, warnings, label);
 }
 
-/** 参数归一化与校验：越界回落默认值并累积 warnings（供前端提示，不抛异常） */
+/**
+ * 参数归一化：默认值 / 范围裁剪 / 枚举回落 / 颜色格式 / 偶数对齐全部由声明驱动（base/params）。
+ *
+ * ⚠ 不抛异常：参数问题一律降级为告警并给出可用值 —— 处理链路不能因为一个越界数字整体失败，
+ *   用户拿到「按边界处理」的成片远比拿到报错有用。
+ */
 function normalizeParams(params) {
-  const p = Object.assign({}, DEFAULTS, params || {});
-  const warnings = [];
-  for (const k of Object.keys(NUM_RANGES)) {
-    const [lo, hi] = NUM_RANGES[k];
-    const n = Number(p[k]);
-    if (!isFinite(n)) { p[k] = DEFAULTS[k]; continue; }
-    if (n < lo || n > hi) {
-      warnings.push(k + ' 超出允许范围 [' + lo + ', ' + hi + ']，已按 ' + Math.min(hi, Math.max(lo, n)) + ' 处理');
-      p[k] = Math.min(hi, Math.max(lo, n));
-    } else p[k] = n;
-  }
-  const modes = ['center', 'tl', 'tr', 'bl', 'br', 'custom'];
-  if (modes.indexOf(p.posMode) < 0) { warnings.push('位置模式无法识别，已按居中处理'); p.posMode = 'center'; }
-  const bgModes = ['dir', 'image', 'video', 'color'];
-  if (bgModes.indexOf(p.bgMode) < 0) { warnings.push('背景方式无法识别，已按纯色处理'); p.bgMode = 'color'; }
-  // 画布宽高必须为偶数（编码器硬要求）：直接对齐而不是留给正式处理阶段报错
-  const tw = evenRound(p.targetW), th = evenRound(p.targetH);
-  if (tw !== Math.round(p.targetW) || th !== Math.round(p.targetH)) warnings.push('画布宽高已对齐为偶数（编码要求）');
-  p.targetW = tw; p.targetH = th;
-  p.borderColor = toFfmpegColor(p.borderColor, DEFAULTS.borderColor, warnings, '边框');
-  p.bgColor = toFfmpegColor(p.bgColor, DEFAULTS.bgColor, warnings, '背景');
-  // 背景「适合方式」：措辞与 Windows 桌面背景的「选择适合方式」对齐（填充 / 适应 / 拉伸），
-  // 用户不必学新词；非法值回落「填充」。
-  const bgFits = ['cover', 'contain', 'stretch'];
-  if (bgFits.indexOf(String(p.bgFit == null ? '' : p.bgFit)) < 0) {
-    if (p.bgFit) warnings.push('背景适合方式无法识别，已按「填充」处理');
-    p.bgFit = 'cover';
-  }
-  return { params: p, warnings };
+  const r = paramsBase.normalize(SCHEMA, params, {
+    label: (k) => {
+      const sc = SCHEMA.find((x) => x.key === k);
+      return (sc && sc.label) || k;
+    },
+  });
+  return { params: r.params, warnings: r.warnings };
 }
 
 /**
@@ -332,6 +313,7 @@ function buildCanvasPlan(params, src, opts) {
 }
 
 module.exports = {
+  SCHEMA: SCHEMA,
   DEFAULTS: DEFAULTS,
   normalizeParams: normalizeParams,
   contentOffset: contentOffset,
