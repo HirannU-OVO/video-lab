@@ -2,7 +2,6 @@
  * Video Lab — 全局图标库（唯一图标定义源）
  * 硬约束：所有图标 path 只能在此集中定义；各页面（app.js / task.js / settings.js 等）不得自行维护
  *         ICONS 或 icon() 副本，一律通过 window.VL_ICONS / window.VL_icon / window.VL_hydrateIcons 使用；
- *         页面加载顺序必须 icons.js 先于业务脚本；新增图标时在此补充，不要再在业务文件里另起炉灶。
  */
 (function () {
   'use strict';

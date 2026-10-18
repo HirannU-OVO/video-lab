@@ -1,13 +1,6 @@
 // Video Lab — Maid_Atelier 行为层（移植自 dsh-deep-whale/maid-atelier 客户端）
 // 装饰主窗口：角色舞台（宫殿背景 + 左右双女仆立绘）+ 侧栏 chibi/垂饰。
 // 尺寸随侧栏宽度联动（CSSOM 写回 CSS 变量）；选中配置投影到
-// body[data-maid-chat-active]，驱动女仆从大尺寸收缩到左右下角；
-// 搜索时女仆保持显示（不做让位）。dispose() 完整还原现场。
-// 设计要点（沿用母本）：
-//  - 尺寸写入独立 <style> 的 CSSStyleRule（CSSOM），而非 body inline style，
-//    避免逐帧 attr mutation 触发页面其它 MutationObserver（无抖动节流）
-//  - 自建元素统一 data-skin-chrome / data-skin-owner 标记，dispose 移除
-//  - 状态一律投影为 body data 属性，视觉响应交给 Maid_Atelier.css
 'use strict';
 (function () {
   var SKIN_ID = 'Maid_Atelier';
@@ -54,15 +47,11 @@
     // 舞台挂载点：center-panel（视频内容列，母本 chat column 对应物）。
     // 母本机制：stage 是内容列首子 z0，内容绘制在上方；右侧预览栏 / 底部配置栏
     // 出现时会把内容列挤窄/挤矮，stage 跟随内容列自动让位，因此右女仆始终锚定
-    // 内容列右缘、永不被右侧面板遮挡；两者折叠/隐藏时内容列占满整个 workspace，
-    // 女仆便恰好落在「除左侧配置列表外」界面的最左右下角。
     center.prepend(stage);
 
     // ── 日期分支装饰层（date-ornament）：金边 + 蕾丝 + 蝴蝶结，
     //    独立置于「日期分支」标题行下方（dates 之前），单独配置宽度；
     //    未选中配置时展示，body[data-maid-chat-active] 时由 CSS 隐藏。
-    //    头部被应用层重写（遮罩模式切换/退出）后会丢失注入元素，监听
-    //    vl:skin-refresh 按最新结构幂等重建 ──
     function buildOrnament() {
       var d3 = doc;
       var old = d3.querySelector('[data-skin-chrome="date-ornament"]');
@@ -86,8 +75,6 @@
     // ── 侧栏金框角饰（sidebar-corners）：四角 62px span + 中间四段金线，
     //    注入 sidebarRoot 最前（z-index 4，母本 [data-skin-chrome='sidebar-corners']） ──
     //    母本原方式：四角共用同一张原图 sidebar-corner.webp（右上朝向），
-    //    通过 CSS transform 翻转实现四角镜像（top-left 水平翻转、
-    //    bottom-right 垂直翻转、bottom-left 双向翻转）
     var corners = doc.createElement('div');
     corners.dataset.skinChrome = 'sidebar-corners';
     corners.dataset.skinOwner = OWNER;

@@ -6,10 +6,8 @@
 //   engine-YYYY-MM-DD.log   引擎原始 stdout/stderr（[taskId] 前缀 + 任务标记 + ffmpeg 行秒级采样），保留 7 天
 //   超 32MB 滚动为 -2/-3 序号；跨天未超保留期的旧文件压缩为 .gz（pruneAsync，空闲期调用）
 //
-// 行格式：
-//   2026-09-30 15:30:01.123  info   backend   task.artifacts.remove  删 3 个成片 · 共 264.1 MB  · {"pid":123,"taskId":"task_1","verb":"DEL","data":{...}}
+// 行格式：`2026-09-30 15:30:01.123  info  backend  task.artifacts.remove  删 3 个成片 · 共 264.1 MB  · {json}`
 //   └ 时间(毫秒)            └ lvl  └ mod     └ ev(点分)            └ msg                     └ 结构化字段
-//
 // 级别：fatal/error/warn/info/debug（小写）；默认 info，setLevel 运行时切换。
 // 写入：error/warn/fatal 同步追加（事后唯一证据）；info/debug 缓冲 500ms/256 条批量落盘，exit 时冲刷。
 // 去重：正文只在 app 落一次；error 只写索引行（短正文副本 + ref:app@<字节偏移>）。
@@ -202,8 +200,8 @@ function formatLine(lvl, mod, ev, msg, data, taskId, verb) {
  * @param {string} mod     backend / engine / ui / ipc / http / cache …
  * @param {string} ev      域.对象.动作（batch.task.start / ui.exception / ipc.continue_replica）
  * @param {string} msg     人读一句
- * @param {object} [data]  结构化对象（不截断，超长分片）
- * @param {object} [bind]  { taskId }
+ * @param {object} [data]  结构化细节（脱敏后进 meta）
+ * @param {object} [bind]  绑定上下文（taskId / verb）
  */
 function log(lvl, mod, ev, msg, data, bind) {
   try {
@@ -353,7 +351,6 @@ function describeFiles(paths, { max = 60 } = {}) {
   return { files: out, count: list.length, bytes: total, truncated: list.length > out.length };
 }
 
-// task（参数快照）与 error 同为长保留：任务记录会被清除，快照一旦没了就无法复现。
 // ⚠ 仍匹配 task- 前缀：该文件种类已取消，但历史版本产生过，留着以便正常回收、不留孤儿文件。
 const FILE_RE = /^(app|error|engine|task)-(\d{4})-(\d{2})-(\d{2})(?:-(\d+))?\.log(\.gz)?$/;
 

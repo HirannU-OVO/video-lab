@@ -4,8 +4,7 @@
 // 用法：node engine-runner.js --module mask [--dry]
 'use strict';
 
-// 抑制 node:sqlite 的实验性警告：缓存库是本项目内置驱动的唯一实现（无原生依赖），
-// 而警告经 stderr 被 backend 收集后会混入任务日志，干扰前端任务窗口显示。
+// 抑制 node:sqlite 的实验性警告：缓存库是本项目内置驱动的唯一实现（无原生依赖），警告经 stderr 被 backend 收集后会混入任务日志。
 const _emitWarning = process.emitWarning;
 process.emitWarning = function (warning, ...rest) {
   const text = typeof warning === 'string' ? warning : ((warning && warning.message) || '');
@@ -96,9 +95,7 @@ async function main() {
     code = await mod.run(ctx);
   } catch (e) {
     logger.error('引擎异常', (e && e.message) || String(e));
-    // ★ 堆栈必须落日志：只打印 message 时，`xxx is not defined` 这类错误无法定位到行，
-    //   排查只能靠猜（作用域类问题尤其如此）。
-    //   堆栈随 engineTail 进后端 error-*.log，故障可自证。
+    // ★ 堆栈必须落日志：只打印 message 时 `xxx is not defined` 这类错误无法定位到行；堆栈随 engineTail 进后端 error-*.log。
     try {
       const st = (e && e.stack) ? String(e.stack) : '';
       if (st) for (const line of st.split('\n').slice(0, 8)) logger.error('引擎异常·堆栈', line.trim());

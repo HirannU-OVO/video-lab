@@ -10,8 +10,8 @@
 //   · 时间轴裁剪统一归约（ranges.js）—— 所有区间以**原时间轴**为准
 //   · 音画同步 —— 视频 select 与音频 aselect 用**同一条件串**
 //
-// 唯一的例外是「码率控制」的**目标体积·精确模式**：它必须试编码 → 测码率 → 调 CQ 再编码，
-// 天然无法一遍完成。除它之外任何步骤都不允许多遍编码。
+// 唯一的例外是「码率控制」的**目标体积·精确模式**：必须试编码 → 测码率 → 调 CQ 再编码；
+// 除它之外任何步骤都不允许多遍编码。
 'use strict';
 
 const fs = require('node:fs');
@@ -132,8 +132,7 @@ async function processFile(file, steps, opts) {
     maxCq: Number(enc.ramp.maxCq),
     targetKbps: Number(enc.ramp.targetKbps),
   } : null;
-  // 「码率控制」步骤本身不产出滤镜片段，但**要求重编码一遍** ——
-  // 若只看滤镜链是否为空，就会把它误判成「无需处理」而直接跳过。
+  // 「码率控制」步骤本身不产出滤镜片段，但**要求重编码一遍** —— 若只看滤镜链是否为空会把它误判成「无需处理」而跳过。
   const encodeWanted = !!ramp || (enc.cq != null && isFinite(Number(enc.cq)));
 
   if (chain.isEmpty() && !trimmed && !encodeWanted) {
@@ -150,9 +149,8 @@ async function processFile(file, steps, opts) {
       const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
       const dst = path.join(o.backupDir, stamp + '_' + path.basename(file));
       fs.copyFileSync(file, dst);
-      // ⚠ copyFileSync 会**继承源文件的 mtime**（Windows CopyFile 行为；实测素材的 8 月时间戳被原样带过来），
-      //   而「备份自动清理」按 mtime 判过期（保留 N 天）—— 于是**刚写下的备份被当成几个月前的旧货当场清掉**，
-      //   表现为"备份目录建了却是空的"。备份的年龄应从**备份时刻**算起，故显式写入当前时间。
+      //   copyFileSync 继承源 mtime，而「备份自动清理」按 mtime 判过期（保留 N 天）—— 刚写下的备份会被当成旧货当场清掉，
+      //   表现为"备份目录建了却是空的"；备份年龄必须从**备份时刻**算起，故显式写入当前时间。
       try { const now = new Date(); fs.utimesSync(dst, now, now); } catch (e2) { /* 时间戳写失败不影响备份本身 */ }
     }
   } catch (e) { pushNote('备份失败：' + e.message); }
@@ -162,8 +160,7 @@ async function processFile(file, steps, opts) {
   // -stats：让 ffmpeg 持续输出帧进度行（frame= / time=），任务窗口据此显示实时进度
   const head = ['-y', '-hide_banner', '-loglevel', 'error'].concat(o.stats ? ['-stats'] : [])
     .concat(['-i', file]).concat(built.inputArgs || []);
-  // ⚠ 临时名无扩展名（见 outplan.tempPathFor）→ 显式 -f；容器按**目标扩展名**推断，
-  //   保持与"靠文件名推断"时代一致的行为（mov 名的成片仍按 mov 封装）。
+  // ⚠ 临时名无扩展名（见 outplan.tempPathFor）→ 显式 -f；容器按**目标扩展名**推断（mov 名的成片仍按 mov 封装）。
   const outFmt = path.extname(finalPath.path).toLowerCase() === '.mov' ? 'mov' : 'mp4';
   const tail = ['-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', '-f', outFmt, tmp];
   const forward = o.stats && o.onProgress
@@ -192,8 +189,7 @@ async function processFile(file, steps, opts) {
     }
   } else {
     // ── 码率上限 / 目标体积：先按 10% 样本试算定 CQ，再整片只编码一遍 ──
-    // NVENC 没有 2-pass，反复整片重编码（原脚本做法）代价太大且画质被反复损失 ——
-    // 样本试算 → 整片一遍出片（画质只损失一次）。
+    // NVENC 没有 2-pass，样本试算 → 整片一遍出片，避免反复整片重编码带来的画质损失。
     const from = isFinite(ramp.initialCq) ? ramp.initialCq : 26;
     const to = isFinite(ramp.maxCq) ? ramp.maxCq : 40;
     const inc = ramp.increment;
@@ -251,7 +247,6 @@ async function processFile(file, steps, opts) {
       pushNote('ffmpeg：' + (r.errTail || '（无错误输出）'));
       return { ok: false, reason: '编码失败（退出码 ' + r.code + '）', encodes: 0, samples, notes };
     }
-    // 整片实测复核：样本只是估计，整片仍超目标时按原脚本语义保留原文件
     const finalBit = await measureBitrateKbps(tmp);
     if (ramp.targetKbps > 0 && finalBit > ramp.targetKbps * 1.03) {
       try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch (e) {}
@@ -265,8 +260,7 @@ async function processFile(file, steps, opts) {
   try {
     const st = fs.statSync(tmp);
     if (!st.size) throw new Error('产物为空');
-    // 统一落盘入口（同 outplan.placeFile）：覆盖模式下与临时文件同目录 → 原子改名；
-    // 输出到别处 → 先复制到目标目录内的临时名再原子改名，避免留下顶着正式名的半截产物。
+    // 统一落盘入口（同 outplan.placeFile）：覆盖模式下与临时文件同目录 → 原子改名；输出到别处 → 先复制到目标目录内的临时名再原子改名。
     const placeErr = await outplan.placeFile(tmp, finalPath.path);
     if (placeErr) throw placeErr;
   } catch (e) {
@@ -281,8 +275,7 @@ async function measureBitrateKbps(file) {
   const { spawn } = require('node:child_process');
   return new Promise((resolve) => {
     let out = '';
-    // 与 base/probe.js 统一口径：只认注入的 VL_FFPROBE_BIN
-    // ⚠ 不要用裸名 ffprobe：同文件内两种口径并存会在无 PATH 时静默失败
+    // 与 base/probe.js 统一口径：只认注入的 VL_FFPROBE_BIN，不要用裸名 ffprobe（无 PATH 时静默失败）。
     const bin = process.env.VL_FFPROBE_BIN || '';
     if (!bin) return resolve(0);
     let child;
@@ -328,11 +321,8 @@ async function runPipeline(opts) {
 
   // 备份根：默认用数据目录下的 backup（本身就在应用专属目录内）；
   // 用户自选目录（如 E:\Cache）时，在其下再建一层应用专属文件夹 ——
-  // ① 备份不散落在用户目录根下；② 避免与别的应用的同名子文件夹（如 tool）混淆
-  // ⚠ 层级必须是 `output.defaultBackupDir`（= spec.output.defaultBackupDir，后端 runTool 填的设置项）。
-  //   不能读顶层的 `o.defaultBackupDir`：调用方（engines/tools/module.js）只传 output、不传顶层，
-  //   该值恒为 undefined → 任务没带 backupDir 就一律落到数据目录 backup，
-  //   表现为「设了备份路径却仍落在数据目录」。
+  // ① 备份不散落在用户目录根下；② 避免与别的应用的同名子文件夹（如 tool）混淆。
+  // ⚠ 层级必须走 `output.defaultBackupDir`（后端 runTool 填的设置项），不要读顶层同名字段。
   const customRoot = String(output.backupDir || '').trim() || String(output.defaultBackupDir || '').trim();
   const backupRoot = customRoot ? path.join(customRoot, 'Video Lab 备份') : path.join(storageDir, 'backup');
   // ⚠ 开关语义：`output.backup === true` 表示**用户勾选了「处理前备份」**（见 tool.js outCollect：

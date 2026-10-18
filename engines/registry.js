@@ -1,4 +1,4 @@
-// 业务模块注册表（目标 3 扩展入口）：batch/mask/replica 作为模块挂载在底座上
+// 业务模块注册表：batch / mask / replica 作为模块挂载在底座上
 'use strict';
 
 const registry = new Map();

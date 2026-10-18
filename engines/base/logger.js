@@ -1,5 +1,4 @@
-// 结构化日志 → 兼容行输出：字节级保持 backend.js 已解析的协议行。
-// Node 引擎内部用结构化对象流转业务状态，stdout 仅作为展示与兼容层。
+// 结构化日志 → 兼容行输出：字节级保持 backend.js 已解析的协议行；Node 引擎内部用结构化对象流转业务状态，stdout 仅作展示与兼容层。
 'use strict';
 
 // 用户指引映射：把「出错步骤」翻译成 ①怎么修 ②责任归属。
@@ -28,11 +27,9 @@ const DIAG_PREFIX = '@@VLDIAG@@';
 class Logger {
   constructor({ stream = process.stdout, diagLimit = 3000, taskId = '' } = {}) {
     this._out = stream;
-    // taskId 贯穿：backend 经 env 注入 VL_TASK_ID，诊断事件携带同一 id，
-    // 任务失败随 task.diag 落运行日志 → 跨进程可用同一个 id 串出完整链路。
+    // taskId 贯穿：backend 经 env 注入 VL_TASK_ID，诊断事件携带同一 id，任务失败随 task.diag 落运行日志 → 跨进程可串出完整链路。
     this._taskId = String(taskId || process.env.VL_TASK_ID || '');
-    // 诊断环形缓冲：只驻内存，不进 stdout —— 任务窗口（用户视图）保持简洁；
-    // 任务失败时由 dumpDiag() 一次性交给后端，落进运行日志（诊断视图，完整过程）。
+    // 诊断环形缓冲：只驻内存、不进 stdout（用户视图保持简洁）；任务失败时由 dumpDiag() 一次性交给后端，落进运行日志。
     this._diag = [];
     this._diagLimit = diagLimit;
   }
@@ -80,8 +77,7 @@ class Logger {
 
   warn(text) { this.raw('⚠️  ' + text); }
 
-  // 成片预计时长：驱动前端单成片进度分母 clipTarget
-  // 格式对齐 PS 的 [math]::Round($v,2)：两位小数并去掉尾随零（164.8 而非 164.80）
+  // 成片预计时长：驱动前端单成片进度分母 clipTarget；格式对齐 PS 的 [math]::Round($v,2)（两位小数、去尾随零）。
   clipDuration(sec) {
     const v = Math.round(Number(sec) * 100) / 100;
     this.raw('成片预计时长: ' + String(v) + ' 秒');
@@ -91,8 +87,7 @@ class Logger {
   total(n) { this.raw('共 ' + n + ' 个'); }
   progress(kind, cur, total) { this.raw(`${kind}第 ${cur} / ${total} 个成片`); }
 
-  // 视频处理工具：与成片任务共用同一套进度解析（backend 两种措辞都认），
-  // 但措辞如实描述工具的场景 —— 工具处理的是"视频文件"，不是"成片"
+  // 视频处理工具：与成片任务共用同一套进度解析（backend 两种措辞都认），但措辞如实描述工具场景（处理的是"视频文件"）。
   toolProgress(cur, total) { this.raw(`处理第 ${cur} / ${total} 个视频`); }
 
   // 单文件进度分母（字段语义与成片相同：驱动前端单条进度条）
@@ -133,19 +128,18 @@ class Logger {
     this.raw('❌ 失败成片：' + name + '|' + clean);
   }
 
-  // 执行权状态（原「互斥锁」措辞：用户不知道在等什么，改说人话）
+  // 执行权状态（用户可见文案，不用「互斥锁」等术语）
   // suffix 用于对齐各模块原文（如 batch 的「准备拼接...」）；
   // ⚠ 这三句是**协议行**：backend 与 frontend/task.js 都按文本匹配，改文案必须三处同步
-  //   （见 backend.js 的 lockState 判定与 task.js 的日志过滤正则）。
-  //   各行尾的「本任务」不是赘语 —— 它是让匹配不误伤其它日志行的判别词。
+  //   （见 backend.js 的 lockState 判定与 task.js 的日志过滤正则）；行尾「本任务」是避免误伤其它日志行的判别词。
   lockWaiting(suffix) { this.raw('等待前面的任务完成' + (suffix ? '，' + suffix : '')); }
   lockAcquired(msg) { this.raw('▶ 开始处理本任务' + (msg ? '，' + msg : '')); }
   lockReleased() { this.raw('■ 本任务处理结束'); }
 
   // 错误块（对齐 PS1 Invoke-ErrorAction 输出）
   // ① 出错误块时自动附带过程诊断（后端据此拿到「怎么走到这个错误」）；
-  // ② 在「出错步骤 / 错误详情」之外补「如何解决 / 问题归属」——
-  //    让用户看得懂该怎么修、以及这是自己的问题还是程序的问题（技术细节仍只在诊断通道）。
+  // ② 在「出错步骤 / 错误详情」之外补「如何解决 / 问题归属」—— 让用户看得懂该怎么修、问题出在哪一方
+  //   （技术细节仍只在诊断通道）。
   error(step, msg, hint) {
     this.dumpDiag();
     const h = (hint && hint.how) ? hint : hintFor(step);
@@ -154,8 +148,7 @@ class Logger {
     this.raw('出错步骤: ' + step);
     this.raw('错误详情: ' + msg);
     if (h && h.how) this.raw('如何解决: ' + h.how);
-    // 中性表述：只说明问题类型，不做否定式自证（那读起来像在推责）。
-    // 属于程序侧时补一句「已记录运行日志，可反馈」—— 这是有用的行动信息，不是辩解。
+    // 中性表述：只说明问题类型，不做否定式自证；程序侧问题补一句「已记录运行日志，可反馈」。
     if (h && h.who) {
       const isProgramSide = String(h.who).indexOf('程序') === 0;
       this.raw('问题类型: ' + h.who + (isProgramSide ? '（已记录运行日志，可反馈）' : ''));

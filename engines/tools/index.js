@@ -1,14 +1,7 @@
 // 视频处理工具 · 步骤注册表
 //
-// 每个步骤是一个独立模块，自声明 schema（前端据此**自动渲染表单**，无需改前端）
-// 与在 pipeline 中的固定位次。新增能力 = 加一个文件 + 在 STEP_FILES 里登记。
-//
-// 执行位次固定不可调：
-//   内容（trim → dropframes → deblack → reverse）
-//   → 画面（resize → overlay → rotate）
-//   → 时长（speed）
-//   → 音频（audio）
-//   → 编码（fps → encode）
+// 每个步骤是一个独立模块，自声明 schema（前端据此**自动渲染表单**，无需改前端）与在 pipeline 中的固定位次；
+// 新增能力 = 加一个文件 + 在 STEP_FILES 里登记。
 'use strict';
 
 const path = require('node:path');
@@ -39,7 +32,7 @@ function registerStep(mod) {
   return mod;
 }
 
-/** 懒加载：只加载已实现的步骤文件（阶段一仅 3 个），缺失的静默跳过 */
+/** 懒加载：只加载已实现的步骤文件，缺失的静默跳过 */
 function load() {
   if (loaded) return;
   loaded = true;

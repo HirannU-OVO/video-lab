@@ -1,16 +1,7 @@
 // 视频处理工具 · 引擎模块（第 4 个任务模块，与 batch / mask / replica 同机制）
 //
-// 为什么做成任务模块：只有进同一套任务体系，才能天然获得
-//   · 与成片任务**共享同一队列**（GPU 串行，不互相拖慢 —— 本质都是 ffmpeg 编码）
-//   · 进度上报 / 停止 / 暂停 / 互斥锁语义
-//   · 任务窗口里的徽章与日志
-// 不做独立执行通道：并行跑两路 NVENC 会互相拖慢甚至因会话不足失败。
-//
-// 与成片任务的三处差异：
-//   · 不写 cache.db、不写成片清单、产物不参与去重与预检测缓存
-//   · **绝不发行成片完成标记行** —— 那会把产物清单填进任务标记，
-//     用户点「清除已完成任务（含产物）」就会删掉被覆盖的源视频
-//   · 不发行「✅ 创建输出目录：」（batch 专属标记行）
+// 做成任务模块以复用同一套任务体系：与成片任务共享同一队列（GPU 串行）、进度上报 / 停止 / 暂停 / 互斥锁语义、
+// 任务窗口里的徽章与日志；不做独立执行通道（并行跑两路 NVENC 会互相拖慢）。
 'use strict';
 
 const fs = require('node:fs');
@@ -43,8 +34,7 @@ function resolveFiles(spec, storageDir) {
   return [];
 }
 
-// 本次运行的加锁目录：输出到指定目录时锁该目录，覆盖原文件时锁源文件所在目录
-// （文件可能分散在多个目录，取最上层公共目录；取不到则退回第一个文件所在目录）
+// 本次运行的加锁目录：输出到指定目录时锁该目录，覆盖原文件时锁源文件所在目录（文件可能分散在多个目录，取最上层公共目录）。
 function lockDirFor(spec, files) {
   const mode = String((spec.output && spec.output.mode) || '');
   const outDir = String((spec.output && spec.output.dir) || '').trim();
@@ -67,10 +57,6 @@ function lockDirFor(spec, files) {
  * 锁文件路径 —— 必须落在**被处理目录之外**，两条原因：
  *   ① 锁文件落在输出目录里会把它变成"非空"，直接破坏「空目录 → 直接输出」规则
  *   ② 不在用户的视频目录里留下与业务无关的残留文件
- * 因此按目标目录路径生成稳定的锁名，锁文件统一放在数据目录的 `.locks` 下；
- * 同一目录 → 同一把锁，不同目录互不阻塞。
- * 注：这两个函数由本模块（调用方）实现并**注入**给画布合成执行器 —— 锁目录依赖扫描出的文件清单，
- * 而清单在执行器里才得到；放在这里可避免 module ↔ 执行器 互相 require。
  */
 function lockPathFor(dir) {
   const base = String(process.env.VL_STORAGE_DIR || '').trim() || os.tmpdir();
@@ -91,8 +77,6 @@ async function run(ctx) {
   // 两种运行模式，**各自独立、互不干扰**：
   //   steps（默认）—— 后处理：步骤链（pipeline.js），带自己的输出设置
   //   canvas       —— 画布合成（竖转横批量）：独立执行器（canvas-run.js），带自己的输出设置
-  // 之所以分开：两者能力有重叠（转分辨率 ↔ 画布尺寸、裁剪/变速 ↔ 合成时长），混在一条链里会互相干扰；
-  // 分开后各自的参数、输出策略、日志语义都只对自己负责。
   if (String(spec.mode || 'steps') === 'canvas') {
     try {
       return await canvasRun.run(spec, ctx, { lockDirFor, lockPathFor });
@@ -195,8 +179,7 @@ async function run(ctx) {
     if (results.backupDir) logger.info('备份目录：' + results.backupDir);
     code = failed > 0 ? 1 : 0;
   } finally {
-    // 锁必须无条件释放：本进程内不释放会一直占着（同一引擎进程再次运行同目录会等到超时）。
-    // 未真正持有过锁时不发「已释放」行 —— 免得日志出现自相矛盾的状态。
+    // 锁必须无条件释放：本进程内不释放会一直占着（同一引擎进程再次运行同目录会等到超时）；未真正持有过锁时不发「已释放」行。
     if (lock) {
       try { lock.release(); } catch (e) {}
       logger.lockReleased();

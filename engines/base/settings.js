@@ -1,7 +1,6 @@
 // 设置库（<storageDir>\settings.db，与 Global.json / cache.db 同级）：单表 KV。
 // scope = 模式 / 窗口名（global / batch / mask / 未来 denoise…）—— 新增模式只加 scope 行，不加文件。
 // value 统一以 JSON 文本承载：调用方无需关心类型，也避免布尔被存成字符串这类失真。
-// 与 cache 同样使用 WAL + busy_timeout：backend 与引擎子进程会访问同一目录下的两个库。
 'use strict';
 
 const fs = require('node:fs');

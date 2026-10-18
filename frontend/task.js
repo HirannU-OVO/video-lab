@@ -22,8 +22,7 @@
     return Promise.resolve().then(function () { return api[method].apply(api, args); });
   }
 
-  // 任务状态文案用共享定义（VL.STATUS_TEXT）—— tool.js 里另有一份内联对象，
-  // 两边曾对 running 一个显示「运行中」一个显示「处理中」。
+  // 任务状态文案统一取 VL.STATUS_TEXT，勿在本文件另写一份
   var STATUS_TEXT = (window.VL && window.VL.STATUS_TEXT) || { queued: '排队中', paused: '已暂停', running: '运行中', done: '已完成', error: '失败', stopped: '已停止', interrupted: '已中断' };
   var LOCK_TEXT = { unknown: '', waiting: '等待前面的任务完成', locked: '开始处理', released: '' };
   var TYPE_TEXT = { batch: '批量拼接', replica: '视频复刻', mask: '遮罩叠加', tool: '视频处理' };
@@ -301,8 +300,6 @@
   // 任务日志展示过滤：仅影响展示，后端日志数据保持完整。
   // 1) 内部机制/冗余行（执行权状态、索引加载与自动修正、TXT已同步、预检测计数、
   //    生成/分组数确认、创建输出目录标题）用户无需关注，直接隐去；
-  // 2) 复刻模式2每次重试尝试的片段替换详情，被"替换后总时长…重试替换"覆盖的前一轮丢弃，
-  //    仅保留最终采用的那一轮（重试次数行保留）
   function filterTaskLogLines(lines) {
     var out = [];
     var block = null;
@@ -336,8 +333,6 @@
   // 控制台日志滚动辅助：logAtBottom 判断是否停在最新一行（底部），
   // scrollLogBottom 直接滚到底。
   // 跟随语义：following=true 表示「该跟随最新」——初始为 true；每次滚动实时
-  // 同步（在底部→ true，上滚看历史→ false）；日志不可见时（折叠卡片 / 切换 tab
-  // / 关闭列表重开后）一律重置为 true，保证再次展开即最新一行
   function logAtBottom(el) { return el.scrollHeight - (el.scrollTop + el.clientHeight) <= 2; }
   function scrollLogBottom(el) { el.scrollTop = el.scrollHeight; }
   // 时间格式跟随实际用时：几十秒只显秒；1m1s / 10m10s / 1h0m10s（分秒含 0 亦保留）
@@ -583,7 +578,7 @@
     var statusEl = rec.header.querySelector('.task-card__status-text');
     var titleEl = rec.header.querySelector('.task-card__title');
     titleEl.textContent = t.title || '';
-    // 成片已不在磁盘（曾产出过）：标题置灰；状态文字由「已完成」改为警示色红色「已删除」。任务行本身保留
+    // 成片已不在磁盘（产出过的已结束任务）：标题置灰；状态文字改为警示色红色「已删除」
     if (t.hasOutput === false) {
       titleEl.classList.add('task-card__title--missing');
       titleEl.title = '成片文件已不存在';
@@ -719,7 +714,6 @@
     // 有无失败记录不足以判定能否续跑：中断/停止（手动停止、进程被杀）不会留下「❌ 失败成片」行，
     // 成片失败记录也可能是空的（如整片在选片阶段就失败）。这种情形 backend 的 continueReplica
     // 会用第三层兜底 —— 依任务标记里已产出的成片清单 + 源 TXT 反推未完成项，
-    // 所以「进度未走完」同样应当给出续跑入口，否则用户只剩「重新开始」（会删掉已成功产物）。
     var progDone = (t.progress && t.progress.current) || 0;
     var progTotal = (t.progress && t.progress.total) || 0;
     // 进度未知（引擎在早期步骤失败、还没报出总数 → total=0）**不能当作「没有内容」**：
@@ -729,7 +723,6 @@
     // ⚠ progress.current 的语义是「正在做第几个」，不是「已完成几个」：
     //   停在第 1 个时它就是 1，而成片目录里一个产物都没有。
     //   一个成片都没产出时**不存在"续"这回事**（整批重做才对），此时只应给「重新开始」。
-    //   故用 current > 1 作为「确实有产物」的下界：current=1 ⇒ 完成 0 个 ⇒ 不给续跑入口。
     var hasOutput = progTotal > 0 ? progDone > 1 : false;
     var hasFail = (Array.isArray(t.failedVideos) && t.failedVideos.length > 0)
       || (t.log || []).some(function (l) { return /❌ 失败成片/.test(String(l)); })
@@ -792,7 +785,6 @@
     // 日志重绘：后端下发的 log 是最近 500 行窗口（slice(-500)），行数不会一直增长，
     // 按行数增量追加会在追平窗口后永不更新（重开/切 tab 才见一次最新）。
     // 改为窗口内容整体重绘 + 滚动保持：跟随状态滚到底，查看历史时保持相对阅读位置。
-    // 末尾追加实时进度行（liveLine）：ffmpeg 折叠单行，中文标签按序直译
     var lines = t.log || [];
     var joined = filterTaskLogLines(lines).join('\n');
     // 已结束任务：实时进度行已由"成片完成"固化进日志，不再叠加显示，避免与固化行内容重复
@@ -1318,8 +1310,6 @@
     // 1 秒轮询兜底刷新：解决 IPC 推送偶发丢失导致"有任务却显示暂无任务"，
     // 并保证控制台日志/状态每 1 秒刷新一次，而非仅在成片生成时才更新。
     // ⚠ 窗口不可见时（最小化到托盘/被其他窗口完全遮挡）必须停：list_tasks 返回的是全部任务的
-    // 完整快照（任务多时可达数百 KB），主进程序列化 + IPC 传输 + 渲染层反序列化每秒都要跑一遍，
-    // 隐藏期间白白占用两个进程，用户再点托盘唤出时 show() 要排在积压的工作后面 → 表现为"要等很久"。
     setInterval(function () {
       if (document.hidden) return;   // 隐藏期间不轮询；重新可见时由 visibilitychange 立即补一次
       if (api.list_tasks) api.list_tasks().then(renderTasks).catch(function () {});

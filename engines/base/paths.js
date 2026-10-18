@@ -74,7 +74,7 @@ function tempNameFor(finalOut) {
 
 // 原子改名（带重试）：Windows 上 rename 可能被杀软 / 索引服务对「刚写完的大文件」的瞬时占用挡住 ——
 // 单次失败就会把**已编码成功**的成片判为失败（合成完成后要确保改名能完成，不被其他软件影响）。
-// 成功后返回 null，全部尝试失败返回最后一次错误。批内退避递增，总计约 2.2s，不阻塞正常路径（首次即成功）。
+// 成功后返回 null，全部尝试失败返回最后一次错误。批内退避递增，不阻塞正常路径。
 async function renameWithRetry(src, dst, delays) {
   const waits = Array.isArray(delays) && delays.length ? delays : [0, 120, 300, 600, 1200];
   let lastErr = null;

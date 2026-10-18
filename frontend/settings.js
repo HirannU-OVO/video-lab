@@ -103,9 +103,6 @@
   // ── 全即时保存──
   // 设置页取消「保存」按钮与「未保存」概念：任何改动都在防抖后直接落库。
   // 依据：① 设置项都是开关与标量，不存在"编辑半成品"的语义（那是配置编辑器的场景）；
-  //      ② 「未保存」状态在本项目反复引发时序类故障（切项目/切配置/关闭时的拦截弹窗）。
-  // 做法：沿用 recomputeDirty 这个名字 —— 它原本就挂在所有输入/复选/单选/标签变更上（13 处），
-  //      内部改为「排一次防抖保存」，于是全部改动点自动升级为即时保存。
   var _saveTimer = null;
   var _saving = false, _saveAgain = false;   // 保存串行化：进行中再次改动 → 合并为"完成后再存一次"
   function scheduleSave() {
@@ -157,9 +154,6 @@
   // 多值输入（提取前缀/后缀）：回车添加 → tags 列表展示，可拖拽排序（顺序即成片名前后顺序），点击删除。
   // 列表默认折叠：输入框兼作折叠开关 —— 点击输入框/箭头展开，点击两者之外折叠；
   // 折叠态下 placeholder 显示已设项摘要，因此不展开也能看清配了什么。
-  // storeRef 传「取数组的函数」（如 function () { return state.batch.txt_prefix; }）或直接传数组。
-  // ⚠ 必须按函数取最新引用：loadSettings / bindSave 会整份替换 state.batch.txt_prefix 的引用，
-  // 若此处捕获旧引用，渲染读到的会是空数组（已存项不显示），输入的新值也 push 进废弃数组（存不进去）。
   function setupMultiTags(inputId, listId, storeRef, onChange, caretId) {
     var input = $(inputId);
     var list = $(listId);
@@ -279,7 +273,6 @@
   // 多值标签（提取前缀 / 后缀）增删或改序后：刷新成片名预览并重算「未保存」标记。
   // ⚠ 必须定义在顶层：loadSettings 的回调与 bindSave 两处都要引用它 ——
   // 定义在 bindSave 内部会让 loadSettings 回调求值该标识符时抛 ReferenceError，
-  // 被外层 .catch 捕获后报「读取设置失败」，且整个设置页只加载到一半。
   function onBatchTagsChanged() { updatePreview(); recomputeDirty(); }
 
   // 每日定时检查更新时间下拉：24 小时制整点选项（默认 9:00）
@@ -554,7 +547,6 @@
             + '<span class="about-info__v">' + esc(it[1]) + '</span></div>';
         }).join('');
         // 项目仓库也放进同一容器、用同一行结构 —— 样式与上面各行完全一致（含末行无分隔线）。
-        // 单独起一个 .about-info 容器会让字体/间距与其它行对不齐（曾被一眼看出不统一）。
         var repo = document.createElement('div');
         repo.className = 'about-info__row';
         repo.innerHTML = '<span class="about-info__k">项目仓库</span>'
@@ -569,7 +561,6 @@
 
     function loadAbout() {
       // 关于页只展示运行环境与组件；版本号与更新入口在顶部版本卡。
-      // （README 曾在此按 Markdown 渲染 —— 它面向仓库读者，混进关于页既冗长又与实际版本无关）
       loadAboutInfo();
     }
     document.querySelectorAll('.settings-nav__item').forEach(function (btn) {
@@ -678,7 +669,7 @@
           setStatus(silent ? '已自动保存' : '已保存', true); setTimeout(statusTimer, 1500);
           if (res.config_moved) setStatus('配置和数据位置已切换并生效，配置与缓存库已自动迁移', true);
         } else {
-          // 失败一律可见（含自动保存）：静默失败＝用户以为生效了
+          // 失败一律可见（含自动保存）：不得静默失败
           setStatus('保存失败：' + ((res && res.error) || '未知原因') + '（改动未落库）', false);
         }
       }).catch(function (e) {
@@ -718,13 +709,6 @@
     // ── 检查更新：结果弹窗 + 按钮绑定 ──
     // 结果由设置页自己弹：软件端设置页是主窗口内的 iframe，浏览器端更是独立页面
     // （那里没有主窗口脚本）—— 自己弹才能同时覆盖两种形态。
-    // 按钮用「委托到 document」：不依赖绑定时元素已存在，元素被重建也有效。
-    // 为什么不能只靠主窗口弹：设置页在软件端是主窗口内的 iframe（会被裁切），
-    // 在浏览器端更是独立页面（那里根本没有主窗口的脚本）—— 自己弹才能同时覆盖两种形态。
-    // 托盘入口的结果由主窗口弹（index.html 的 #updateResultMask），两条路互不干扰。
-    // ⚠ 这里刻意**不缓存元素**：缓存的引用一旦为 null（绑定时元素还没到位 / 被重建），
-    //   cuBusy 会「静默什么都不做」，表现为点击后毫无反应且没有任何报错 —— 很难查。
-    //   每次现取，取不到也不抛错。
     function cuBusy(on) {
       var b = $('btnCheckUpdate');
       if (!b) return;
@@ -734,12 +718,6 @@
     // ── 结果弹窗：按【运行形态】分流，判据是协议而非「是否在 iframe 内」──
     //  · 软件端（file://，preload 注入 api）：设置页是主窗口内的 iframe（.settings-frame 是
     //    z-index 9999 的覆盖层且带 transform），自弹浮层会被裁切 —— 结果统一由主窗口弹
-    //    （index.html 的 #updateResultMask + app.js 的 showUpdateResult）。
-    //  · 浏览器端（http/https，txapi 注入）：后端事件【只发往软件端主窗口】且被 NO_BROADCAST 挡在
-    //    HTTP 广播之外，浏览器页面永远收不到 update_* —— 必须由本页自己弹。
-    //    ⚠ 注意浏览器端有两种进入方式：直接开 settings.html（独立页面），或从主窗口页面点「设置」
-    //    （此时本页是主窗口页面的 iframe）。后者同样收不到事件，所以【不能用「是否在 iframe 内」
-    //    做判据】—— 那会让「从主窗口进入」的浏览器端两边都不弹（实测踩过）。用协议区分才准。
     var IS_BROWSER = location.protocol.indexOf('http') === 0;
     var _UR = {
       none:   { sym: '✓', cls: 'ok',   title: '已是最新版本',     close: '知道了' },
@@ -801,12 +779,11 @@
         }).catch(function () { setStatus('下载更新失败', true); });
       });
     })();
-    // 事件委托（放在 bindNav 最前：此位置的绑定实测有效；函数声明会提升，可用后文定义的 showUr/hideUr/cuBusy）
     document.addEventListener('click', function (e) {
       var hit = e.target && e.target.closest ? e.target.closest('#btnCheckUpdate') : null;
       if (!hit) return;
       // 检查更新按界面当前选中值执行：先让「仓库选择 / 更新方式」即时落盘，
-      // 否则切了仓库没保存就点这里，后端仍按旧配置检查，用户看到的与实际的会不一致。
+      // 否则切了仓库没保存就点这里，后端仍按旧配置检查，结果与界面显示不一致。
       var srcNow = document.querySelector('input[name="updateSource"]:checked');
       var modeNow = document.querySelector('input[name="updateMode"]:checked');
       var pref = {

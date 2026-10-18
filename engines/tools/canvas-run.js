@@ -1,19 +1,8 @@
-// 画布合成（竖转横）· 引擎侧批量执行器   ← 「执行」这一半；「方案构造」那一半见 canvas-plan.js
+// 画布合成（竖转横）· 引擎侧批量执行器
 //
-// 分工与引用关系：
-//   · 本文件（canvas-run.js）：**只在引擎子进程运行**，负责探测 / 编码 / 落盘 / 备份 / 进度；
-//     引用 canvas-plan.js 取合成方案；被 module.js 以 `run(spec, ctx, { lockDirFor, lockPathFor })` 调用。
-//   · canvas-plan.js：纯逻辑（参数模型 + buildCanvasPlan），被主进程（backend.js 预览渲染）与
-//     本文件两端共用 —— 这正是两者必须分开、不能合并的原因（主进程不该被拉进探测/编码/落盘依赖）。
-//   · 锁：路径计算由调用方注入（它依赖本次扫描出的文件清单，而清单在本文件里才得到）；
-//     真正的加锁实现是 base/lock.js 的 acquireLock，与其它模块同一套语义。
-//
-// 与「后处理」（engines/tools 的步骤链）**互相独立**：不共用步骤清单、不共用输出设置、各自有各自的
-// 「开始处理」入口 —— 两者的能力本就有重叠（转分辨率 ↔ 画布尺寸、裁剪/变速 ↔ 合成时长），
-// 混在一条滤镜链里会互相干扰（例如两处都想决定输出分辨率）。
-//
-// 逐文件流程：探测（尺寸/时长/音轨）→ 挑背景（目录随机 = **每个视频独立随机**，原脚本 Get-Random 语义）
-//   → 构造 forEncode 滤镜链（canvas-plan 的 buildCanvasPlan）→ 一次编码（NVENC）→ 按输出策略落盘（临时文件成功后替换 + 备份）
+// 只在引擎子进程运行：探测 / 编码 / 落盘 / 备份 / 进度；合成方案取自 canvas-plan.js（纯逻辑，两端共用）。
+// 与「后处理」（engines/tools 的步骤链）互相独立：不共用步骤清单与输出设置，各自有各自的入口。
+// 锁路径由调用方（module.js）注入（依赖本次扫描出的文件清单），加锁实现为 base/lock.js。
 'use strict';
 
 const fs = require('node:fs');
@@ -86,8 +75,7 @@ const isoStampOf = (d) => d.toISOString().replace(/[:.]/g, '-').slice(0, 19);
 
 async function run(spec, ctx, lockUtils) {
   const logger = ctx.logger;
-  // 锁路径计算由调用方（module.js）注入 —— 锁目录依赖本次扫描出的文件清单，而清单在这里才得到；
-  // 未注入时退化为不加锁（正常调用路径不会发生，仅保证单独调用本模块时不崩）
+  // 锁路径计算由调用方（module.js）注入 —— 锁目录依赖本次扫描出的文件清单，未注入时退化为不加锁（仅保证单独调用本模块时不崩）。
   const lockDirFor = (lockUtils && typeof lockUtils.lockDirFor === 'function') ? lockUtils.lockDirFor : () => '';
   const lockPathFor = (lockUtils && typeof lockUtils.lockPathFor === 'function') ? lockUtils.lockPathFor : () => '';
   const storageDir = String(process.env.VL_STORAGE_DIR || '').trim();
@@ -122,9 +110,6 @@ async function run(spec, ctx, lockUtils) {
   // ── 产出清单（jobs）──
   // 默认「一个内容一条」；勾选「每个背景各出一批」时按 **内容 × 背景** 展开，
   // 全部在**本任务内**逐条编码 —— 而不是拆成 N 个任务。
-  // 为什么放引擎内：拆任务会让「进度 / 失败重试 / 续跑 / 逐任务日志」各自为政，
-  // 而且 N 个背景就污染出 N 条任务记录（用户要的是一件事一个任务，进度按产物数走）。
-  // 这与遮罩叠加的组织方式一致（那本就是 N 原片 × M 遮罩 在一个任务里跑完）。
   const eachBg = params.eachBackground === true;
   let bgFixed = [];
   if (eachBg) {
@@ -171,8 +156,7 @@ async function run(spec, ctx, lockUtils) {
     //   ① 任务自带 backupDir 优先，否则回退设置里的默认备份目录 defaultBackupDir；
     //   ② 用户自选目录时在其下再建「Video Lab 备份」层（设置页显示的也是这一层）；
     //   ③ 都没设才用数据目录下的 backup。
-    // ⚠ 必须同时读 out.defaultBackupDir：画布任务不带 backupDir（cvCollectSpec 未传），
-    //   只读前者会**永远落到数据目录 backup**，与用户在设置里指定的备份目录无关。
+    // ⚠ 必须同时读 out.defaultBackupDir：画布任务不带 backupDir（cvCollectSpec 未传），只读前者会永远落到数据目录 backup。
     const customRoot = String(out.backupDir || '').trim() || String(out.defaultBackupDir || '').trim();
     const backupRoot = customRoot ? path.join(customRoot, 'Video Lab 备份') : path.join(storageDir || process.cwd(), 'backup');
     const backupDir = out.backup === false ? ''
@@ -197,8 +181,7 @@ async function run(spec, ctx, lockUtils) {
       const file = jobs[i].file;
       // 本条的固定背景（仅「每个背景各出一批」时有）；空则由 pickBackground 随机挑
       const fixedBg = String(jobs[i].bgPath || '');
-      // 背景名并入成片名：否则同一内容的多条产物文件名完全相同，
-      // 光看文件名无法判断哪条用的是哪张背景图。
+      // 背景名并入成片名：否则同一内容的多条产物文件名完全相同，光看文件名无法判断哪条用的是哪张背景图。
       const bgTag = fixedBg ? path.basename(fixedBg, path.extname(fixedBg)) : '';
       logger.toolProgress(i + 1, jobs.length);
       const name = path.basename(file);
@@ -234,9 +217,7 @@ async function run(spec, ctx, lockUtils) {
       let dest = file;
       if (dirMode) {
         const r = outplan.targetPath(runDir.dir, file, {
-          // ⚠ 有固定背景时**强制**用「原名 + 后缀」并把背景名并进去：
-          //   同一内容会有多条产物，若沿用「保持原名」它们就完全同名，
-          //   光看文件名分不清哪条对应哪张背景（用户要的正是"一眼对上"）。
+          // ⚠ 有固定背景时**强制**用「原名 + 后缀」并把背景名并进去：同一内容会有多条产物，若沿用「保持原名」就完全同名、分不清哪条对应哪张背景。
           nameMode: bgTag ? 'suffix' : out.nameMode,
           suffix: bgTag
             ? ((out.nameMode === 'suffix' && out.suffix) ? String(out.suffix) + '-' + bgTag : '-' + bgTag)
@@ -246,8 +227,7 @@ async function run(spec, ctx, lockUtils) {
         if (r.skip) { skipped++; logger.info('   ⏭️ ' + name + ' —— 目标已存在且策略为跳过'); continue; }
         dest = r.path;
       }
-      // 容器格式：目标扩展名要跟着用户选的容器走 —— 否则会出现「按 mp4 封装却顶着 .mov 后缀」
-      // 这种名不副实的产物，交给下游（剪辑软件 / 平台）时按扩展名解码必然出错。
+      // 容器格式：目标扩展名跟着用户选的容器走，否则会出现「按 mp4 封装却顶着 .mov 后缀」的名不副实产物。
       if (dirMode && dest !== file) {
         const wantExt = container === 'mov' ? '.mov' : '.mp4';
         const curExt = path.extname(dest);
@@ -260,8 +240,7 @@ async function run(spec, ctx, lockUtils) {
           fs.mkdirSync(backupDir, { recursive: true });
           const bDst = path.join(backupDir, isoStampOf(new Date()) + '_' + name);
           fs.copyFileSync(file, bDst);
-          // ⚠ 同 pipeline：copyFileSync 继承源 mtime，会被"保留 N 天"的过期清理判为旧货当场删掉，
-          //   备份年龄必须从备份时刻算起（详见 pipeline.js 同处注释）。
+          // ⚠ 同 pipeline：copyFileSync 继承源 mtime，会被「保留 N 天」的过期清理判为旧货当场删掉，备份年龄必须从备份时刻算起。
           try { const now2 = new Date(); fs.utimesSync(bDst, now2, now2); } catch (e2) {}
         } catch (e) { logger.info('   · 备份失败：' + ((e && e.message) || e)); }
       }
@@ -294,8 +273,7 @@ async function run(spec, ctx, lockUtils) {
       try {
         const st = fs.statSync(tmp);
         if (!st.size) throw new Error('产物为空');
-        // 统一落盘入口：同目录原子改名（带重试）；跨目录先复制到目标目录内的临时名再改名。
-        // 覆盖原文件时 dest 与 tmp 同目录，走的也是原子改名。
+        // 统一落盘入口：同目录原子改名（带重试）；跨目录先复制到目标目录内的临时名再改名；覆盖原文件时 dest 与 tmp 同目录。
         const placeErr = await outplan.placeFile(tmp, dest);
         if (placeErr) throw placeErr;
       } catch (e) {

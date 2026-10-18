@@ -300,7 +300,6 @@
   // 主流水印设置弹窗：启用判定复选框 + 主流水印行（样式照搬水印 PNG 行）+ 保存/保存并更改/取消
   // ── 项目名工具（批量与遮罩两处项目设置弹窗共用）──
   // 名称合法性：与后端 backend.js 的 _validProjectName 用同一套规则。
-  // 在软件侧先校验一次 —— 用户在弹窗里就得到反馈，不必等后端往返；后端另有兜底。
   function validateProjectName(name) {
     var n = String(name == null ? "" : name).trim();
     if (!n) return "名称不能为空";
@@ -1083,17 +1082,10 @@
     var b1 = $('btnSaveConfig'), b2 = $('btnSaveToday');
     // ★ 保存类按钮放宽：保存配置只是写盘（原子写），
     //   与预检测、FFmpeg 环境都无关 —— 允许用户在任务运行/排队期间先"暂存配置"备用。
-    //   ⚠ 这一行是回归断言的**锚点**（P0-基线/verify-tools.js 按此字面匹配"写盘与执行解耦"），
-    //     改写它必须同步更新断言，否则回归会报"保存类按钮被卡住"。
     if (b1) { b1.disabled = !modified; }
     // ★ 强联动保护：该配置已有**有效日志**（非 0 字节）→ **额外**禁用「覆盖当前配置」。
     //   配置与日志是一对一的「任务正本 + 运行记录」：日志名里嵌着配置名，日志内容又记着那次
     //   任务实际用了哪些片段。就地覆盖会让两者脱钩 —— 复刻按「日志的结构 + 本配置的素材池」
-    //   生成，池被改过之后的产物就不再符合"复刻"的定义；而且这种改动**不留任何痕迹**
-    //   （改名至少还有日志名做锚点），用户很难察觉自己做过。改内容的出口是「保存为当日配置」。
-    //   ⚠ hasLog 来自 list_versions；前端打开配置时会让后端**真扫**（不吃缓存），
-    //     所以不会出现"日志已经删了、按钮却仍然禁用"的死局。
-    //   实现上刻意与上一行分开写（而不是合并成 `hasLog || !modified`）——保住上面那个断言锚点。
     var hasLog = !!(state.activeVersion && state.activeVersion.hasLog);
     if (b1) {
       if (hasLog) b1.disabled = true;
@@ -1694,10 +1686,6 @@
       // ⚠ 这里**不再**用 state.activeVersion.hasLog 做前置拦截。
       // 理由：那份 hasLog 是「打开配置那一刻」的快照（来自 list_versions，而后者读的是日志索引
       // 缓存），用户中途按提示处理掉日志之后它仍是旧值 —— 结果是改名在请求发出前就被拦死，
-      // 提示"请先处理日志"但其实日志已经不在了（实测复现：删掉日志后依旧被拦，请求根本没到后端）。
-      // 能否改名只由后端 _renameConfigFile 判定：它会**无条件真扫**日志索引（不吃缓存），
-      // 并忽略 0 字节日志（空日志没有配对价值，却会把改名路径彻底堵死）。
-      // 后端拒绝时返回 error，由下方 go() 的失败分支照常提示，不会静默失败。
       var go = function () {
         return call('save_config', path, ed.folders, ed.excludes, ed.watermark, wantName).then(function (r) {
           if (r && r.ok) {
@@ -1748,7 +1736,6 @@
     // ★ 记下跳转意图：保存配置后后端会广播 versions_changed，而自愈入口
     //   refreshActiveVersions 会「保持当前分支」—— 那时当前分支还是改动前的旧分支，
     //   于是它会忠实地把界面送回旧分支，把这里的跳转覆盖掉。
-    //   让意图在自愈里优先，界面才停在刚保存的那天。
     _pendingJumpPath = targetKey;
     call('list_projects').then(function (projects) {
       state.projects = projects || []; state.activeTxt = name; state.activeProject = pr; buildSidebar(false, true);
@@ -1847,8 +1834,7 @@
     }).catch(function () {});
   }
   function runScript() {
-    // 启动批量进日志：**这是最关键的一条** —— 用户报"成片不对"时，
-    // 必须能还原他提交的是哪份配置、计划做几条、分几组
+    // 启动批量进日志：记录提交的配置、计划条数与分组
     try {
       if (window.VL && VL.vlLogAction) {
         VL.vlLogAction('ui.batch.start', '开始制作 ' + (state.activeProject || '') + ' / ' + (state.activeTxt || ''),
@@ -2190,7 +2176,6 @@
       });
     });
     renderProjDropdown(items, q);
-    // 搜索进日志：**搜不到**是高频且难复现的问题（用户往往只记得"我搜了但没结果"），
     // 不留痕就无从判断是词打错、项目名变了，还是配置被删了。
     try {
       if (window.VL && VL.vlLogAction) {
@@ -2539,12 +2524,6 @@
    * 需要用户**立刻注意到**的提示：操作被拦下、或操作失败。
    *
    * 为什么不能只用 setStatus：那是底部状态栏的一行小字，而用户操作时视线在按钮与表单上，
-   * 「点了没反应」多半就是因为拦下/失败的原因只写在了他看不到的地方。
-   * 这里由 toast（弹出、带图标与颜色、自动消失）负责被看见，状态栏同步留一条痕迹，
-   * 便于事后回看"最后发生了什么"。
-   *
-   * @param {string} msg
-   * @param {'info'|'ok'|'error'} [kind] 缺省 error —— 本函数服务于"出问题了"的场景
    */
   function notify(msg, kind) {
     var m = String(msg == null ? '' : msg);
@@ -2555,7 +2534,6 @@
   // 「打开文件夹 / 在文件夹中显示」统一入口：失败 toast；浏览器端由本体代开（explorer 可能被前台锁压到后台，
   // 只在任务栏出现）→ 成功后提示去任务栏查看。全项目所有打开目录调用都走这里，文案与行为一致。
   // 打开「路径 / 文件夹 / 所在位置」类操作：后端按目标类型分流 ——
-  // 传目录则打开该目录（进入），传文件则打开其所在文件夹并选中该文件（定位）
   function openInShell(p) {
     return call('open_folder_select', p).then(function (r) {
       if (r && r.ok === false) { toast('打开失败：' + (r.error || '路径不存在'), true); return; }
@@ -2585,7 +2563,6 @@
   // 带进度条的等待窗口：重置预检测全量检测期间使用；提供「缩到后台」入口
   // 预检测一律后台进行：前台遮罩（带模糊背景）会在切换窗口时造成肉眼可见卡顿，
   // 而预检测不需要用户做任何选择，故不显示遮罩，
-  // 直接进入状态栏右下角的 probe-mini 进度显示（内含取消按钮）。
   function showBusyProgress() {
     state.precheckBackground = true;
     hideBusy();
@@ -2712,7 +2689,6 @@
     // 内嵌设置面板的关闭交互：点击面板外空白处 或 按 Esc ——
     // 统一走主进程 close_settings_panel，再由 settings_window_closed 广播收尾，
     // 保证主进程"设置是否打开"的状态与界面一致（托盘/快捷键都依赖它）
-    // 引导面板（首次设置，工作路径缺失时）：同为内嵌 iframe
     if (window.txapi && window.txapi.on_guide_window_opened) window.txapi.on_guide_window_opened(function () { var g = $('guideDim'); if (g) g.style.display = 'block'; });
     if (window.txapi && window.txapi.on_guide_window_closed) window.txapi.on_guide_window_closed(function () { var g = $('guideDim'); if (g) g.style.display = 'none'; });
     // 内嵌 iframe（设置页 / 引导页）内请求关闭：统一走主进程 close_embed_panel，
@@ -2774,7 +2750,7 @@
   }
   function selectTxt(project, name, keepVersion, silent) {
     function doSelect() {
-      // 切换配置进日志：用户报"界面不是我以为的那个"时，第一要知道的就是他当时点的是哪个
+      // 切换配置进日志：记录本次选中的配置与日期分支
       try {
         if (window.VL && VL.vlLogAction && !silent) {
           VL.vlLogAction('ui.select.txt', project + ' / ' + name, { ctx: { project: project, txt: name } });
@@ -2816,8 +2792,7 @@
       state.expandedProject = project;
       // force=true：**用户主动打开配置**这条路径必须拿磁盘真相 —— hasLog 驱动
       // 「覆盖当前配置」的禁用（强联动保护），走缓存会出现"日志已删、按钮仍禁用"的死局。
-      // ⚠ 只在这一条路径传 true：启动/刷新路径（如 refreshData）保持走缓存，
-      //   否则会破坏「启动期对素材盘零访问」的断言（P0-基线/verify-bootio.js）。
+      // ⚠ 只在这一条路径传 true：启动/刷新路径（如 refreshData）保持走缓存，不得真扫素材盘。
       call('list_versions', project, name, true).then(function (versions) {
         state.versions = versions || []; state.activeVersion = null;
         if (state.versions.length > 0) { var target = prevLabel ? state.versions.find(function (v) { return v.label === prevLabel; }) : null; state.activeVersion = target || state.versions[0]; }
@@ -2917,7 +2892,6 @@
   // ── 配置自愈统一入口：静默重取当前选中配置，保持日期分支/徽章/侧栏与磁盘一致 ──
   // 触发源：① 主进程广播 versions_changed（软件内保存/清理配置，后端已清缓存，重取即最新）
   //         ② 定时轮询（外部删除/任务迁移等改盘动作，靠 listVersions 目录指纹自动失效重扫）
-  // 归一比较无变化时不重渲染，避免打断编辑与日志跟随；有变化才同步视图。
   function refreshActiveVersions() {
     if (!getApi()) return;
     if (maskState.on) return; // 遮罩叠加模式：暂停批量配置自愈轮询，避免重画侧栏/中心区覆盖遮罩界面
@@ -2938,9 +2912,6 @@
         // ⚠ 非 force 的 list_versions **不返回 hasLog**（后端为守住「启动期零素材盘访问」，
         //   只在 force 时才算它 —— 见 backend.js listVersions）。
         //   所以**空值不等于「没有日志」，只等于「这次没查」**。
-        //   直接用 vs 覆盖会把打开配置时算对的 true 抹成 false：4 秒轮询一次，
-        //   「日志」与「覆盖当前配置」两个按钮就集体变灰，日期分支同时刷新一遍。
-        // 只补 true、不改 false：force 明确给出的 false 是实测结论，不能被「没查」推翻。
         cur.forEach(function (c) {
           if (!c.hasLog) return;
           var v = vs.find(function (x) { return normalizePath(x.path) === normalizePath(c.path); });
@@ -3002,7 +2973,6 @@
   // ── 中间配置栏复位到"刚启动"样式 ──
   // 触发点：点击侧栏品牌名片、或选中配置后收回项目名；无选中时调用为无害空操作。
   // 收起当前展开的项目：与点击项目名折叠同款 —— 填充层反向收回、徽章滑出、azbar 收回、
-  // 配置区整体淡出；动画结束后重建侧栏（下方项目渐显）。品牌名片复位时使用。
   function collapseExpandedProject() {
     var pname = state.expandedProject;
     if (!pname) return;
@@ -3309,8 +3279,7 @@
         var f = (state.logFiles || []).find(function (x) { return x.path === state.activeLogPath; }) || (state.logFiles || []).find(function (x) { return x.date === state.activeLogDate; });
         if (f) { var ver = versionForLogFile(f); if (ver) state.activeVersion = ver; }
       }
-      // 视图切换进日志：这一下会改变「哪些按钮可用」（日志/配置互相按对方的可达性灰显），
-      // 用户说"切过去再切回来按钮就灰了"时，日志里必须有这一步才能对上现场
+      // 视图切换进日志：切换会改变按钮可达性（日志/配置互相灰显）
       try {
         if (window.VL && VL.vlLogAction) {
           VL.vlLogAction('ui.view', '日志 → 配置列表', {
@@ -3443,7 +3412,7 @@
         // 折叠态不响应拖拽（面板已隐藏）
         if (document.body.hasAttribute('data-preview-collapsed')) return;
         e.preventDefault();
-        // 拖拽期间禁用面板 width 过渡：style.width 逐帧即时生效，避免 0.3s 过渡滞后
+        // 拖拽期间禁用面板 width 过渡：style.width 逐帧即时生效，不等过渡动画
         rp.style.transition = 'none';
         var startX = e.clientX, startW = rp.clientWidth;
         function onVMove(ev) {
@@ -3644,7 +3613,6 @@
     // ⚠ 必须提到 <body> 直属：内嵌设置面板（.settings-frame）是 z-index 9999 的覆盖层，
     //   且它带 transform（自成堆叠上下文）—— 弹窗若留在 #app 里，层级会被限制，
     //   在设置页里点「检查更新」就看不到弹窗（表现为"弹窗没出来 / 跳回了主窗口"）。
-    //   提到 body 直属 + 更高 z-index，才能保证它盖在设置面板之上。
     try { if (mask.parentNode !== document.body) document.body.appendChild(mask); } catch (e) {}
     mask.addEventListener('click', function (e) { if (e.target === mask) hideUpdateResult(); });
     var cl = $('updateResultClose');
@@ -3690,7 +3658,6 @@
         // 两种形态统一走 apply_update —— 后端按形态分流：
         //   便携分发 → 搬迁 + 线索 + 退出 + 拉起安装程序（改用安装版，设置与数据自动保留）
         //   安装版   → electron-updater 静默升级安装并重启
-        // （旧版便携形态此处仅打开资源管理器、让用户自行解压覆盖，已废弃）
         setStatus('正在准备安装更新…');
         if (!gp.apply_update) { now.disabled = false; return; }
         gp.apply_update().then(function (r) {
@@ -3758,7 +3725,6 @@
     // 组件下载进度：**进度事件自闭环**（done / error 也在这里收尾）——
     // ⚠ 不能只靠 env_fix_done：那条事件只在「界面点重新下载」的 IPC 路径发出，
     //   浏览器/HTTP 触发（如运维脚本、自动巡检）或其它入口触发时收不到，
-    //   进度条会永久停在 99%（HTTP 通道触发的下载就收不到收尾事件）。
     if (upd.on_env_fix_progress) upd.on_env_fix_progress(function (info) {
       if (!info) return;
       if (info.phase === 'check') { setStatus('正在检查 FFmpeg 组件…'); return; }
@@ -4102,7 +4068,6 @@
     // 原片目录校验分两类：
     //  · 项目内扫描源：沿用「为空即移除」（扫描会重新给出，移除安全）；
     //  · 手动添加的外部路径 / 单文件：只校验「是否还存在」——外部路径是用户主动添加的，
-    //    不能因为「暂时读不到素材」或「接口调用失败」就被移除（否则会随会话落盘永久丢失）。
     var _rootP = String(p.path).replace(/[\\/]+$/, '').toLowerCase();
     var _inProj = function (dp) {
       var x = String(dp || '').replace(/[\\/]+$/, '').toLowerCase();
@@ -4231,8 +4196,6 @@
   // 遮罩叠加：时长联动禁用——勾选任何原片/遮罩后，未勾选且与已勾选集**任一**时长差>1s 的候选置灰禁用；
   // 取消勾选即恢复。对所有复选框生效（组内文件 + 遮罩分组头 + 原片分组头）：
   //   - 组内文件 / 单文件组头：与「已勾选全部时长（原片+遮罩）集合」逐个比对，必须与**每一个**都兼容
-  //     （保证任意时刻勾选集合两两时差≤1s，杜绝同侧勾多个不同时长）
-  //   - 多文件分组头：组内全部文件都被禁用时组头也禁用；组内任一可用则组头可用（全选只选可用项）
   function maskSyncDurDisabled() {
     if (!maskOn()) return;
     function keysOf(sel) {
@@ -5192,7 +5155,7 @@
             if (!fc.disabled) fc.checked = cb.checked;
           });
           cb.indeterminate = false;
-          // 整组勾选/取消进日志：遮罩"选错了素材"类问题，靠这个还原当时选了多少
+          // 整组勾选/取消进日志：记录本次勾选数量
           try {
             if (window.VL && VL.vlLogAction) {
               VL.vlLogAction('ui.mask.group', (cb.checked ? '整组勾选 ' : '整组取消 ') + (g.name || ''),

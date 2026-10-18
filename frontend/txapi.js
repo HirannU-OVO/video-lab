@@ -1,7 +1,6 @@
 // -*- coding: utf-8 -*-
 // Video Lab — 浏览器侧 txapi 实现
 // 仅在 http/https 协议下挂载 window.txapi（Electron file: 协议下 preload.js 已注入，本脚本跳过）
-// 用 fetch POST /api/<channel> 替代 ipcRenderer.invoke，EventSource 替代 ipcRenderer.on
 (function () {
   'use strict';
   if (!location.protocol.startsWith('http')) return; // Electron 侧由 preload.js 注入
@@ -113,7 +112,6 @@
     list_projects: function (force) { return invokeArgs('list_projects', force); },
   // A6 数据目录清理。⚠ 三处登记必须齐全（preload / txapi / server）：
   // settings.js 用 `if (api && api.data_dir_scan)` 守卫，缺一处时该形态下按钮静默失效
-  // （不报错、无提示，用户以为点了没反应）。
   data_dir_scan: function () { return invokeArgs('data_dir_scan'); },
   data_dir_clean: function (keys) { return invokeArgs('data_dir_clean', keys); },
     list_versions: function (project, name, force) { return invokeArgs('list_versions', project, name, force); },
@@ -248,7 +246,6 @@
     // 关闭设置内嵌模态（未保存确认放弃修改后调用，本体为真正关闭设置窗口）
     // 关设置：先收起内嵌模态，再真正关窗口。
     // ⚠ 这是一个**两步动作**，必须成对出现：只收起内嵌模态则窗口还在，
-    //   只通知后端关闭窗口则模态仍浮在窗口上。两种残缺都表现为「关不掉」。
     force_close_settings: function () { closeEmbeddedModal(); return invoke('force_close_settings', []); },
     tray_menu_click: function (action) { return invokeArgs('tray_menu_click', action); },
     clean_duplicate_star: function (commit) { return invokeArgs('clean_duplicate_star', commit); },

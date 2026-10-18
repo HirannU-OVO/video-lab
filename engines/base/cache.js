@@ -1,10 +1,7 @@
 // sqlite 数据单库（<storageDir>\cache.db）：唯一持久层，承载
 // video_cache / clip_index / scan_cache / log_cache / cache_kv / tasks / task_logs / task_marks / meta。
-// 关键设计：`last_write` 用 TEXT 而非 INTEGER —— .NET Ticks（0001 基准）是 18~19 位整数，
-// 超过 JS Number 安全整数范围（2^53）；node:sqlite 读 INTEGER 列会直接抛
-// RangeError: Value is too large to be represented as a JavaScript number。
-// TEXT 承载可无损往返（实测 639170274959892404 精确一致），且与 backend/脚本侧的字符串比较语义一致。
-// 任务与标记的主键（task_id）同样用 TEXT：19 位 ID 经 Number 转换会变成科学计数法。
+// last_write 用 TEXT 承载 .NET Ticks（0001 基准，18~19 位整数；INTEGER 列会被 node:sqlite 直接抛 RangeError），
+// 可无损往返；任务与标记主键（task_id）同样用 TEXT（19 位 ID 经 Number 转换会变成科学计数法）。
 // 由 Electron 内置 node:sqlite 提供，零原生依赖；支持旧 JSON 一次性迁移。
 'use strict';
 
@@ -118,8 +115,7 @@ const VIDEO_COLUMNS = [
   ['verified_at', 'INTEGER NOT NULL DEFAULT 0'],   // 上次核验「文件是否还在」的时刻：GC 只挑过期的验
 ];
 
-// 校验有效期：条目核验过一次后，这段时间内不再重复访问磁盘。
-// 冷启动的 IO 总量因此与「启动次数 × 过期条数」成正比，而不是与库的大小成正比。
+// 校验有效期：条目核验过一次后，这段时间内不再重复访问磁盘；冷启动的 IO 总量因此与「启动次数 × 过期条数」成正比。
 const VERIFY_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 // 失效条目保留期：文件消失后条目不立即删除，只记 missing_since。
@@ -146,8 +142,7 @@ class CacheStore {
     this._inTx = false;
   }
 
-  // readOnly：只读用途（如 replica 仅消费缓存）不得建表 / 写 meta / 改 journal_mode ——
-  // 否则一次「读缓存」就会改动调用方并不拥有的库。
+  // readOnly：只读用途（如 replica 仅消费缓存）不得建表 / 写 meta / 改 journal_mode —— 否则一次「读缓存」就会改动调用方并不拥有的库。
   open(opts) {
     const readOnly = !!(opts && opts.readOnly);
     if (this._db && !this._db.closed) return this._db;
@@ -164,15 +159,12 @@ class CacheStore {
     try { this._db.exec('PRAGMA synchronous=NORMAL'); } catch (e) {}
     this._db.exec(SCHEMA);
     this._ensureVideoColumns();
-    // 记录 schema 版本供排查与将来判断迁移；不做版本拒绝 ——
-    // 本项目所有 schema 变更都是向后兼容的（加表 / 加列，旧版本忽略），
-    // 打开更高版本的库读写不会造成损坏，而「拒绝打开」会在用户主动回退时反而阻断使用。
+    // 记录 schema 版本供排查与迁移判断；不做版本拒绝 —— schema 变更一律向后兼容，打开更高版本的库不会损坏数据，拒绝打开反而会阻断回退。
     this.setMeta('schema_version', SCHEMA_VERSION);
     return this._db;
   }
 
-  // 老库补列：CREATE TABLE IF NOT EXISTS 不会给已存在的表加列，故按需 ALTER。
-  // 三列都是「带默认值的加列」，对旧版本完全向后兼容（旧版本 SELECT * 不受影响）。
+  // 老库补列：CREATE TABLE IF NOT EXISTS 不会给已存在的表加列，故按需 ALTER；三列都是带默认值的加列，对旧版本完全向后兼容。
   _ensureVideoColumns() {
     const db = this._db;
     let have;
@@ -232,8 +224,7 @@ class CacheStore {
     return row ? Number(row.n) : 0;
   }
 
-  // 写入探测结果。scopes 按位或累加（同一素材被多个模式使用时保留全部来源标记）。
-  // 不覆盖 usage_count：使用计数是跨轮次的业务数据，与探测缓存各自独立。
+  // 写入探测结果。scopes 按位或累加（同一素材被多个模式使用时保留全部来源标记）；不覆盖 usage_count（使用计数与探测缓存各自独立）。
   upsertVideo(vPath, { lastWrite, duration, width, height, valid, scopes, fileSize } = {}) {
     const db = this.open();
     const sc = Number(scopes) || SCOPES_DEFAULT;
@@ -263,7 +254,6 @@ class CacheStore {
   // 累加使用计数，行不存在时也能建立计数行。与 bumpVideoUsage 的差别是不要求素材已在缓存表中——
   // 引擎现场探测到的新素材可能尚未入库，用这条能保证计数不丢。
   // 用途：使用计数的唯一写入口。
-  // 注意：此处不写 last_write —— 本方法可能被调用在并无探测结果的场景，指纹由探测写回补齐。
   addVideoUsage(vPath, inc = 1, opts) {
     const sc = Number(opts && opts.scopes) || SCOPES_DEFAULT;
     this.open().prepare(`INSERT INTO video_cache (path, last_write, duration, width, height, valid, usage_count, scopes, file_size, missing_since)
@@ -272,8 +262,7 @@ class CacheStore {
       .run(String(vPath), Number(inc) || 0, sc);
   }
 
-  // 全量读出为 backend 的缓存结构（键为视频路径）。
-  // 默认只含「批量 + 复刻」作用域：调用方不显式放宽时，遮罩素材不会出现在候选里。
+  // 全量读出为 backend 的缓存结构（键为视频路径）；默认只含「批量 + 复刻」作用域，调用方不显式放宽时遮罩素材不会出现在候选里。
   loadVideoMap(opts) {
     const mask = scopesMaskOf(opts);
     const rows = this.open()
@@ -292,8 +281,7 @@ class CacheStore {
     return map;
   }
 
-  // 增量写回：upserts 为 { path: info } 或 Map；deletes 为路径数组。单事务提交。
-  // 写入即视为「文件存在」→ 清空 missing_since（曾被置位的条目随之复活）。
+  // 增量写回：upserts 为 { path: info } 或 Map、deletes 为路径数组，单事务提交；写入即视为「文件存在」→ 清空 missing_since。
   applyVideoDelta(upserts, deletes, opts) {
     const up = [];
     if (upserts instanceof Map) { for (const [k, v] of upserts) up.push([k, v]); }
@@ -334,8 +322,6 @@ class CacheStore {
   // 全量替换（重置预检测后一次性写入）：单事务。
   // 只替换「本次掩码范围内」的条目 —— 其它作用域（如遮罩）的探测结果不属于预检测，不得被重置清掉。
   // 使用计数与作用域标记按路径保留；**本次替换范围外但有计数的行，重建为「纯计数行」**
-  // （探测数据清空、计数与作用域保留）—— 使用计数是跨轮次的业务数据，
-  // 不因「重置预检测」或「素材不在当前配置里」而丢失；其文件存在性交由 GC 按软删除语义核验。
   replaceVideoMap(map, opts) {
     const mask = scopesMaskOf(opts);
     const sc = Number(opts && opts.scopes) || SCOPES_DEFAULT;
@@ -395,14 +381,12 @@ class CacheStore {
   }
 
   // 失效清理「判定分区」（纯内存，无磁盘调用）：
-  //   verify  —— 本轮需要核验文件是否仍存在的条目（knownPaths 未覆盖的，以及曾被置位 missing 的）；
-  //   missing —— 已置位（文件曾判定为不存在）的路径集合；
+  //   verify  —— 本轮需要核验文件是否仍存在的条目（knownPaths 未覆盖的，以及已置位 missing 的）；
+  //   missing —— 已置位（文件判定为不存在）的路径集合；
   //   expired —— 已置位且超过保留期的路径集合，核验仍不存在即可真删；
   //   drop    —— 恒为空（保留该字段以兼容调用方）。
-  // 把「数千次磁盘调用」压缩到「通常为零次」的关键就在 knownPaths。
-  // 但【已置位的条目不得走快速通道】：文件可能已被放回原路径，必须重新核验并复活。
-  // ⚠ 刻意【不按工作目录(root)前缀删除】：素材位于工作目录之外是常态，
-  //   否则会把正常素材条目判为「旧 root 残留」整批清掉，导致重启后首次预检测全量重探。
+  // ⚠ 已置位条目不得走 knownPaths 快速通道：文件可能被放回原路径，必须重新核验并复活；
+  //   也不按工作目录(root)前缀删除 —— 素材位于工作目录之外是常态，否则会误清正常素材条目。
   gcPlan(knownPaths, opts) {
     const now = Number(opts && opts.now) || Date.now();
     const retainMs = (opts && opts.retainMs != null) ? Number(opts.retainMs) : MISSING_RETAIN_MS;
@@ -412,8 +396,7 @@ class CacheStore {
     // ⚠ 不能无差别地把全表拉进内存逐条核验 —— 冷态在机械盘上要几十秒，会冻住主进程事件循环。
     let rows = [];
     try {
-      // missing 的条目**总是**核验（数量少，且「文件被放回 → 复活并保留使用计数」依赖它），
-      // 其余条目只在超过校验 TTL 时才核验 —— 这正是把启动期 IO 摊平的关键。
+      // missing 的条目**总是**核验（数量少，且「文件被放回 → 复活并保留使用计数」依赖它）；其余条目只在超过校验 TTL 时才核验。
       rows = this.open().prepare('SELECT path, missing_since FROM video_cache WHERE (verified_at < ? OR missing_since > 0)'
         + ' ORDER BY (missing_since > 0) DESC'
         + (limit > 0 ? ' LIMIT ' + limit : '')).all(now - verifyTtlMs);
@@ -444,8 +427,7 @@ class CacheStore {
     return { drop: [], verify, missing, expired };
   }
 
-  // 待核验条目数（一次 COUNT 查询、零文件 IO）：用于把清理任务分批排入空闲队列，
-  // 而不是启动后一次性核验。
+  // 待核验条目数（一次 COUNT 查询、零文件 IO）：用于把清理任务分批排入空闲队列，而不是启动后一次性核验。
   gcPendingCount(now, verifyTtlMs) {
     try {
       const t = Number(now) || Date.now();
@@ -454,8 +436,7 @@ class CacheStore {
     } catch (e) { return 0; }
   }
 
-  // 记录「这批路径刚核验过」：此后 VERIFY_TTL_MS 内不再重复访问磁盘。
-  // 冷启动的 IO 总量因此与「过期条数」成正比，而不是与库的大小成正比 —— 这是摊平的关键一环。
+  // 记录「这批路径刚核验过」：此后 VERIFY_TTL_MS 内不再重复访问磁盘，冷启动 IO 总量因此与「过期条数」成正比。
   markVerified(paths, ts) {
     if (!paths || !paths.length) return 0;
     const when = Number(ts) || Date.now();
@@ -473,8 +454,8 @@ class CacheStore {
   }
 
   // ── 通用校验缓存（verify_cache）────────────────────────────────────
-  // 「为了确认某事实而遍历磁盘」是冷启动卡顿的总根源。把结论存库，启动只读库（一次查询、零文件 IO），
-  // 校验挪到「用到时」或空闲批处理 —— 能用一次查询换掉的磁盘遍历，就不该留在启动路径上。
+  // 把校验结论存库、启动只读库（一次查询、零文件 IO），校验挪到「用到时」或空闲批处理，
+  // 避免在启动路径上遍历磁盘。
   verifyGetMany(prefix) {
     const out = new Map();
     try {
@@ -546,8 +527,7 @@ class CacheStore {
     try { return Number(this.open().prepare('SELECT COUNT(*) n FROM txt_content').get().n) || 0; } catch (e) { return 0; }
   }
 
-  // 标记「文件已不存在」：只置位 missing_since，不删行。
-  // 保留期内条目仍在库中，使用计数才有机会被新路径认领（素材移位/替换的窗口期）。
+  // 标记「文件已不存在」：只置位 missing_since、不删行；保留期内条目仍在库中，使用计数才有机会被新路径认领。
   markMissing(paths, ts) {
     const list = Array.isArray(paths) ? paths : (paths ? Array.from(paths) : []);
     if (!list.length) return 0;
@@ -593,10 +573,7 @@ class CacheStore {
 
   // 计数认领：素材路径变化（改名 / 移位）后，把原条目的使用计数继承到新路径。
   // 三级降级匹配：精确路径 → last_write 指纹（Ticks 容差）→ file_size 消歧。
-  // basename 一级默认关闭（不同素材目录同名文件常见，误继承的风险高于收益），需显式开启。
-  // 命中后执行「路径转移」：整行（含计数、探测结果、作用域）改到新路径，旧路径随之消失。
-  // 用数据库主键更新而不是「删旧建新」，中断也不会丢计数。
-  // 返回 { adopted, usageCount, matchedBy } 或 null。
+  // basename 一级默认关闭（同名文件常见，误继承风险高），需显式开启。
   claimUsage(vPath, fingerprint, opts) {
     const o = opts || {};
     const mask = scopesMaskOf(o);
@@ -693,9 +670,8 @@ class CacheStore {
   }
 
   // ── 缓存治理（自动/手动清理 · 体积与构成统计）──
-  // 为什么需要：库体积的大头是 clip_index（每行存「整目录的视频清单」）与 txt_content（TXT 全文），
-  // 而它们既无「文件是否存在」的判定、也无删除接口 —— 只要工作路径变化或测试跑过一次，
-  // 那些条目就永久驻留。以下接口供 backend 的「保守清理」（只删已失效路径）与设置页统计使用。
+  // 库体积大头是 clip_index（每目录一份视频清单）与 txt_content（TXT 全文），二者都没有失效判定与删除接口，
+  // 工作路径变化或测试跑过就会永久驻留；以下接口供 backend 的「保守清理」（只删已失效路径）与设置页统计使用。
   listClips(prefix) {
     return this.open().prepare('SELECT dir FROM clip_index WHERE dir LIKE ?').all(String(prefix || '') + '%')
       .map((r) => String(r.dir));
@@ -759,9 +735,7 @@ class CacheStore {
     }
     return { fileBytes: this.dbSizeBytes(), tables: tables.sort((a, b) => b.bytes - a.bytes) };
   }
-  // 回收页碎片：只在确有删除后调用；会重写库文件（耗时），务必在空闲期执行。
-  // ⚠ VACUUM 会把整库重写一遍 → WAL 随之暴涨（实测 52MB→99MB）；必须紧跟一次
-  //   wal_checkpoint(TRUNCATE) 把 WAL 截断归零，否则「占用」统计反而变大、看着像没清。
+  // 回收页碎片：只在确有删除后调用；会重写库文件（耗时），务必在空闲期执行，并紧跟 wal_checkpoint(TRUNCATE) 把 WAL 截断归零。
   vacuum() {
     try {
       const db = this.open();
@@ -855,8 +829,7 @@ class CacheStore {
     return list.length;
   }
 
-  // 追加日志行（startIdx 为这批行在任务日志中的起始序号）：任务运行中持续追加时的常态路径，
-  // 避免每来一行就整体重写（日志是任务数据里体积最大的部分）
+  // 追加日志行（startIdx 为这批行在任务日志中的起始序号）：任务运行中持续追加时的常态路径，避免每来一行就整体重写。
   appendTaskLog(id, startIdx, lines) {
     const list = Array.isArray(lines) ? lines : [];
     if (!list.length) return 0;
@@ -873,7 +846,7 @@ class CacheStore {
     return rows.map((r) => String(r.line));
   }
 
-  // ── task_marks（任务标记：替代原 task-marks\ 目录下逐任务一个 JSON 文件）──
+  // ── task_marks（任务标记：每任务一条记录，存库）──
   getMark(id) {
     const row = this.open().prepare('SELECT payload FROM task_marks WHERE task_id = ?').get(String(id));
     return row ? String(row.payload) : '';
@@ -893,8 +866,7 @@ class CacheStore {
 
   // ── 旧 JSON 一次性迁移（video_cache.json / usage_cache.json）──
   // 返回 { video, usage, usageOnly } 计数；由调用方负责读回校验与旧文件回收站处理。
-  // usageOnly = 只在 usage 侧出现（video 侧没有）的条目：它们没有 last_write 指纹，
-  // 无法参与后续的计数认领，故单独计数供迁移日志评估。
+  // usageOnly = 只在 usage 侧出现（video 侧没有）的条目：没有 last_write 指纹，无法参与计数认领，故单独计数供迁移日志评估。
   migrateFromJson({ videoCacheJson, usageCacheJson } = {}) {
     const db = this.open();
     const counters = { video: 0, usage: 0, usageOnly: 0 };

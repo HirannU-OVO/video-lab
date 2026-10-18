@@ -1,24 +1,8 @@
-// 画布合成（竖转横）· 参数模型与滤镜链构造   ← 「方案构造」这一半；「引擎侧执行」那一半见 canvas-run.js
+// 画布合成（竖转横）· 参数模型与滤镜链构造（「方案构造」这一半；「引擎侧执行」见 canvas-run.js）
 //
-// 分工与引用关系：
-//   · 本文件（canvas-plan.js）：**纯逻辑**，两端共用 ——
-//       - Electron 主进程：backend.js 的 _canvasModule() → buildCanvasPlan()（单帧预览渲染）
-//       - 引擎子进程：canvas-run.js（批量执行）
-//   · canvas-run.js：只在引擎里跑（探测 / 编码 / 落盘 / 备份），由 module.js 调用。
-//   · 之所以分两个文件：主进程为做预览**不该**被拉进探测/编码/落盘这些执行侧依赖；
-//     而「预览与批量执行共用同一份表达式」是所见即所得的结构保证 —— 两者职责不同，不可合并。
-//
-// 设计约束：
-//   · 纯逻辑：无 IO、无子进程、不依赖 Electron —— 主进程（预览渲染）与引擎子进程（批量执行）共用
-//   · 单一真相：预览与正式处理都走 buildCanvasPlan()，参数一致则表达式一致（预览所见即所得由结构保证）
-//   · 滤镜一律 CPU：本模块不提供任何硬件滤镜入口
-//   · 内容缩放默认**等比**；拉伸为显式开关，开启时写 warnings，由前端提示画面会变形
-//
-// 用法：
-//   const plan = buildCanvasPlan(params, src);
-//   // plan.ffmpegInputs → 依次拼 -i（各输入自带前置参数，如 -loop 1 / -stream_loop -1）
-//   // plan.filterComplex → -filter_complex
-//   // plan.maps → { composed, bg, raw } 三个输出映射（预览取三张 PNG；正式处理只用 composed）
+// 纯逻辑（无 IO / 无子进程 / 不依赖 Electron），主进程（预览渲染）与引擎子进程（批量执行）共用；
+// 预览与正式处理都走 buildCanvasPlan()，参数一致则表达式一致（所见即所得由结构保证）。
+// 内容缩放默认**等比**；拉伸为显式开关，开启时写 warnings 由前端提示画面会变形。
 
 'use strict';
 
@@ -49,11 +33,9 @@ const SCHEMA = [
   { key: 'borderW', type: 'number', default: 0, min: 0, max: 400, label: '边框宽度' },
   { key: 'borderColor', type: 'color', default: '#ffffff', label: '边框颜色' },
   { key: 'bgBlur', type: 'number', default: 0, min: 0, max: 200, label: '背景模糊' },
-  // 勾选后每个背景各出一条成片（内容 × 背景，一个任务内逐条编码）。
-  // 语义放在引擎而不是只在界面：引擎要按它决定「每个内容配一个随机背景」还是「遍历全部背景」。
+  // 勾选后每个背景各出一条成片（内容 × 背景，一个任务内逐条编码）；语义放在引擎：引擎据此决定「每个内容配一个随机背景」还是「遍历全部背景」。
   { key: 'eachBackground', type: 'bool', default: false, label: '每个背景各出一条' },
-  // 编码：与后处理「转码 / 码率」同一套语义与默认值（恒定质量 + CQ 26 + H.264），
-  // 否则同一素材在两个模块跑出来的体积/画质会有差异，用户无从解释。
+  // 编码：与后处理「转码 / 码率」同一套语义与默认值（恒定质量 + CQ 26 + H.264），否则同一素材在两个模块跑出来的体积/画质会有差异。
   { key: 'encCodec', type: 'text', default: 'H.264', label: '编码格式' },
   { key: 'encMode', type: 'text', default: 'cq', label: '码率控制' },
   { key: 'encCq', type: 'number', default: 26, min: 0, max: 51, label: 'CQ' },
@@ -77,9 +59,7 @@ function toFfmpegColor(v, fallback, warnings, label) {
 
 /**
  * 参数归一化：默认值 / 范围裁剪 / 枚举回落 / 颜色格式 / 偶数对齐全部由声明驱动（base/params）。
- *
- * ⚠ 不抛异常：参数问题一律降级为告警并给出可用值 —— 处理链路不能因为一个越界数字整体失败，
- *   用户拿到「按边界处理」的成片远比拿到报错有用。
+ * ⚠ 不抛异常：参数问题一律降级为告警并给出可用值 —— 处理链路不能因为一个越界数字整体失败。
  */
 function normalizeParams(params) {
   const r = paramsBase.normalize(SCHEMA, params, {
@@ -125,7 +105,7 @@ function roundRectAlpha(radius, w, h) {
  */
 function contentSegments(p, contentW, contentH, warnings) {
   const segs = [];
-  // 内容层**一律等比缩放**（回归原脚本：原方案没有非等比拉伸能力）；尺寸取偶（编码器硬要求）
+  // 内容层**一律等比缩放**（不提供非等比拉伸）；尺寸取偶（编码器硬要求）。
   let w = evenRound(contentW * p.scale);
   let h = evenRound(contentH * p.scale);
   if (w < 2 || h < 2) { w = 2; h = 2; warnings.push('缩放后尺寸过小，已按最小 2×2 处理'); }
@@ -181,16 +161,9 @@ function bgSegments(p, warnings, src) {
 
 /**
  * 组装完整合成方案（预览与正式处理共用）。
- *
  * @param {object} params 画布参数（见 DEFAULTS）
- * @param {object} src 素材信息（调用方探测后传入）
- *   @param {number} src.contentW 内容视频宽（像素）
- *   @param {number} src.contentH 内容视频高
- *   @param {string} [src.contentPath] 内容视频路径（帧预览与正式处理用）
- *   @param {string} [src.bgPath] 背景文件路径（bgMode=image|video）
- *   @param {string} [src.watermarkPath] 水印 PNG 路径
- *   @param {string} [src.bgColorValue] 纯色背景值（bgMode=color，优先于 params.bgColor）
- * @returns {{ffmpegInputs:Array, filterComplex:string, maps:object, meta:object}}
+ * @param {object} src 素材信息（调用方探测后传入：contentW / contentH / duration 等）
+ * @param {object} [opts] 见下方「opts（可选）」说明
  */
 function buildCanvasPlan(params, src, opts) {
   // opts（可选）—— 让**正式处理**复用同一套表达式，只换标签与出口：
@@ -216,9 +189,6 @@ function buildCanvasPlan(params, src, opts) {
   // ⚠ 背景输入的可结束性由**滤镜级 shortest=1** 负责（见下方 overlay 段），这里不要再加 -t 上限：
   //   上限比内容短时会把成片截短（内容 5 分钟、上限 60 秒 → 只出 60 秒）。
   //   · 图片背景 → **单帧输入**（不加 -loop 1），靠 overlay 默认 repeatlast=1 持续贴上
-  //     （与 steps/overlay.js 的既有做法一致：那里早已写明图片不该加 -loop 1）
-  //   · 视频背景 → -stream_loop -1 循环填充（无限流，由 shortest=1 收尾）
-  //   · 纯色背景 → lavfi 源（无限流，同上）
   if (s.bgPath) {
     ffmpegInputs.push({ path: s.bgPath, args: bgIsVideo ? ['-stream_loop', '-1'] : [] });
   } else if (p.bgMode === 'image' || p.bgMode === 'video') {
@@ -250,8 +220,7 @@ function buildCanvasPlan(params, src, opts) {
   const bgSegs = bgSegments(p, warnings, s).join(',');
   // ⚠ 两条流都要把时间戳归零（`setpts=PTS-STARTPTS`）：预览用 `-ss` 前置定位取帧时，内容流
   //   首帧 PTS 不为 0（seek 到关键帧后仍带着原时间轴），而背景（lavfi / 图片）从 0 起 ——
-  //   overlay 以**先到的时间轴**为准，`-frames:v 1` 拿到的第一帧就只有背景：
-  //   表现为「合成图只剩背景，而内容原帧正常」。
+  //   overlay 以**先到的时间轴**为准，`-frames:v 1` 拿到的第一帧就只有背景（合成图只剩背景、内容原帧正常）。
   //   归零后两条流同时起步，任意时间点都能正确合成。
   const TS0 = 'setpts=PTS-STARTPTS';
   if (forEncode) {
@@ -269,8 +238,6 @@ function buildCanvasPlan(params, src, opts) {
   // ⚠ 这里**不要**用 overlay 的 shortest=1：它让 overlay 跟随最短输入提前收尾 ——
   //   预览用 -ss 定位取帧时（内容与背景各自 seek），两条流的首帧到达时机不同，
   //   会出现「合成图只剩背景、内容原帧却正常」的**概率性**现象。
-  //   无限背景的收尾交给**输出级 `-t`（= 内容时长）**（见 canvas-run.js），确定且无竞态；
-  //   图片背景是单帧输入 + overlay 默认 repeatlast=1，本身就是有限流。
   parts.push('[bg][c]overlay=' + Math.round(offset.x) + ':' + Math.round(offset.y) + ':format=auto' + composedLabel);
   if (hasWm) {
     parts.push('[' + wmIdx + ':v]format=rgba[wm]');
@@ -279,8 +246,7 @@ function buildCanvasPlan(params, src, opts) {
     composedLabel = wmOut;
   }
 
-  // 越界提示：缩放系数与位置组合可能让内容超出画布（例如 1080×1920 素材按 0.74 缩放后比 1080 高的画布更高）——
-  // 预览据此直接提示，避免整片跑完才发现构图被裁
+  // 越界提示：缩放系数与位置组合可能让内容超出画布（如 1080×1920 素材缩放后比画布更高）—— 预览据此直接提示，避免整片跑完才发现构图被裁。
   if (offset.x < 0 || offset.y < 0 || offset.x + cSeg.outW > p.targetW || offset.y + cSeg.outH > p.targetH) {
     warnings.push('内容超出画布范围，超出部分会被裁切（可减小缩放或调整位置）');
   }

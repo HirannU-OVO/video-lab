@@ -42,17 +42,9 @@ function probe(videoPath) {
 
 /**
  * 详细探测（供视频处理工具使用）：一次 ffprobe 拿全 —— 时长 / 分辨率 / 帧率 / 码率 / 音轨。
- *
- * 字段名刻意用 probeOk 而非 valid：上面 probe() 的 valid 判定写死「1080×1920 且有时长」，
- * 那是**成片素材**的口径；工具面对任意分辨率的视频，若沿用 valid 会把合法素材判成无效。
- *
- * 另返回 isVfr —— 帧率删帧类操作依赖帧号，VFR 源上帧号不可靠，调用方应据此警告
- * 或改按时间戳处理。
- *
- * @param {string} videoPath
- * @returns {Promise<{probeOk:boolean, duration:number, width:number, height:number,
- *   fps:number, avgFps:number, isVfr:boolean, bitrate:number,
- *   hasAudio:boolean, audioCodec:string, vcodec:string, pixFmt:string}>}
+ * 字段名刻意用 probeOk 而非 valid：probe() 的 valid 判定写死「1080×1920 且有时长」，是**成片素材**口径；
+ * 工具面对任意分辨率的视频，沿用 valid 会把合法素材判成无效。
+ * 另返回 isVfr —— 帧率类操作依赖帧号，VFR 源上帧号不可靠，调用方应据此警告或改按时间戳处理。
  */
 function probeDetail(videoPath) {
   const empty = {

@@ -515,8 +515,6 @@
   --border-1: var(--border-neutral-l1);
 }
 
-    
-
 /* ═══════════════════════════════════════════════════════════════
    components.css — Design System Component and Atom Definitions
    Component sections mirror preview/component-*.html marker blocks.
@@ -998,7 +996,7 @@ pre {
     .ds-tag--success { background: var(--status-success-surface-l1); color: var(--status-success-default); }
     .ds-tag--warning { background: var(--status-warning-surface-l1); color: var(--status-warning-default); }
     .ds-tag--danger { background: var(--status-error-surface-l1); color: var(--status-error-default); }
-    
+
 
       .bg-background { background-color: var(--color-background); }
       .text-background { color: var(--color-background); }
@@ -1032,7 +1030,7 @@ pre {
       .text-border { color: var(--color-border); }
       .border-border { border-color: var(--color-border); }
       .ring-border { --tw-ring-color: var(--color-border); }
-    
+
 
       .no-scrollbar::-webkit-scrollbar { display: none; }
       .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
@@ -1048,7 +1046,6 @@ pre {
         mask-position: center;
         background-color: currentColor;
       }
-    
 
 /* ═══════════════════════════════════════════════════════════════
    TraeWork Design Library Tokens (Light)
@@ -5412,7 +5409,6 @@ body.mask-mode .center-top { min-height: 0; max-height: none; }
 }
 
 /* ── 轻量角落提示（toast）：仅告知、无需操作，右下角出现后自动消失 ── */
-
 
 /* ── 轻量角落提示（toast）：仅告知、无需操作，右下角出现后自动消失 ──
    底色/边框用当前主题固定实色变量（--toast-bg / --toast-border），
@@ -6003,8 +5999,6 @@ button.is-vl-disabled {
   --border-1: var(--border-neutral-l1);
 }
 
-    
-
 /* ═══════════════════════════════════════════════════════════════
    components.css — Design System Component and Atom Definitions
    Component sections mirror preview/component-*.html marker blocks.
@@ -6486,7 +6480,7 @@ pre {
     .ds-tag--success { background: var(--status-success-surface-l1); color: var(--status-success-default); }
     .ds-tag--warning { background: var(--status-warning-surface-l1); color: var(--status-warning-default); }
     .ds-tag--danger { background: var(--status-error-surface-l1); color: var(--status-error-default); }
-    
+
 
       .bg-background { background-color: var(--color-background); }
       .text-background { color: var(--color-background); }
@@ -6520,7 +6514,7 @@ pre {
       .text-border { color: var(--color-border); }
       .border-border { border-color: var(--color-border); }
       .ring-border { --tw-ring-color: var(--color-border); }
-    
+
 
       .no-scrollbar::-webkit-scrollbar { display: none; }
       .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
@@ -6536,7 +6530,6 @@ pre {
         mask-position: center;
         background-color: currentColor;
       }
-    
 
 /* ═══════════════════════════════════════════════════════════════
    TraeWork Design Library Tokens (Light)
@@ -10900,7 +10893,6 @@ body.mask-mode .center-top { min-height: 0; max-height: none; }
 }
 
 /* ── 轻量角落提示（toast）：仅告知、无需操作，右下角出现后自动消失 ── */
-
 
 /* ── 轻量角落提示（toast）：仅告知、无需操作，右下角出现后自动消失 ──
    底色/边框用当前主题固定实色变量（--toast-bg / --toast-border），

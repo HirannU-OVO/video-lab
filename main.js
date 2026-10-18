@@ -3,17 +3,13 @@
 'use strict';
 
 // ── 启动阶段计时 ──
-// 冷启动慢的排查长期缺少数据：日志只记了「什么时候启动」，没记「各阶段花了多久」，
-// 导致每次优化都靠猜。这里从进程第一行起就开始计时，whenReady → 窗口可见 → 后端就绪
-// 各阶段耗时统一落到运行日志的 app.timing 事件，下次再有人说慢可以直接看数。
+// 启动阶段计时：从进程第一行起记录 whenReady → 窗口可见 → 后端就绪各阶段耗时，统一落到运行日志的 app.timing 事件，供冷启动排查直接查看。
 const _BOOT_T0 = process.hrtime.bigint();
 function bootMs() { return Number(process.hrtime.bigint() - _BOOT_T0) / 1e6; }
 // 极早探针：本行之前只有 V8 启动 + 本文件解析，若这里「进程已存活很久」说明卡在
 // 进程创建/加载阶段（杀软扫描未签名 exe、磁盘冷读），而非任何 JS 逻辑。
 // 用 process.uptime() 反推进程真实创建时刻（Electron 主进程里该值自进程创建累计），
-// 写入独立文件而非 runLog —— 此时 runLog 尚未 require。
-// ⚠ 每个进程单独一个文件（文件名带 pid + 时刻），不覆盖：冷启动现场常发生在无人值守时，
-//    若只留单个文件，中途任何一次启动都会把冷启动那条证据冲掉。
+// 写入独立文件（文件名带 pid + 时刻，每个进程一份不覆盖）—— 此时 runLog 尚未初始化。
 const _EARLY_UPTIME_MS = Math.round(process.uptime() * 1000);
 try {
   const _fs = require('fs');
@@ -29,8 +25,7 @@ try {
       argv: process.argv.slice(1),
       electronVersion: process.versions.electron,
       uptimeMsAtFirstLine: _EARLY_UPTIME_MS,
-      // uptimeMsAtFirstLine 很大 = 进程创建后很久才轮到 JS 执行（杀软扫描 / exe 冷读 / 磁盘争抢）
-      // 该值正常应在 10-40ms 量级
+      // uptimeMsAtFirstLine 很大 = 进程创建后很久才轮到 JS 执行（杀软扫描 / exe 冷读 / 磁盘争抢）该值正常应在 10-40ms 量级
     }),
     'utf8');
   // 只保留最近 20 个，避免长期堆积
@@ -92,8 +87,7 @@ function restartHttpServer() {
   }).catch(function (e) { console.error('[HTTP] 异常: ' + e); });
 }
 
-// 单实例锁：统一 userData 到固定全局路径（跨盘 / 开发版与打包版共享同一把锁），
-// 使"同一时刻仅允许一个主进程实例"真正生效；重复打开时唤出现有实例主窗口
+// 单实例锁：统一 userData 到固定全局路径（跨盘 / 开发版与打包版共享同一把锁），使"同一时刻仅允许一个主进程实例"真正生效；重复打开时唤出现有实例主窗口
 app.setPath('userData', path.join(os.homedir(), '.video-lab'));
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
@@ -132,8 +126,6 @@ function projectDir() {
 // Node 引擎目录动态解析：引擎必须是真实文件系统路径（asar 内无法被 spawn 执行）。
 // 源码共存形态（开发机）：引擎就在 main.js 同级 app\engines；
 // 打包形态：便携/开发形态用 resources\app\engines，setup 安装在 resources\Engines（extraResources 产物）。
-// ⚠ 开发形态不能用 projectDir() 作基准 —— 未打包时它等于 __dirname（app 目录本身），
-//    拼出的 resources\app\engines 并不存在，会让源码形态的实例解析不到引擎。
 function resolveEnginesDir() {
   if (!app.isPackaged) {
     const local = path.join(__dirname, 'engines');
@@ -148,11 +140,8 @@ function resolveEnginesDir() {
 }
 function configFilePath() { return configFile; }
 function programConfigPath() { return path.join(projectDir(), 'config.json'); }
-// ⚠ %APPDATA% 的解析必须容错：app.getPath('appData') 在 APPDATA 缺失/无效时（企业环境、
-//   便携启动器清理环境、被外部工具改坏）会【抛异常】，而本函数在模块顶层就被
-//   resolveConfigLocation() 调用（见下方 let configFile = ...）—— 异常一旦冒泡即为
-//   “主进程未捕获异常”，直接弹框崩溃、应用完全无法启动（实测复现过）。
-//   回退链：appData → $APPDATA → home → userData（userData 已在文件顶部显式固定，必定可用）。
+// ⚠ %APPDATA% 的解析必须容错：app.getPath('appData') 在 APPDATA 缺失/无效时（企业环境、便携启动器清理环境、被外部工具改坏）会【抛异常】，而本函数在模块顶层就被调用。
+//   异常一旦冒泡会导致主进程无法启动。回退链：appData → $APPDATA → home → userData。
 function appdataConfigPath() {
   let base = '';
   try { base = app.getPath('appData'); } catch (e) {}
@@ -161,35 +150,20 @@ function appdataConfigPath() {
   if (!base) { try { base = app.getPath('userData'); } catch (e) {} }
   return path.join(base, 'Video Lab', 'config.json');
 }
-// 数据目录**恒为 %APPDATA%\Video Lab**（本版起写死，不再提供「程序目录」选项）。
-// 为什么去掉这个选项：
-//   · 它原本只对便携版有意义（便携版用户删目录时希望不留残留）；而便携形态本版起正式退役
-//     ——2.6.0 是最后一次发布便携包，之后只有安装形态，「数据放程序目录」失去了存在理由。
-//   · 写死后还顺带解决两类真实故障：
-//     ① 装到 Program Files 等受控目录时程序目录不可写 → 配置/库写入失败、启动报错；
-//     ② 卸载重装（尤其换了安装目录）时，数据不会随安装目录一起被删掉。
-// 存量数据（旧版留在程序目录里的那份）由下方「启动期搬迁」接管 —— 那是唯一会碰程序目录的地方，
-// 且**只在 appdata 侧还没有数据时**动手，绝不覆盖已有数据。
-// ⚠ 刻意**不再**保留「两侧都有 → 取 mtime 较新的一份、删掉旧的一份」那套仲裁：
-//   单一数据根之后不存在双份；程序目录里的历史副本留在原地，由「数据目录清理」清单接管
-//   （可查、可清、进回收站可还原），而不是在这里被无声删掉。
+// 数据目录**恒为 %APPDATA%\Video Lab**（写死，不提供「程序目录」选项）：
+//   程序目录可能在受控环境下不可写，且卸载重装会随目录丢数据；旧版留在程序目录的数据由下方「启动期搬迁」接管。
 function resolveConfigLocation() {
   return appdataConfigPath();
 }
 let configFile = resolveConfigLocation();
-// 数据根目录 = 引导文件所在目录：三库（config.json / settings.db / cache.db）扁平同目录，
-// 不再有 Cache\ / Config\ 中间层；库路径一律由 storageDir() 派生，杜绝「路径重算」类 bug
+// 数据根目录 = 引导文件所在目录：三库（config.json / settings.db / cache.db）扁平同目录，无 Cache\ / Config\ 中间层；
+// 库路径一律由 storageDir() 派生，杜绝「路径重算」类 bug
 const SETTINGS_DB = 'settings.db';
 const CACHE_DB = 'cache.db';
 const storageDir = () => path.dirname(configFilePath());
 
-// ═══ 过渡版 2.5.1：便携数据静默搬迁 + 留线索 + 接管标记 ═══
-// 目的：把「数据位置」与「用户用哪个版本」解耦 —— 数据迁到 %APPDATA% 后，无论下次启动便携版还是安装版，
-//       resolveConfigLocation() 的 mtime 仲裁都会选 appdata。
-// ⚠ 复核补充 1（关键）：复制完成后必须把源侧三库改名 `*.migrated` —— 否则本次会话继续读写源侧，
-//   mtime 反超 appdata → 下次启动仲裁选回源侧并删掉 appdata 副本 → 搬迁自我回滚且不再重试。
-// 触发条件严格（便携形态 + 数据当前在程序目录）；非便携/已迁用户只做几次 existsSync，开销可忽略；
-// 真正搬迁仅在「便携版首次启动」发生一次（复制为幂等操作）。
+// ═══ 便携数据静默搬迁 + 留线索 + 接管标记 ═══
+// 数据根固定为 %APPDATA%\Video Lab；旧版留在程序目录的数据由下方启动期搬迁接管。
 const _migrateNotes = [];   // runLog 就绪前（搬迁在本句之后、runLog.init 之前）暂存，稍后补写
 function _migLog(msg) { try { console.log('[migrate] ' + msg); } catch (e) {} _migrateNotes.push(String(msg)); }
 // 复制 srcDir 的三库（含 sqlite 的 -wal/-shm）与 log\ 到 dstDir；成功判据 = dst 侧出现 config.json
@@ -227,14 +201,14 @@ function _adoptDirAsDataRoot(srcDir) {
     j.config_storage = 'appdata';
     fs.writeFileSync(appdCfg, JSON.stringify(j, null, 2), 'utf8');
   } catch (e) {}
-  // ② 源侧三库改名 *.migrated（复核补充 1：改名非删除，可回滚取证；源侧从此无 config.json → 仲裁必选 appdata）
+  // ② 源侧三库改名 *.migrated（改名非删除，可回滚取证；源侧从此无 config.json，不会再次触发搬迁）
   for (const n of ['config.json', SETTINGS_DB, CACHE_DB]) {
     for (const suf of ['', '-wal', '-shm']) {
       const src = path.join(srcDir, n + suf);
       try { if (fs.existsSync(src)) fs.renameSync(src, src + '.migrated'); } catch (e) {}
     }
   }
-  // ③ touch appdata 的 config.json（保证其 mtime 不早于源文件，仲裁必选它）
+  // ③ touch appdata 的 config.json（刷新时间戳）
   try { const now = new Date(); fs.utimesSync(appdCfg, now, now); } catch (e) {}
   _migLog('已接管数据：' + srcDir + ' → ' + appdDir);
   return true;
@@ -250,13 +224,7 @@ function localAppDir() {
   return path.join(base, 'Video Lab');
 }
 // ── 历史数据根：旧版遗留清理与清单的**扩展扫描范围** ──────────────────────
-// 为什么需要它：
-//   数据目录已固定为 %APPDATA%\Video Lab，而程序目录里可能仍留着更早版本写入的
-//   ffmpeg\ / preview\ / .locks\ / txt-snap\ / backup\ / log\ 等 —— 它们不在当前数据根之下，
-//   而清理与清单都以 storageDir() 为基准，于是这批遗留既不会被看见、也没有人清。
-// 返回：曾经可能承载过用户数据、但当前已不是数据根的目录（去重、只返回真实存在的）。
-// ⚠ 调用方**必须按白名单逐个确认遗留物名**再动手 —— 程序目录里还有程序本体（exe/dll/resources），
-//   绝不允许通配删除或整目录回收。
+//   程序目录里可能仍留着更早版本写入的 ffmpeg\ / preview\ / backup\ / log\ 等（不在当前数据根下）；⚠ 调用方必须按白名单逐个确认遗留物名，禁止通配删除或整目录回收。
 function legacyDataDirs() {
   const out = [];
   const cur = (() => { try { return path.resolve(storageDir()); } catch (e) { return ''; } })();
@@ -295,11 +263,8 @@ function _writePortableOrigin(migrated) {
     }, null, 2), 'utf8');
   } catch (e) { _migLog('线索写入失败（不影响使用）：' + ((e && e.message) || e)); }
 }
-// ⚠ 闸门判据修正：**便携包是"安装形态原料（win-unpacked）原样压 zip"**，
-// 它带着 resources\app-update.yml → `IS_PORTABLE` 恒为 false（走安装形态分支）。
-// 若用 IS_PORTABLE 当闸门，真实便携用户的搬迁**永不触发**（早期的人造测试曾掩盖这一点）。
-// 可靠区分点 = **安装痕迹**：setup(NSIS) 安装会在程序目录放 Uninstall*.exe，zip 解压出来的没有。
-// 故闸门为「数据落在程序目录 + 该目录无 Uninstall*.exe」——零注册表开销、不误伤 setup 用户。
+// ⚠ 便携分发形态判据：**不能用 IS_PORTABLE** —— 便携包是「安装形态原料（win-unpacked）原样压 zip」，带 resources\app-update.yml → `IS_PORTABLE` 恒为 false，会漏掉真实便携用户。
+//   可靠判据 = 安装痕迹：NSIS 安装会在程序目录放 Uninstall*.exe，zip 解压出来的没有。
 function _looksLikeUninstalledCopy(dir) {
   try {
     const st = fs.statSync(dir);
@@ -309,18 +274,13 @@ function _looksLikeUninstalledCopy(dir) {
 }
 // 「便携分发形态」判据（供更新链路使用）：只认「程序目录无 Uninstall*.exe」。
 // ⚠ 刻意**不**包含「数据是否还在程序目录」—— 搬迁完成后数据已在 appdata，但程序目录的性质没变，
-//   更新时仍应下载 Setup 安装包（否则便携版会去找便携包 zip，而 2.5.1 起不再发布该资产）。
-// ⚠ 也不能用 IS_PORTABLE：真实便携包（win-unpacked 压 zip）自带 app-update.yml，该值为 false。
+//   更新时仍应下载 Setup 安装包（否则会去找便携包 zip，而该资产已不存在）。
 function isPortableDistribution() {
   if (!app.isPackaged) return false;
   return _looksLikeUninstalledCopy(projectDir());
 }
-// ── 启动期执行（仅此处；开发形态一律跳过）──
-// 数据目录已写死 appdata，于是这里的职责只剩一件：**把旧版留在程序目录里的数据搬过来**。
-// ⚠ 判据从「程序目录不像 setup 安装现场（无 Uninstall*.exe）」改为「程序目录有数据、appdata 侧没有」：
-//   原判据是便携/安装形态的区分器，只在便携版语境下成立。而现在只有安装形态，且旧安装版的
-//   默认 config_storage 就是 'program' —— 数据恰恰躺在**带 Uninstall*.exe 的安装目录**里，
-//   用原判据这批用户永远不会被搬迁，卸载重装（或换安装目录）时数据就随目录一起没了。
+// ── 启动期执行（仅此处；开发形态一律跳过）：把旧版留在程序目录里的数据搬过来 ──
+// ⚠ 判据 = 程序目录有数据且 appdata 侧没有：旧安装版默认把数据放程序目录，卸载/换目录会随目录丢失；appdata 非空时绝不覆盖。
 try {
   const _progDir = path.dirname(programConfigPath());
   const _hasProgData = (() => { try { return fs.existsSync(programConfigPath()); } catch (e) { return false; } })();
@@ -332,11 +292,10 @@ try {
     // 留线索（顺序不可颠倒：先搬迁完成，再写线索，migrated 才准确）
     _writePortableOrigin(done);
   } else if (app.isPackaged && _hasProgData && _hasAppdData) {
-    // 两侧都有数据：**以 appdata 为准**（单一数据根），程序目录那份不在这里删 ——
-    // 它属于历史遗留，交给「数据目录清理」清单（可查、可清、进回收站可还原）。
+    // 两侧都有数据：**以 appdata 为准**（单一数据根），程序目录那份不在这里删 ——它属于历史遗留，交给「数据目录清理」清单（可查、可清、进回收站可还原）。
     _migLog('程序目录仍有数据，但 AppData 已有数据 → 以 AppData 为准，原位置留给清理清单：' + _progDir);
   }
-  // A3 接管标记：安装程序（NSIS，见 build/installer.nsh）在"未搬迁就装 Setup"时写下 pending-takeover.json。
+  // 接管标记：安装程序（NSIS，见 build/installer.nsh）在"未搬迁就装 Setup"时写下 pending-takeover.json。
   // ⚠ 安装程序刻意只写"信号"不解析 JSON（避免两套实现漂移）→ 源目录若不在标记里，回退读线索文件。
   try {
     const ldir = localAppDir();
@@ -356,9 +315,7 @@ try {
         if (_adoptDirAsDataRoot(src)) configFile = appdataConfigPath();
       }
       // 标记的删除口径：**只有「目的已达成」或「没什么可接管」才删**。
-      // 原实现无论成败一律删 —— 复制中途失败（磁盘满 / 权限 / 文件被占用）就永久断链：
-      // 标记没了、安装形态又进不了 A1 闸门（安装目录里有 Uninstall*.exe），
-      // 用户在便携目录里的数据从此只能靠人工找。现在改为保留标记、下次启动重试。
+      // 复制中途失败（磁盘满 / 权限 / 文件被占用）时保留标记、下次启动重试 —— 否则标记丢失后没有任何入口再触发接管，数据只能人工找。
       const adopted = fs.existsSync(appdataConfigPath());
       if (adopted || !attempted) {
         fs.unlinkSync(tf);   // 一次性：目的达成或本就没得接管
@@ -375,8 +332,7 @@ try {
       }
     }
   } catch (e) { _migLog('接管标记处理失败（不影响使用）：' + ((e && e.message) || e)); }
-  // A3.5 线索目录的空壳回收：portable-origin.json 按设计常驻（供排查与安装包参考，不删）；
-  // 但若目录里已经什么都没有了（用户清过 / 从未产生过线索），那个目录就是纯空壳 —— 收回，别留垃圾。
+  // 线索目录的空壳回收：portable-origin.json 按设计常驻（供排查与安装包参考，不删）；目录里已经什么都没有时（用户清过 / 从未产生过线索）纯属空壳 —— 收回。
   try {
     const ldir = localAppDir();
     if (fs.existsSync(ldir) && fs.statSync(ldir).isDirectory() && fs.readdirSync(ldir).length === 0) {
@@ -387,9 +343,7 @@ try {
 } catch (e) { _migLog('搬迁流程异常（已忽略，不影响使用）：' + ((e && e.message) || e)); }
 
 // ── 运行日志（排查用，保留 7 天）──
-// 任务记录 / 任务标记 / 成片产物都可能被清除或删除，一旦清除就只剩"反推"。
-// 本日志独立留存、任何清除操作都不触碰它 —— 它是事后唯一还在的证据。
-// 位置与三库同级：<storageDir>\log\app-YYYY-MM-DD.log
+// 任务记录 / 任务标记 / 成片产物都可能被清除或删除，一旦清除就只剩"反推"。本日志独立留存、任何清除操作都不触碰它 —— 它是事后唯一还在的证据。
 const runLog = require(path.join(resolveEnginesDir(), 'base', 'runlog.js'));
 runLog.init(path.join(storageDir(), 'log'));
 // 搬迁发生在 runLog 初始化之前（见上方"便携数据静默搬迁"）：就绪后补写，保证排查有据
@@ -410,10 +364,7 @@ runLog.sys('app.timing', '启动阶段 · 进程创建→JS 首行',
     totalFromProcessCreateMs: Math.round(_EARLY_UPTIME_MS + _bootLogReady) });
 
 // ── IPC 统一留痕：一处覆盖全部通道 ──
-// 回答"用户到底点了什么"——任务窗口与主窗口的写操作都会经过这里，
-// 包括删除配置、新增配置、添加/删除路径、重分组、清除产物等。
-// 只读与展示类通道、以及保存设置时的冗余配置项，都由 runlog 侧统一过滤。
-// 浏览器端（HTTP）走 server.js，用同一套 chEvent 留痕，两边格式一致。
+// 回答"用户到底点了什么"——任务窗口与主窗口的写操作都会经过这里，包括删除配置、新增配置、添加/删除路径、重分组、清除产物等。
 const _origIpcHandle = ipcMain.handle.bind(ipcMain);
 ipcMain.handle = function (channel, fn) {
   return _origIpcHandle(channel, async function (e, ...args) {
@@ -439,8 +390,7 @@ function recycleFile(p) {
   } catch (e) {}
   try { fs.renameSync(p, p + '.bak'); return true; } catch (e) { return false; }
 }
-// 回收「搬空后的对侧空壳目录」：搬迁完成后旧位置若已无任何内容则整个移入回收站，
-// 否则便携版切到程序目录后会在 AppData 侧留下空文件夹（目录非空则保留，不误删用户手放的内容）
+  // 回收「搬空后的对侧空壳目录」：搬迁完成后旧位置若已无任何内容则整个移入回收站（目录非空则保留，不误删用户手放的内容）
 function recycleIfEmpty(dir) {
   try {
     if (!dir || !fs.existsSync(dir)) return false;
@@ -449,39 +399,23 @@ function recycleIfEmpty(dir) {
   } catch (e) { return false; }
 }
 function defaultRoot() { return path.dirname(projectDir()); }
-// 已废弃的配置键（写入设置库前一律剔除）：
-//   · scripts_dir / use_node_engine —— 旧脚本目录 / 引擎开关；
-//   · config_storage —— 数据目录选择（program / appdata）。本版起数据目录**恒为 %APPDATA%\Video Lab**，
-//     该键不再参与任何路径决策；但旧 config.json 里可能还留着它，不显式剔除就会随 saveConfig
-//     一直写回磁盘，成为永久残留（与上面两个同理）。
-// 代码已不再读取，但不显式剔除就会随 saveConfig 一直写回磁盘，成为永久残留。
+// 已废弃的配置键（写入设置库前一律剔除）：scripts_dir / use_node_engine（旧脚本目录 / 引擎开关）、
+//   config_storage（数据目录选择）。数据目录**恒为 %APPDATA%\Video Lab**，该键不再参与路径决策；但旧 config.json 可能仍留着它，不剔除会随 saveConfig 永久残留。
 const OBSOLETE_CONFIG_KEYS = ['scripts_dir', 'use_node_engine', 'config_storage'];
 // 主题（皮肤）白名单 —— 须与前端 app.js 的 SKINS、settings.js 的 THEMES 三处一致
 // （回归断言会核对三者同步，任一漏改即报错）。
-// 为什么必须在写入口校验：皮肤 id 是**外部可见**的值（配置文件、IPC、HTTP API 都能写），
-// 而前端遇到无法识别的 id 会**静默回落到第一个主题**（浅色/白蓝）—— 用户看到的现象是
-// 「我的皮肤自己变了」，既没有提示也查不到原因，极难定位（本项目真实踩过：
-// 一次测试用 API 写入 skin:"dark"（并非有效 id），表现为皮肤被重置为浅色）。
-// ⚠ 非法值一律**忽略、保留原值**，不抛错也不改动其它键 —— 皮肤改不动远比整体保存失败要好。
+// 写入口必须校验：皮肤 id 是**外部可见**的值（配置文件、IPC、HTTP API 都能写），
+// 前端遇到无法识别的 id 会静默回落到第一个主题 —— 故非法值一律忽略、保留原值，不抛错也不改动其它键。
 const SKIN_IDS = ['white_blue', 'Black_Orange', 'Maid_Atelier'];
 const isValidSkin = (v) => typeof v === 'string' && SKIN_IDS.indexOf(v.trim()) >= 0;
 // ── 配置读取：settings.db 为唯一业务来源，config.json 不参与业务键读取 ──
 // ⚠ 业务键一律只从 settings.db 取，**不得回退读 config.json**：config 会被逐步简化，
-// 任何「config 缺失就回退读它」的路径都会变成取到 undefined 的隐患（表现为设置莫名丢失）；
-// 库里没有就用 DEFAULT_CONFIG 的默认值。
-// config.json 仍保留并写入全部键，但只为「回滚旧版本」服务（旧版本读 config.json 时能拿到完整值）。
-// 「锚点键」= 定位数据目录所必需、因而仍需从 config.json 读的键。
-// ⚠ 本版起**为空**：数据目录写死 %APPDATA%\Video Lab，不再靠 config_storage 决定路径，
-//   于是 config.json 不再承担任何路径决策职能，可以彻底退出业务读取（见下方「配置读取」段）。
-//   机制保留（而不是连数组一起删），是为了将来若再出现「必须先读 config 才知道库在哪」的
-//   需求时有个既定入口，不必重新发明。
+// 任何「config 缺失就回退读它」的路径都会变成取到 undefined 的隐患（表现为设置莫名丢失）；库里没有就用 DEFAULT_CONFIG 的默认值。
 const CONFIG_ANCHOR_KEYS = [];
 
 // ── 批量模式的工作目录：唯一真相 = `config.batch.root` ──
 // 工作路径属于**批量模式**而非整个软件：各模式的工作目录由各模式自己承接（遮罩有自己的 `mask.root`）。
 // 读取一律用 getBatchRoot()；写入一律用 setBatchRoot()。
-// 顶层 `root` 只在「落盘 config.json」时作为**兼容镜像**保留（旧版本回滚仍读它）；
-// 它**不写入 settings.db**（否则下次 loadConfig 读回来会形成两个真相，见 saveConfig）。
 function getBatchRoot(cfg) {
   const b = cfg && cfg.batch;
   return (b && typeof b === 'object' && typeof b.root === 'string') ? b.root.trim() : '';
@@ -498,12 +432,8 @@ let _pendingRootMigration = '';
 // 待落库的旧顶层 root 清理标记（batch.root 已就位却仍有残留 root 时置真）
 let _pendingRootCleanup = false;
 
-// 直读 settings.db 的 app scope（**不依赖 api**）。
-// ⚠ 必需存在的原因：启动早期要先用 settings 里的 root 才能定位工作目录，而 api 的构造又必须先有 root ——
-//   若此时只能靠 api 读设置，就形成死循环，root 只能取默认值，
-//   表现为「工作目录被解析成程序目录的上一级」（进而在该盘做全量扫描，冷启动被拖到数十秒）。
-//   故本函数直接从 storageDir() 派生库路径读一次，专供启动首阶段使用。
-//   库读不到一律返回 null（调用方保持默认值，不回退 config.json）。
+// 直读 settings.db 的 app scope（**不依赖 api**）：启动初期需先用 settings 里的 root 定位工作目录，而 api 的构造又必须先有 root，走 api 会形成死循环。
+// ⚠ 故直接从 storageDir() 派生库路径读一次；读不到返回 null（调用方保持默认值，不回退 config.json）。
 function readSettingsAppDirect() {
   try {
     const dbPath = path.join(storageDir(), SETTINGS_DB);
@@ -550,9 +480,7 @@ function loadConfig() {
   // ② 业务键：settings.db 全量载入（库不可用时保持默认值 —— 不回退 config.json）
   const app = readSettingsApp();
   if (app) {
-    // ③ 一次性迁移：旧顶层 root → batch.root。
-    //    ⚠ **必须在取值循环之前**完成 —— 否则首阶段 `resolveRoot()` 取不到工作目录，
-    //    会回退成程序目录的上一级（实测工作目录会落到上级目录，冷启动全量扫描 29.7 秒）。
+    // ③ 一次性迁移：旧顶层 root → batch.root。⚠ **必须在取值循环之前**完成 —— 否则首阶段 `resolveRoot()` 取不到工作目录（会回退成程序目录的上一级）。
     //    这里只改内存（api 尚未构造、无法落库）；落库在 applySettingsFromDb 完成。
     const legacyRoot = typeof app.root === 'string' ? app.root.trim() : '';
     const batchObj = (app.batch && typeof app.batch === 'object') ? app.batch : {};
@@ -563,8 +491,7 @@ function loadConfig() {
       _pendingRootMigration = legacyRoot;   // 待落库：写 batch.root
       _pendingRootCleanup = true;           // 待落库：删旧顶层 root
     } else if (hasBatchRoot && appHasRootKey) {
-      // 残留清理：batch.root 已就位却仍留着旧顶层 root —— 历史上 root 被 seed 从
-      // config.json 灌回过（当时它还没被排除）；不清理会一直留着一个「假真相」。
+      // 残留清理：batch.root 已就位却仍留着旧顶层 root 时删除 —— 否则 settings 里会多出一个与 batch.root 不一致的旧键。
       _pendingRootCleanup = true;
     }
     for (const k of Object.keys(app)) {
@@ -588,7 +515,7 @@ function loadConfig() {
     //   （会让整个启动崩溃）。readSettingsApp 内部已做 try 探测，走到这里就是真读不到。
     try { runLog.sys('app.config', '设置库不可用：本次按默认值运行（不回退 config.json）', {}); } catch (e) {}
   }
-  // ④ 锚点键（本版起为空数组，见 CONFIG_ANCHOR_KEYS 定义）：循环保留以备将来需要
+  // ④ 锚点键（当前为空数组，见 CONFIG_ANCHOR_KEYS 定义）：循环保留以备将来需要
   for (const k of CONFIG_ANCHOR_KEYS) {
     if (disk[k] !== undefined && disk[k] !== null) cfg[k] = disk[k];
   }
@@ -611,12 +538,7 @@ function readConfigDisk() {
 }
 // 一次性引导：settings.db 尚未落过的键，用 config.json 的同名值补齐并落库。
 //   这是「修好断点」而非数据迁移 —— 补齐之后读路径完全只认 settings，config.json 不再被读。
-//   幂等：仅写 settings 里**不存在**的键，已落过库的值绝不覆盖；config.json 没有该键就跳过
-//   （留给 DEFAULT_CONFIG 默认值，不用默认值充数写库，避免污染「哪些键是用户真设过的」语义）。
-// ⚠ 不参与引导的键（SEED_EXCLUDE_KEYS）必须显式排除，否则会出现「删了又被灌回来」：
-//   顶层 `root` 是 config.json 的**兼容镜像**（真相在 batch.root），迁移时会被删掉；
-//   而 loadConfig() 每次调用（如 get_settings）都会跑一次本引导 —— 若 root 参与引导，
-//   它会被 config.json 的同名键立刻灌回 settings（删掉马上又回来）。
+//   幂等：仅写 settings 里**不存在**的键，已落过库的值绝不覆盖；config.json 没有该键就跳过（留给 DEFAULT_CONFIG 默认值）。
 const SEED_EXCLUDE_KEYS = CONFIG_ANCHOR_KEYS.concat(OBSOLETE_CONFIG_KEYS).concat([
   'root',   // 兼容镜像键：只写 config.json，真相是 batch.root
 ]);
@@ -638,11 +560,8 @@ function seedSettingsFromConfig(disk, app) {
 }
 // 保存配置：以「实际变更的键」为单位落盘，避免每次保存全量重写两侧。
 //  ① settings.db（唯一读取来源）：写入本次变更的键；
-//  ② config.json（仅为回滚旧版本而留的兼容快照）：**只更新本文件原本就有的键** ——
+//  ② config.json（仅为回滚旧版本而留的兼容快照）：**只更新本文件原本就有的键**；
 //     代码新引入的键不写进去（旧版本不认识它们，写了只是污染）。
-// 变更判定以 _configBaseline（最近一次落盘的快照）为基准，而非入参本身 —— 调用方普遍
-// 先改内存 config 再 saveConfig(config)，若拿入参自比会得出「零变更」。
-// 返回本次实际变更的键名数组（供调用方按需广播/重排定时器）。
 let _configBaseline = {};
 function saveConfig(config) {
   const cfg = (config && typeof config === 'object') ? config : {};
@@ -705,11 +624,8 @@ function _configValueEqual(a, b) {
   return false;
 }
 // 应用级设置的合入（软件端 IPC 与浏览器端 HTTP 两条保存路径共用）。
-// 落盘统一由 saveConfig 完成：settings.db 是唯一读取来源，config.json 仅作旧版本兼容快照
-// （只更新它原本就有的键）。故此处只做「把提交值合入 cfg」，不再区分新旧键、不再单独落库。
-// ⚠ 必须是模块级函数：HTTP 版 save_settings（buildHttpExtraRoutes 内）与 IPC 版都要调用，
-//    若定义在 registerIpc 内则 HTTP 路径取不到（会报 mergeAppSettings is not defined，
-//    浏览器端保存应用级设置静默失败）。
+// 落盘统一由 saveConfig 完成：settings.db 是唯一读取来源，config.json 仅作旧版本兼容快照（只更新它原本就有的键）；
+// 故此处只做「把提交值合入 cfg」，不单独落库。
 function mergeAppSettings(cfg, s) {
   if (!s || typeof s !== 'object') return cfg;
   if (typeof s.notify_task_end === 'boolean') cfg.notify_task_end = s.notify_task_end;
@@ -751,21 +667,19 @@ function scheduleDailyUpdateCheck() {
 }
 
 const root = resolveRoot(config);
-// 库与引导文件同目录（扁平布局）：不再有 Cache\ / Config\ 中间层，也不需要「配置侧 / 缓存侧对齐」
+// 库与引导文件同目录（扁平布局）：没有 Cache\ / Config\ 中间层，也无「配置侧 / 缓存侧对齐」问题
 const { migrateToFlatLayout, listStagingDirs } = require(path.join(resolveEnginesDir(), 'base', 'migrate.js'));
 // 库路径一律由 storageDir() 派生（见上方定义）：不存在需要重算的路径，杜绝「写回旧位置」类 bug
 // 一次性布局迁移：旧布局（Cache\ + Config\ + config 同级旧设置文件）→ 三库（config.json / settings.db / cache.db）。
 // 每次启动执行且幂等（逐条 upsert 合并，便于回退旧版后再升级收敛）；校验通过才把旧物暂存，失败则保持旧布局可启动。
-// 暂存目录交由 app ready 后的回收任务（启动早期调用 shell.trashItem 不可靠）。
 const pendingTrashDirs = [];
 try {
   const mr = migrateToFlatLayout({ configDir: path.dirname(configFile), log: (m) => console.log(m) });
   if (mr.migrated && mr.stagingDir) pendingTrashDirs.push(mr.stagingDir);
   if (mr.errors && mr.errors.length) console.error('[migrate] ' + mr.errors.join('；'));
 } catch (e) { console.error('[migrate] 迁移异常：' + ((e && e.message) || e)); }
-// ⚠ 跨根收集：暂存目录（.video-lab-legacy-*）可能落在**曾经**的数据根里 ——
-//   用户在设置页切换过保存位置、或搬迁前后各产生过一次。只扫当前根会让旧根里的暂存
-//   永不回收（它非空，recycleIfEmpty 那条路也不适用）。legacyDataDirs 已按当前根去重。
+// ⚠ 跨根收集：暂存目录（.video-lab-legacy-*）可能落在历史数据根里（搬迁前后各产生过一次）。
+//   只扫当前根会让旧根里的暂存永不回收（它非空，recycleIfEmpty 那条路也不适用）。legacyDataDirs 已按当前根去重。
 const _stagingRoots = [path.dirname(configFile)].concat(legacyDataDirs());
 for (const _sr of _stagingRoots) {
   try {
@@ -778,16 +692,8 @@ if (pendingTrashDirs.length) {
   app.whenReady().then(() => { for (const d of pendingTrashDirs) { try { recycleFile(d); } catch (e) {} } });
 }
 // ── 数据格式版本守卫 ──
-// 数据格式破坏性升级后，旧程序读到的是它不认识的形状 —— 最坏的结果不是报错，
-// 而是看起来正常地把数据写坏。而用户回退版本往往只是"想退回上个功能"，不会意识到
-// 数据已经不可逆地升级过，所以这里必须在他开库之前拦下。
-//
-// 判据是「**数据格式**版本」而不是「程序版本」：后者每次发版都变，拿它做守卫会把手
-// "只想退回上个功能版本"的用户也一起拦住，最终要么被绕过、要么被关掉。
-// 数据格式版本只在库结构真的变化时才 +1（见 dataver.js 的 DATA_VERSION 注释）。
-//
-// ⚠ 检查用**只读连接**：读写连接一打开，SQLite 就会自动恢复 WAL 并回写文件 ——
-//   那等于在「即将拒绝启动」的路径上把更高版本的数据改了一笔，比不检查更糟。
+// 开库前用**只读连接**检查数据格式版本：库比程序新即拒绝启动，避免旧程序把新格式数据写坏。
+// 判据是「**数据格式**版本」而非「程序版本」—— 后者每次发版都变，会误伤只想回退功能的用户。
 (() => {
   try {
     const dataver = require(path.join(resolveEnginesDir(), 'base', 'dataver.js'));
@@ -799,21 +705,17 @@ if (pendingTrashDirs.length) {
       // showErrorBox 是同步的，正常不会走到下一行；显式抛出以确保后续初始化一个都不执行
       throw new Error('DATA_VERSION_TOO_NEW');
     }
-    // 库存在但没有版本标记（本版首次接触这份数据）⇒ 补记一次，供将来判断
+    // 库存在但没有版本标记（首次接触这份数据）⇒ 补记一次，供将来判断
     if (dv.status === 'ok' && dv.found == null && fs.existsSync(dvDbPath)) dataver.writeDataVersion(dvDbPath);
 
-    // 数据比程序旧 ⇒ 后续要迁移。迁移是**不可逆**的（旧库被就地改写），
-    // 中途失败（磁盘满 / 进程被杀 / 写了一半）就既回不到旧结构、也用不了新结构 ——
-    // 所以先整套备份，成功才继续。备份本身也是「用户想回退旧版本」时那份可用数据。
+    // 数据比程序旧 ⇒ 后续要迁移。迁移**不可逆**（旧库被就地改写），中途失败即旧结构、新结构都用不了 ——所以先整套备份，成功才继续；备份同时也是回退旧版本时的那份可用数据。
     if (dv.status === 'ok' && dv.found != null && dv.found < dv.supported) {
       const bk = dataver.preMigrateBackup(dvDbPath, dv.found);
       if (bk.ok) {
         console.error('[dataver] 迁移前已备份：' + bk.dir + '（' + bk.files.join('、') + '）');
         try { dataver.pruneBackups(dvDbPath); } catch (e3) { /* 清理失败不影响迁移 */ }
       } else {
-        // 备份不成功就**不迁移**：宁可让用户继续用旧数据，也不能在没有退路的情况下动它。
-        // ⚠ 这里必须弹框而不是只打日志 —— 用户看到"点了没反应"会反复重试，
-        //   每次重试都可能更接近数据损坏。
+        // 备份不成功就**不迁移**：宁可让用户继续用旧数据，也不能在没有退路的情况下动它；弹框提示后退出。
         console.error('[dataver] 迁移前备份失败，已跳过迁移：' + bk.error);
         try {
           dialog.showErrorBox('无法安全升级数据',
@@ -828,8 +730,7 @@ if (pendingTrashDirs.length) {
   } catch (e) {
     // 这两种是**主动拒绝启动**，必须继续抛出去（不然下面的"放行"会把它们吞掉）
     if (e && (e.message === 'DATA_VERSION_TOO_NEW' || e.message === 'DATA_VERSION_BACKUP_FAILED')) throw e;
-    // 检查本身出错（权限不足 / 库损坏 / 被独占）⇒ 放行。
-    // 守卫的职责是拦住"确定不兼容"，而不是因为查不动就把用户锁在门外。
+    // 检查本身出错（权限不足 / 库损坏 / 被独占）⇒ 放行。守卫的职责是拦住"确定不兼容"，而不是因为查不动就把用户锁在门外。
     console.error('[dataver] 版本检查失败，按放行处理：' + ((e && e.message) || e));
   }
 })();
@@ -839,10 +740,8 @@ const api = new Api(root, config, resolveEnginesDir(), storageDir());
 // 否则那批遗留永远不会出现在清单一里。详见 legacyDataDirs() 的注释。
 try { api.setLegacyDataDirs(legacyDataDirs()); } catch (e) { console.error('[legacy] 历史数据根注入失败：' + ((e && e.message) || e)); }
 // ── 设置库载入（两阶段之二）：api 就绪后用 settings.db 的真实值覆盖内存 config ──
-// 为什么分两阶段：loadConfig() 需要 api 才能读 settings.db，而 api 的构造又需要 config.root
-// （库路径由 storageDir 派生，无法自举）。故顶层先用「锚点 + 默认值」建 api，再用真值覆盖。
-// 覆盖范围 = 业务键全集：凡 settings.db 里有的键，一律以库值为准（不回退 config.json）。
-// 本段同时承担**首次引导**：顶层 loadConfig 调用时 api 尚未存在，引导无法执行；到此处补齐。
+// 分两阶段：loadConfig() 需要 api 才能读 settings.db，而 api 的构造又需要 config.root（库路径由 storageDir 派生，无法自举）——
+// 故顶层先用「锚点 + 默认值」建 api，再用真值覆盖。
 (function applySettingsFromDb() {
   try {
     const app = api.getAppSettings();
@@ -894,13 +793,12 @@ api.onScanProgress = (p) => {
   } catch (e) {}
   if (httpServerInfo && httpServerInfo.broadcastAll) httpServerInfo.broadcastAll('scan_progress', p);
 };
-// FFmpeg 环境自愈进度：主窗（更新浮窗复用）+ 设置窗（维护区行内进度）双通道
+// FFmpeg 环境自愈进度：主窗（更新浮窗复用）+ 设置页（维护区行内进度）双通道
 api.onFfmpegProgress = (p) => {
   sendToMain('env_fix_progress', p);
   sendToSettings('env_fix_progress', p);
 };
-// 运行期环境失效（用的时候才发现的 ffmpeg/ffprobe 不可用）：
-// 横幅（可一键下载修复）+ 吐司（更醒目的即时提示）双通道，两个窗口都发。
+// 运行期环境失效（用的时候才发现的 ffmpeg/ffprobe 不可用）：横幅（可一键下载修复）+ 吐司（更醒目的即时提示）双通道，两个窗口都发。
 api.onEnvLost = (info) => {
   const payload = { missing: (info && info.missing) || '', hasFfmpeg: !!(info && info.ffmpeg) };
   sendToMain('env_fix_available', payload);
@@ -912,15 +810,10 @@ api.onEnvLost = (info) => {
 
 // 主窗口与任务窗口：主窗口仅在原生模态对话框/载入遮罩时被禁用；任务列表窗口不随父窗口禁用
 let mainWin = null;
-// 注：扫描小窗（scanWin / scanning.html）已移除 —— 扫描全程后台，不再需要独立的进度窗口
-//（预检测与扫描均不弹前台窗，进度写状态栏与运行日志）。
+// 扫描全程后台：预检测与扫描均不弹独立窗口，进度写状态栏与运行日志。
 
 // 按需预热扫描：**只在用户主动唤起主窗口时调用**（托盘点击 / 再次双击图标 / 托盘菜单）。
-// 开机自启（--autostart）是静默常驻托盘形态，用户很可能根本不打开界面 ——
-// 那种情况下绝不弹小窗、也不预热，避免无谓打扰与机械盘唤醒占用。
-// 唤起时若扫描缓存已失效（工作目录结构变了），补一次扫描并弹小窗反馈；
-// 缓存有效则静默放行（连小窗都不出现）。
-// 小窗延迟 1.2 秒出现：先让主窗口画出来，避免"刚弹出小窗又立刻关掉"的抖动。
+// 开机自启（--autostart）是静默常驻托盘形态，绝不弹窗、也不预热，避免无谓打扰与机械盘唤醒。
 let _scanWarmBusy = false;
 function warmScanOnDemand(reason) {
   try {
@@ -936,7 +829,7 @@ function warmScanOnDemand(reason) {
         logTiming('唤起检查：扫描缓存有效，无需扫描（' + reason + '，' + _elapsed() + 'ms）');
         return;
       }
-      // 唤起时同样后台扫描：不弹小窗、也不推迟窗口显示
+      // 唤起时同样后台扫描：不弹窗、也不推迟窗口显示
       const finish = () => {
         _scanWarmBusy = false;
         logTiming('唤起预热扫描完成（' + reason + '，' + _elapsed() + 'ms）');
@@ -958,8 +851,7 @@ let discardCloseHandled = false; // close 路径：未保存已确认（一次�
 let discardQuitHandled = false;  // quit 路径：未保存已确认（本次退出不再询问）
 // 图标源文件（resources/app/icon/），托盘图标使用多分辨率适配不同缩放的任务栏
 const ICON_DIR = path.join(__dirname, 'icon');
-// 托盘图标单例：图标文件在 asar 内、体积小，但 createFromPath 是同步读盘 ——
-// 冷态 + 安全软件扫描下首次读取可能被放大，故只构建一次并复用。
+// 托盘图标单例：图标文件在 asar 内、体积小，但 createFromPath 是同步读盘 ——冷态 + 安全软件扫描下首次读取可能被放大，故只构建一次并复用。
 let _trayIcon = null;
 function trayIcon() {
   if (_trayIcon) return _trayIcon;
@@ -973,15 +865,14 @@ function trayIcon() {
 function showMainWindow() {
   // 托盘唤出计时：用于定位「点托盘要等很久、窗口迟迟不出现」。
   // 主进程只能测到 show() 调用本身返回的耗时；窗口是否真的画出来要看渲染侧首帧，
-  // 故同时向渲染进程要一次 rAF 双帧确认，两个数字分开记 —— 若 show() 很快而首帧很慢，
-  // 说明卡在渲染/合成（主进程事件循环被占住时最典型）。
+  // 故同时向渲染进程要一次 rAF 双帧确认，两个数字分开记 —— 若 show() 很快而首帧很慢，说明卡在渲染/合成。
   const _t = process.hrtime.bigint();
   const needRebuild = !mainWin || mainWin.isDestroyed();
   if (needRebuild) createWindow();
   mainWin.show();
   mainWin.focus();
   const ms = Number(process.hrtime.bigint() - _t) / 1e6;
-  // 用户主动唤起：若扫描缓存已失效则补扫并弹小窗（自启形态启动时跳过了预热）。
+  // 用户主动唤起：若扫描缓存已失效则后台补扫（自启形态启动时跳过了预热）。
   // isQuitting 时跳过 —— 退出流程里也会 showMainWindow()，那不是用户"想打开界面"。
   if (!isQuitting) warmScanOnDemand('唤起主窗口');
   try {
@@ -1006,9 +897,8 @@ function createTray() {
   tray = new Tray(trayIcon());
   tray.setToolTip('Video Lab');
   // 左键直接唤起主窗口；右键唤出自绘托盘菜单
-  // ⚠ 点击留痕放在回调**最前**：出现「图标在、点不动」时，这两条能区分两种情况 ——
-  //   ① 日志里没有「托盘收到点击」→ 事件根本没送达主进程（托盘对象异常）
-  //   ② 有「托盘收到点击」但没有后续「托盘唤出主窗口」→ 回调执行了但被卡在 show() 之前
+  // ⚠ 点击留痕放在回调**最前**：用于区分两种「图标在、点不动」——① 没有「托盘收到点击」日志 = 事件没送达主进程（托盘对象异常）；
+  //   ② 有「托盘收到点击」但没有后续「托盘唤出主窗口」= 回调执行了但卡在 show() 之前。
   tray.on('click', () => {
     try { runLog.sys('app.timing', '托盘收到点击（左键）', { atSinceProcessStart: Math.round(bootMs()) }); } catch (e) {}
     hideTrayMenu();
@@ -1030,25 +920,21 @@ function createTray() {
     }, 30000);
   }
 }
-// 自绘托盘菜单窗口：皮肤变量从主窗口实时读取注入（单一来源，避免皮肤定义重复漂移）；
-// 高度按内容自适应，锚定托盘图标上方弹出，失去焦点自动收起
+// 自绘托盘菜单窗口：皮肤变量从主窗口实时读取注入（单一来源，避免皮肤定义重复漂移）；高度按内容自适应，锚定托盘图标上方弹出，失去焦点自动收起
 let trayMenuWin = null;
 const TRAY_MENU_W = 200;
 function hideTrayMenu() { if (trayMenuWin && !trayMenuWin.isDestroyed()) trayMenuWin.hide(); }
 async function showTrayMenu() {
   const fresh = !trayMenuWin || trayMenuWin.isDestroyed();
   if (fresh) {
-    // ⚠ 不用透明窗口（transparent）：Windows 上透明窗口每次 show 都要重新合成，
-    //   表现为"打开必闪一帧"，且等重绘也治不好。
-    //   改用不透明窗口 + 系统圆角（Win11 默认 roundedCorners），窗口背景色在注入皮肤变量后
-    //   用 setBackgroundColor 对齐 --bg-base-default，圆角外不会露出杂色。
+    // ⚠ 不用透明窗口（transparent）：Windows 上每次 show 都要重新合成，会闪一帧。
+    //   用不透明窗口 + 系统圆角（Win11 默认 roundedCorners）：窗口背景色在注入皮肤变量后用 setBackgroundColor 对齐 --bg-base-default，圆角外不会露出杂色。
     trayMenuWin = new BrowserWindow({ width: TRAY_MENU_W, height: 60, show: false, frame: false, transparent: false, roundedCorners: true, resizable: false, movable: false, skipTaskbar: true, alwaysOnTop: true, fullscreenable: false, webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false } });
     trayMenuWin.setMenu(null);
     trayMenuWin.loadFile(path.join(__dirname, 'frontend', 'trayMenu.html'));
     trayMenuWin.on('blur', () => { if (trayMenuWin && !trayMenuWin.isDestroyed()) trayMenuWin.hide(); });
     trayMenuWin.on('closed', () => { trayMenuWin = null; });
-    // 等 ready-to-show（首帧已绘制）而非 did-finish-load：后者只代表文档加载完，
-    // 此时 show 仍可能先出现空白/半透明窗再刷出内容 —— 表现为托盘菜单"闪一下"
+    // 等 ready-to-show（首帧已绘制）而非 did-finish-load：后者只代表文档加载完，此时 show 会先出现空白/半透明窗再刷出内容
     await new Promise((res) => { const t = setTimeout(res, 300); trayMenuWin.webContents.once('ready-to-show', () => { clearTimeout(t); res(); }); });
   }
   // 注入当前皮肤变量（从主窗口 computed style 读取，与界面完全一致）
@@ -1061,8 +947,7 @@ async function showTrayMenu() {
     })()`);
     if (cssText) {
       await trayMenuWin.webContents.executeJavaScript("document.getElementById('skinVars').textContent=':root{" + cssText + "}';");
-      // 窗口已改为不透明：取皮肤的 --bg-base-default 作为窗口背景色，
-      // 使圆角外的矩形角落与菜单底色一致（否则会露出默认白/黑角）
+      // 窗口不透明：取皮肤的 --bg-base-default 作为窗口背景色，使圆角外的矩形角落与菜单底色一致（否则会露出默认白/黑角）
       const mBg = /--bg-base-default:\s*([^;]+)/.exec(cssText);
       if (mBg) { try { trayMenuWin.setBackgroundColor(mBg[1].trim()); } catch (e) {} }
     }
@@ -1075,8 +960,7 @@ async function showTrayMenu() {
     const h = await trayMenuWin.webContents.executeJavaScript("document.getElementById('trayMenu').offsetHeight");
     trayMenuWin.setContentSize(TRAY_MENU_W, Math.max(50, Number(h) || 50));
   } catch (e) {}
-  // 定位：以鼠标指针为锚点，菜单从鼠标右上紧贴弹出（右边界贴 x、下边界贴 y）；
-  // 钳制按整屏 bounds（允许覆盖任务栏区域），越界时再就近收拢
+  // 定位：以鼠标指针为锚点，菜单从鼠标右上紧贴弹出（右边界贴 x、下边界贴 y）；钳制按整屏 bounds（允许覆盖任务栏区域），越界时再就近收拢
   let mx = 0, my = 0;
   try { const c = screen.getCursorScreenPoint(); mx = c.x; my = c.y; } catch (e) {}
   const disp = screen.getDisplayNearestPoint({ x: mx, y: my });
@@ -1094,8 +978,7 @@ async function showTrayMenu() {
   trayMenuWin.show();
   trayMenuWin.focus();
 }
-// 视频处理工具窗口：独立于主窗口的**非模态**窗口（可与主窗口并排、同时操作；
-// 关掉窗口不影响正在跑的任务；任务结果回主窗口任务列表查看）
+// 视频处理工具窗口：独立于主窗口的**非模态**窗口（可与主窗口并排、同时操作；关掉窗口不影响正在跑的任务；任务结果回主窗口任务列表查看）
 let toolWin = null;
 function createToolWindow() {
   // 复用已有窗口：关闭时只 hide 不销毁，这里需显式 show 回前台（focus 不会让隐藏窗口出现）
@@ -1116,8 +999,7 @@ function createToolWindow() {
   // 首帧就绪后再显示（与主窗口一致）：避免「先出现空白窗、再刷出内容」的闪烁观感
   toolWin.once('ready-to-show', async () => { await waitForWindowContent(toolWin); try { if (toolWin && !toolWin.isDestroyed()) { toolWin.show(); toolWin.focus(); } } catch (e) {} });
   toolWin.loadFile(path.join(__dirname, 'frontend', 'tool.html'));
-  // 关闭只隐藏、不销毁：工具窗带整套皮肤资源（女仆皮肤 64KB CSS + 1.7MB 图片），
-  // 每次重建都要重新加载解码 —— 正是"每次打开都有刷新感"的来源；hide 复用后再次打开瞬时显示。
+  // 关闭只隐藏、不销毁：重建需重新加载整套皮肤资源（女仆皮肤 64KB CSS + 1.7MB 图片），hide 复用后再次打开瞬时显示。
   // 仅在应用真正退出（isQuitting）时才允许销毁。
   toolWin.on('close', (e) => {
     if (isQuitting) return;
@@ -1145,10 +1027,7 @@ function createTaskWindow() {
   taskWin.on('closed', () => { taskWin = null; });
   return taskWin;
 }
-// 设置面板：改为在主窗口内以 iframe 显示（原独立设置窗口已取消）。
-// 为什么：设置页带整套皮肤资源（女仆皮肤 64KB CSS + 1.7MB 图片），独立窗口每次打开都要
-// 重新创建窗口并重新加载解码 —— 这是"每次打开都有刷新感"的来源；内嵌后打开即显示、关闭仅隐藏。
-// 附带收益：少一套窗口生命周期管理（关闭拦截/失焦关闭/未保存提醒一并不再需要）。
+// 设置面板：在主窗口内以 iframe 显示；打开即显示、关闭仅隐藏。内嵌避免独立窗口每次打开都要重建并重新解码整套皮肤资源（女仆皮肤 64KB CSS + 1.7MB 图片）。
 let settingsPanelOpen = false;
 function openSettingsWindow() {
   settingsPanelOpen = true;
@@ -1157,8 +1036,7 @@ function openSettingsWindow() {
     if (mainWin && !mainWin.isDestroyed() && mainWin.webContents && !mainWin.webContents.isDestroyed()) {
       mainWin.webContents.send('settings_window_opened');
     }
-    // ⚠ 刻意**不广播**：内嵌设置面板是软件端主窗口的 UI 状态；广播会让浏览器端主页面也弹出设置面板，
-    //   而浏览器端没有 IPC 通道去关闭它（表现为「浏览器端那个关不掉，得软件端关」）。
+    // ⚠ 刻意**不广播**：内嵌设置面板是软件端主窗口的 UI 状态；广播会让浏览器端主页面也弹出设置面板，而浏览器端没有 IPC 通道去关闭它。
     //   浏览器端要用设置页，走它自己的入口（settings.html 本身就是完整页面）。
   } catch (e) {}
   return null;
@@ -1172,8 +1050,7 @@ function closeSettingsPanel() {
     }
     // 同上：与 settings_window_opened 成对，不广播。
   } catch (e) {}
-  // 关闭后把主窗口提回前台：面板里可能开过资源管理器（打开日志/选择目录），
-  // explorer 会压在 Z 序上方，Windows 激活的常常不是主窗
+  // 关闭后把主窗口提回前台：面板里可能开过资源管理器（打开日志/选择目录），explorer 会压在 Z 序上方，Windows 激活的常常不是主窗
   try {
     if (mainWin && !mainWin.isDestroyed()) {
       if (mainWin.isMinimized()) mainWin.restore();
@@ -1198,20 +1075,18 @@ function sendVersionsChangedToAll() {
 api.onVersionsChanged = sendVersionsChangedToAll;
 
 // ═══ 自动更新 ═══ 启动/设置页/托盘触发检查，主窗口提示条由用户确认后下载
-// 便携版：只检查 + 下载，更新包落地后由「打开更新文件」在资源管理器中选中，用户关闭应用后自行解压覆盖；
-//         安装过程不经应用代码（早期曾实现自动安装脚本，因调试不稳定已弃用）
-// setup 安装版：electron-updater 静默升级安装并重启
+// 安装形态：electron-updater 静默升级安装并重启；便携分发形态：下载 Setup 安装包后由 portableApplyUpdate
+// 完成「搬迁数据 → 写线索 → 退出 → 拉起安装程序」，安装过程不经应用代码。
 const UPDATE_ENABLED = true;
 const GITHUB_REPO = 'HirannU-OVO/video-lab';
-// 国内仓库已由 Gitee 迁至 GitCode（仓库路径与 GitHub 同名，仅域名不同）
+// 国内镜像仓库与 GitHub 同名（仅域名不同）
 const GITCODE_REPO = 'HirannU-OVO/video-lab';
 const UPDATE_API_URL = 'https://api.github.com/repos/' + GITHUB_REPO + '/releases/latest';
-// GitCode release 检查地址（与 Gitee 同款 API 结构：tag_name + assets[]；
-// 读接口匿名可用、无需令牌；⚠ assets 无 size 字段，大小为 0 时须走兜底）
+// 国内镜像 release 检查地址（API 结构：tag_name + assets[]；读接口匿名可用、无需令牌；⚠ assets 无 size 字段，大小为 0 时须走兜底）
 const GITCODE_API_URL = 'https://api.gitcode.com/api/v5/repos/' + GITCODE_REPO + '/releases/latest';
 // 当前更新源（跟随设置 update_source，动态切换 GitHub / GitCode）
-// ⚠ 历史配置里的 'gitee' 一律按 'gitcode' 处理 —— Gitee 已停止更新（最后一版停在 2.5.0），
-//   若沿用旧值继续走 Gitee，老用户将永远收不到新版本。
+// ⚠ 设置里遗留的旧源标识一律规范为当前国内源：更新源只认 GitHub 与国内镜像两种，
+//   否则这类配置会指向不可用的源、永远收不到新版本。
 function currentUpdateSource() {
   return (loadConfig().update_source === 'github') ? 'github' : 'gitcode';
 }
@@ -1244,8 +1119,7 @@ function updateCheckUrls() {
   if (currentUpdateSource() === 'github') return accelUrls(UPDATE_API_URL);
   return [GITCODE_API_URL];
 }
-// GitHub 加速前缀链：许多机器直连 GitHub 慢/不稳，更新检查与下载按序尝试各加速站（实测
-// gh-proxy.com 最快），全部不可达最后回退直连；增删/换加速站只需改 UPDATE_PROXIES
+// GitHub 加速前缀链：更新检查与下载按序尝试各加速站，全部不可达最后回退直连；增删/换加速站只需改 UPDATE_PROXIES
 const UPDATE_PROXIES = ['https://gh-proxy.com', 'https://gh-proxy.org'];
 // setup 安装版 electron-updater 的 generic 发布源（对应 package.json 的 publish.url）
 const UPDATE_PUBLISH_URL = 'https://github.com/' + GITHUB_REPO + '/releases/latest/download';
@@ -1275,7 +1149,6 @@ function cmpVersion(a, b) {
 // 不跨端广播的事件：更新链路（见下方两处调用的说明）
 //   · 浏览器端发起检查走 HTTP，结果由返回值给到发起页面（页面自己弹窗）；
 //     若把事件也广播回去，浏览器端会重复弹（主页面一个 + 内嵌设置页一个，要关两次）。
-//   · 窗口 UI 状态（settings_window_*）同理：那是软件端窗口的事。
 const NO_BROADCAST = /^(update_|check_update_result$|settings_window_)/;
 function sendToMain(channel, payload) {
   try { if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send(channel, payload); } catch (e) {}
@@ -1286,7 +1159,7 @@ function sendToSettings(channel, payload) {
   try { if (mainWin && !mainWin.isDestroyed() && mainWin.webContents && !mainWin.webContents.isDestroyed()) mainWin.webContents.send(channel, payload); } catch (e) {}
   if (!NO_BROADCAST.test(channel) && httpServerInfo && httpServerInfo.broadcastAll) httpServerInfo.broadcastAll(channel, payload);
 }
-// 更新链路日志：不落盘（保留调用点，便于需要时接回）
+// 更新链路日志：不落盘（函数保留为空实现）
 function writeUpdateLog(line) {}
 // Electron net 请求：走 Chromium 网络栈（跟随系统代理），自动跟随重定向
 function netGet(url, timeoutMs) {
@@ -1313,8 +1186,7 @@ function netGet(url, timeoutMs) {
     req.end();
   });
 }
-// 带断点续传的流式下载：支持 HTTP Range 续传（206）、已完整（416）、错误页拦截；
-// 中断时保留已下载部分文件，供重试 / 下次继续
+// 带断点续传的流式下载：支持 HTTP Range 续传（206）、已完整（416）、错误页拦截；中断时保留已下载部分文件，供重试 / 下次继续
 function netDownload(url, dst, onProgress, expectedSize) {
   return new Promise((resolve, reject) => {
     let start = 0;
@@ -1380,13 +1252,7 @@ async function checkForUpdate(opts) {
     const tag = tagRaw.replace(/^v/i, '');        // 纯版本号：用于版本比较与界面展示
     const assets = Array.isArray(data.assets) ? data.assets : [];
     // GitCode / GitHub 均会自动附带源码归档（如 v1.4.6.zip），须排除以免误下载源码包。
-    //
-    // 便携分发形态改为下载 Setup 安装包
-    //   —— 2.5.1 起不再把便携包当作升级目标，便携版用户升级即改用安装版（设置与数据由静默搬迁保留）。
-    //   形态判定用 isPortableDistribution()（== 程序目录无 Uninstall*.exe），不用 IS_PORTABLE（见其注释）。
-    //   非便携分发形态保持旧规则找便携包，以免影响既有发布兼容期行为。
-    // 历史分卷兼容：老版本（≤2.5.0）发布在 Gitee 时因单附件 100MB 限制，便携包曾按
-    // xxx.zip.001/.002 分卷上传；GitCode 附件上限宽裕、今后不再分卷，此处保留识别能力以兼容旧资产
+    // 便携分发形态下载 Setup 安装包（判据 isPortableDistribution()：程序目录无 Uninstall*.exe）；非便携形态找便携包 zip。
     const portableDist = isPortableDistribution();
     const setupRe = /^Video-Lab-.*-x64-Setup\.exe$/i;
     const portableRe = /^Video-Lab-.*-x64-Portable\.zip$/i;
@@ -1425,12 +1291,7 @@ async function checkForUpdate(opts) {
     };
     // 完整性校验依据补齐：GitCode 的 release 资产不带 digest / size →
     // **便携分发**（唯一走自研下载的形态：下 Setup.exe）从**同 release 的 latest.yml** 取 sha512。
-    // ⚠ 不再自造 update-info.yml —— Setup 的校验依据 latest.yml 里本来就有；
-    //   它缺的 size 由下载层兜底：netDownload 用响应头 Content-Length 作总长度，进度不受影响。
-    // ⚠ 也不再读 portable-info.yml：它当初是为「便携版下载便携包」补依据，
-    //   而 A4 起便携分发改下 Setup、非便携分发直接走 electron-updater（不来自研下载），该分支已无消费者。
-    // ⚠ 两源地址形式不同：GitHub 用 releases/latest/download；**GitCode 必须带 tag**
-    //   （实测 GitCode 的 latest/download 会返回 HTML 页面而非文件）。
+    // ⚠ 不自造 update-info.yml —— Setup 的校验依据 latest.yml 里本来就有；缺的 size 由下载层用响应头 Content-Length 兜底。
     if (portableDist && asset && !info.sha512) {
       const base = currentUpdateSource() === 'github'
         ? 'https://github.com/' + GITHUB_REPO + '/releases/latest/download/'
@@ -1448,8 +1309,7 @@ async function checkForUpdate(opts) {
     writeUpdateLog('检查成功：current=' + APP_VERSION + ' latest=v' + tag + ' hasUpdate=' + hasUpdate + ' (' + (Date.now() - t0) + 'ms)');
     if (hasUpdate) {
       if (asset || parts.length) {
-        // 更新方式=自动检查并下载：发现新版本立即自动下载，不弹「发现新版本」提示条；
-        // 进度直接走主窗口状态栏，下载完成后再弹「更新并重启」操作条；启动/定时/手动检查均生效
+        // 更新方式=自动检查并下载：发现新版本立即自动下载，不弹「发现新版本」提示条；进度直接走主窗口状态栏，下载完成后再弹「更新并重启」操作条；启动/定时/手动检查均生效
         if (loadConfig().update_mode === 'auto') {
           info.autoDownload = true;
           // 回执要先于自动下载发出：否则设置页一直停在「正在检查更新…」等下载完成
@@ -1505,15 +1365,7 @@ function sha512Base64File(filePath) {
   });
 }
 // 解析 electron-builder 生成的 latest.yml，取指定文件名的 sha512（base64）。
-// 结构形如：
-//   version: 2.5.0
-//   files:
-//     - url: Video-Lab-2.5.0-x64-Setup.exe
-//       sha512: xxxx==
-//   path: Video-Lab-2.5.0-x64-Setup.exe
-//   sha512: xxxx==
-// 按行解析（不引入 yaml 依赖）：先按 `- url:` 分组，再取组内 sha512；wantName 命中优先，
-// 否则退回「任意带 sha512 的条目」；顶层 sha512 作为最后兜底。
+// 按行解析（不引入 yaml 依赖）：按 `- url:` 分组取组内 sha512，wantName 优先，其次任意带 sha512 的条目，顶层 sha512 兜底。
 function parseLatestYml(txt, wantName) {
   const out = [];
   let cur = null;
@@ -1532,16 +1384,15 @@ function parseLatestYml(txt, wantName) {
   }
   return out.find((x) => x.sha512) || null;
 }
-// 下载最新便携包到程序根目录（便携版：用户自行关闭应用后解压覆盖）。
-// 支持断点续传 + 自动重试（共 4 次尝试）：网络中断保留部分文件续传，哈希校验失败清空重下
+// 下载最新便携包到程序根目录（便携版：用户自行关闭应用后解压覆盖）。支持断点续传 + 自动重试（共 4 次尝试）：网络中断保留部分文件续传，哈希校验失败清空重下
 async function downloadUpdate(info, onProgress, onStatus) {
   const dir = projectDir();
   try { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}
-  // 落地文件名：A4 起便携分发下载的是 Setup.exe，故按资产原名落地；无 assetName（分卷场景）时按便携包名，供拼回
+  // 落地文件名：便携分发下载的是 Setup.exe，故按资产原名落地；无 assetName（分卷场景）时按便携包名，供拼回
   const ver = String(info.latest || '').replace(/^v/i, '');
   const dlName = String(info.assetName || '') || ('Video-Lab-' + ver + '-x64-Portable.zip');
   const zipPath = path.join(dir, dlName);
-  // Gitee 分卷：逐卷下载到 zipPath.partXXX 后拼回完整 zip
+  // 分卷下载：逐卷下载到 zipPath.partXXX 后拼回完整 zip
   if (info.parts && info.parts.length > 0) return downloadUpdateParts(info, zipPath, onProgress, onStatus);
   const t0 = Date.now();
   let lastErr = '';
@@ -1592,7 +1443,7 @@ async function downloadUpdate(info, onProgress, onStatus) {
   writeUpdateLog('下载失败：' + lastErr);
   return { ok: false, error: lastErr };
 }
-// Gitee 分卷下载：info.parts 为同一便携 zip 的 .001/.002… 分卷（已按序号排序），
+// 分卷下载：info.parts 为同一便携 zip 的 .001/.002… 分卷（已按序号排序），
 // 逐卷经断点续传下载到 zipPath.partXXX，全部完成后按序拼回 zipPath 并校验总大小
 async function downloadUpdateParts(info, zipPath, onProgress, onStatus) {
   const parts = info.parts;
@@ -1659,13 +1510,12 @@ async function downloadUpdateParts(info, zipPath, onProgress, onStatus) {
   writeUpdateLog('分卷下载失败：' + lastErr);
   return { ok: false, error: lastErr };
 }
-// 便携版更新包落地后由用户自行解压覆盖（早期自动安装脚本因调试不稳定已弃用，见文件头「自动更新」说明）
+// 更新包下载就绪后等待用户二次确认再安装（见 applyUpdate / portableApplyUpdate）
 let lastDownload = null; // 已下载但未安装的更新包 { zipPath, info }，等待用户二次确认（UPDATE_ENABLED 下使用）
 
 // ═══ setup 安装版更新（electron-updater）═══
 // 检测环节复用上方 GitHub API 的 checkForUpdate；下载/安装阶段经 electron-updater：
-// 下载时读 resources/app-update.yml（publish provider=generic）→ 拉取 latest.yml → 下载 setup 安装包；
-// 安装时 quitAndInstall 静默升级（NSIS /S）后自动重启。仅 setup 版 require，便携版不加载。
+// 下载时读 resources/app-update.yml（publish provider=generic）→ 拉取 latest.yml → 下载 setup 安装包；安装时 quitAndInstall 静默升级（NSIS /S）后自动重启。仅安装版加载。
 function setupUpdater() {
   try { return require('electron-updater').autoUpdater; } catch (e) { return null; }
 }
@@ -1745,8 +1595,7 @@ function setupApplyUpdate() {
   }
 }
 
-// 用户点击「立即更新」：仅下载更新包（两步式第一步，需 UPDATE_ENABLED）。
-// 统一互斥：同一时刻仅一个下载；已有下载完成的更新包直接复用不重复下载
+// 用户点击「立即更新」：仅下载更新包（两步式第一步，需 UPDATE_ENABLED）。统一互斥：同一时刻仅一个下载；已有下载完成的更新包直接复用不重复下载
 async function startUpdate() {
   if (!UPDATE_ENABLED) return { ok: false, error: '自动更新已停用' };
   if (lastDownload) {
@@ -1756,11 +1605,10 @@ async function startUpdate() {
   if (updateBusy) return { ok: false, busy: true, error: '已有更新操作进行中，请稍候' };
   updateBusy = true;
   try {
-    // 操作一开始就给前端反馈（立即出现 0% 状态栏进度，避免"点了没反应"）
     sendToMain('update_downloading', Object.assign({}, lastUpdateInfo || {}, { percent: 0 }));
     // 安装形态：走 electron-updater 下载 setup 安装包。
     // 便携分发形态（解压即用，判定见 isPortableDistribution —— 不可用 IS_PORTABLE，真实便携包该值为 false）：
-    //   走下方自研下载 —— A4 起下载的是 Setup.exe，随后由 portableApplyUpdate 完成「搬迁 + 线索 + 退出 + 拉起安装程序」。
+    //   走下方自研下载 —— 下载的是 Setup.exe，随后由 portableApplyUpdate 完成「搬迁 + 线索 + 退出 + 拉起安装程序」。
     if (!isPortableDistribution()) {
       sendToMain('update_status', '正在连接更新服务器…');
       return await runSetupStartUpdate();
@@ -1800,7 +1648,6 @@ async function startUpdate() {
 // 便携分发形态的「下载并安装」。
 // 时序不可颠倒：① 确保搬迁完成（复制到 appdata + 源侧三库改名 .migrated 防 mtime 反超）
 //   → ② 写线索 → ③ 应用退出 → ④ 拉起已校验的 Setup.exe（便携用户借此平稳转成安装版）。
-// 这样无论安装程序是否走完整流程，用户数据都已在新位置：装完打开新版即见旧设置（零操作无感）。
 function portableApplyUpdate() {
   if (!lastDownload || !lastDownload.zipPath || !fs.existsSync(lastDownload.zipPath)) {
     return { ok: false, error: '更新文件不存在，请重新下载后再试' };
@@ -1835,7 +1682,7 @@ function portableApplyUpdate() {
   return { ok: true, installing: true };
 }
 // 用户点击「立即安装」（两步式第二步，需 UPDATE_ENABLED）：
-//   便携分发形态 → 搬迁 + 线索 + 退出 + 拉起 Setup（改用安装版，设置与数据自动保留）；
+//   便携分发形态 → 搬迁 + 线索 + 退出 + 拉起 Setup（转为安装版，设置与数据自动保留）；
 //   安装形态 → electron-updater 静默升级安装并重启。
 async function applyUpdate() {
   if (!UPDATE_ENABLED) return { ok: false, error: '自动更新已停用' };
@@ -1848,15 +1695,14 @@ async function applyUpdate() {
 // 浏览器侧请求这些路由时，复用与 ipcMain handler 相同的逻辑
 function buildHttpExtraRoutes() {
   return {
-    // ── agent 友好接口：三条均为纯新增，不改动任何现有接口 ──
+    // ── agent 友好接口：只读运行日志与环境上下文，不改动现有接口 ──
     // 读运行日志：任务记录/标记/成片都可能被清除，运行日志是事后唯一证据
     get_runlog: (args) => {
       const o = (args && args[0]) || {};
       if (o.list) return { ok: true, dir: runLog.getDir(), files: runLog.listDays() };
       return runLog.readDay(o.date, o);
     },
-    // 一次拿全环境上下文，省去 agent 多次探测
-    // ⚠ 整体走异步（env 用 checkEnvAsync）：同步探测会阻塞事件循环数十秒
+    // 一次拿全环境上下文，省去 agent 多次探测 ⚠ 整体走异步（env 用 checkEnvAsync）：同步探测会阻塞事件循环数十秒
     get_app_info: async () => {
       const c = loadConfig();
       const t = (() => { try { return api.listTools(); } catch (e) { return { ok: false, error: String(e && e.message || e) }; } })();
@@ -1920,7 +1766,7 @@ function buildHttpExtraRoutes() {
         check_update_hour: (() => { const h = parseInt(c.check_update_hour, 10); return (h >= 0 && h <= 23) ? h : 9; })(),
         update_source: c.update_source === 'github' ? 'github' : 'gitcode',
         update_mode: c.update_mode === 'auto' ? 'auto' : 'notify',
-        // 数据目录写死 appdata，不再向前端暴露 config_storage（设置页已无此项）
+        // 数据目录固定 appdata，不向前端暴露 config_storage（设置页无此项）
         config_path_appdata: path.dirname(appdataConfigPath()),
         autostart: c.autostart === true,
         close_behavior: c.close_behavior === 'exit' ? 'exit' : 'tray',
@@ -1946,9 +1792,9 @@ function buildHttpExtraRoutes() {
       const s = args[0];
       const cfg = loadConfig();
       const prevBackupDir = String(cfg.backup_dir || '').trim();   // 变更前值：用于备份目录迁移
-      // 数据目录已写死 appdata，不再有「切换保存位置」这一步（config_moved 恒为 false，保留字段兼容前端）
+      // 数据目录固定 appdata，没有「切换保存位置」（config_moved 恒为 false，保留字段兼容前端）
       if (s && typeof s === 'object') {
-        // 工作路径已迁入 batch.root（见下方 batch 分支），不再从顶层 s.root 取
+        // 工作路径在 batch.root（见下方 batch 分支），不从顶层 s.root 取
         if (isValidSkin(s.skin)) cfg.skin = s.skin.trim();   // 非法主题 id 直接忽略（见 SKIN_IDS 注释）
         if (typeof s.auto_check_update === 'boolean') cfg.auto_check_update = s.auto_check_update;
         if (typeof s.check_update_daily === 'boolean') cfg.check_update_daily = s.check_update_daily;
@@ -1963,7 +1809,7 @@ function buildHttpExtraRoutes() {
         if (s.batch && typeof s.batch === 'object') {
           const prevRoot = getBatchRoot(cfg);
           cfg.batch = Object.assign({}, DEFAULT_CONFIG.batch, s.batch);
-          // 同步顶层 root 兼容镜像；空值不得覆盖已有工作路径（与旧逻辑一致）
+          // 同步顶层 root 兼容镜像；空值不得覆盖已有工作路径
           setBatchRoot(cfg, getBatchRoot(cfg) || prevRoot);
         }
         if (s.replica && typeof s.replica === 'object') cfg.replica = Object.assign({}, DEFAULT_CONFIG.replica, s.replica);
@@ -1971,8 +1817,7 @@ function buildHttpExtraRoutes() {
       }
       saveConfig(cfg);   // 只写实际变更的键：settings.db（唯一读取来源）+ config.json（旧版本兼容快照）
       Object.assign(config, cfg);
-      // 端口/令牌实际变更才重启 HTTP 服务器（重启会断开浏览器既有 SSE 连接）；
-      // 皮肤等其它设置变更保留连接，settings_saved 广播可即时送达浏览器，无需手动刷新
+      // 端口/令牌实际变更才重启 HTTP 服务器（重启会断开浏览器既有 SSE 连接）；皮肤等其它设置变更保留连接，settings_saved 广播可即时送达浏览器，无需手动刷新
       const httpPortWanted = parseInt(cfg.http_port, 10) || 9527;
       const httpTokenWanted = String(cfg.http_token || '').trim();
       if (httpServerInfo && httpServerInfo.close && (httpServerInfo.port !== httpPortWanted || httpServerInfo.token !== httpTokenWanted)) {
@@ -2032,11 +1877,10 @@ function buildHttpExtraRoutes() {
     // is_portable 保留原语义（IS_PORTABLE，仅表达 electron-builder portable target 形态）。
     get_runtime: () => ({ is_portable: IS_PORTABLE, portable_dist: isPortableDistribution(), version: APP_VERSION }),
     get_app_version: () => APP_VERSION,
-    // A6 数据目录清理（HTTP 侧同样开放，便于浏览器与脚本调用；扫描为只读，清理一律进回收站）
+    // 数据目录清理（HTTP 侧同样开放，便于浏览器与脚本调用；扫描为只读，清理一律进回收站）
     data_dir_scan: () => api.dataDirScan(),
-    // HTTP 侧参数是「按位置展开的数组」→ 键清单须写成 [["a","b"]]。
-    // ⚠ 但直白的 ["a","b"] 极易写出（实测就栽在这：args[0] 拿到字符串 → Array.isArray 不成立
-    //   → 静默清 0 项、界面无任何反馈）。故两种写法都接受，宁可容错，不要静默失败。
+    // HTTP 侧参数是「按位置展开的数组」→ 键清单须写成 [["a","b"]]；也接受直白的 ["a","b"]
+    // （否则 args[0] 拿到字符串 → Array.isArray 不成立 → 静默清 0 项）。两种写法都接受，宁可容错，不要静默失败。
     data_dir_clean: (args) => api.dataDirClean(
       Array.isArray(args) && Array.isArray(args[0]) ? args[0] : args),
     // 返回带 token 的浏览器访问地址（含真实 token）；HTTP 侧需要自身已带 token 才能调用（本机防护），
@@ -2046,8 +1890,7 @@ function buildHttpExtraRoutes() {
       return url ? { ok: true, url } : { ok: false, error: 'HTTP 服务未就绪' };
     },
     check_update: (args) => {
-      // 浏览器端发起：结果由返回值给到发起页面（自己弹窗），不通知软件端主窗口 —— 否则
-      // 浏览器端点一下，软件端也会弹一个（跨端串扰）。
+      // 浏览器端发起：结果由返回值给到发起页面（自己弹窗），不通知软件端主窗口 —— 否则浏览器端点一下，软件端也会弹一个（跨端串扰）。
       const silent = !!args[0];
       return checkForUpdate({ silent: silent, notifyMain: false });
     },
@@ -2068,7 +1911,6 @@ function registerIpc() {
   // ★ Windows 通知点击 → 置前主窗口并定位到该任务。
   // 复用既有的 locate_task 链路（api.taskLocate + locate_request 推送），
   // 不另造一套定位协议 —— 那样两处行为迟早会漂移。
-  // 汇总类通知（没有具体 taskId）只置前窗口。
   try {
     api._noticeActivateHandler = (taskId) => {
       try { showMainWindow(); } catch (e) {}
@@ -2252,8 +2094,7 @@ function registerIpc() {
   ipcMain.handle('tray_menu_click', (e, action) => {
     hideTrayMenu();
     if (action === 'show_main') showMainWindow();
-    // 窗口显示统一交给各自的 ready-to-show（首帧就绪才出现）；
-    // 这里只在「已加载完且被隐藏」时补 show，防止首次打开抢先显示空白窗。
+    // 窗口显示统一交给各自的 ready-to-show（首帧就绪才出现）；这里只在「已加载完且被隐藏」时补 show，防止首次打开抢先显示空白窗。
     else if (action === 'open_tasks') { showMainWindow(); const w = createTaskWindow(); if (w && !w.isDestroyed()) { if (w.webContents.isLoading()) w.once('ready-to-show', () => { try { w.show(); w.focus(); } catch (e) {} }); else { w.show(); w.focus(); } } }
     else if (action === 'open_settings') openSettingsWindow();
     else if (action === 'open_tools') { const w = createToolWindow(); if (w && !w.isDestroyed()) { if (w.webContents.isLoading()) w.once('ready-to-show', () => { try { w.show(); w.focus(); } catch (e) {} }); else { w.show(); w.focus(); } } }
@@ -2278,7 +2119,7 @@ function registerIpc() {
       check_update_hour: (() => { const h = parseInt(c.check_update_hour, 10); return (h >= 0 && h <= 23) ? h : 9; })(),
       update_source: c.update_source === 'github' ? 'github' : 'gitcode',
       update_mode: c.update_mode === 'auto' ? 'auto' : 'notify',
-      // 数据目录写死 appdata，不再向前端暴露 config_storage（设置页已无此项）
+      // 数据目录固定 appdata，不向前端暴露 config_storage（设置页无此项）
       config_path_appdata: path.dirname(appdataConfigPath()),   // 显示目录（含引导文件与三库）
       log_dir: runLog.getDir(),   // 运行日志目录（设置页「打开文件夹」用；与 HTTP 版 get_settings 对齐）
       cache_keep_days: (() => { const n = parseInt(c.cache_keep_days, 10); return Number.isFinite(n) && n >= 0 ? n : 30; })(),
@@ -2298,12 +2139,12 @@ function registerIpc() {
       http_url: httpUrl(),
     };
   });
-  // 设置页：保存完整配置，写入 config.json 并同步内存/后端/主窗口皮肤；切换保存位置时迁移并删除旧文件
+  // 设置页：保存完整配置，写入 settings.db 并同步内存/后端/主窗口皮肤
   ipcMain.handle('save_settings', (e, s) => {
     const cfg = loadConfig();
     const prevBackupDir = String(cfg.backup_dir || '').trim();   // 变更前值：用于备份目录迁移
     if (s && typeof s === 'object') {
-      // 工作路径已迁入 batch.root（见下方 batch 分支），不再从顶层 s.root 取
+      // 工作路径在 batch.root（见下方 batch 分支），不从顶层 s.root 取
       if (isValidSkin(s.skin)) cfg.skin = s.skin.trim();   // 非法主题 id 直接忽略（见 SKIN_IDS 注释）
       if (typeof s.auto_check_update === 'boolean') cfg.auto_check_update = s.auto_check_update;
       if (typeof s.check_update_daily === 'boolean') cfg.check_update_daily = s.check_update_daily;
@@ -2317,7 +2158,7 @@ function registerIpc() {
       if (s.batch && typeof s.batch === 'object') {
         const prevRoot = getBatchRoot(cfg);
         cfg.batch = Object.assign({}, DEFAULT_CONFIG.batch, s.batch);
-        // 同步顶层 root 兼容镜像；空值不得覆盖已有工作路径（与旧逻辑一致）
+        // 同步顶层 root 兼容镜像；空值不得覆盖已有工作路径
         setBatchRoot(cfg, getBatchRoot(cfg) || prevRoot);
       }
       if (s.replica && typeof s.replica === 'object') cfg.replica = Object.assign({}, DEFAULT_CONFIG.replica, s.replica);
@@ -2328,8 +2169,7 @@ function registerIpc() {
     // 应用开机自启动（openAtLogin + --autostart 静默托盘启动）；开发版不注册，避免污染开发环境
     try { if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: cfg.autostart === true, args: ['--autostart'] }); } catch (e) {}
     Object.assign(config, cfg);
-    // 端口/令牌实际变更才重启 HTTP 服务器（重启会断开浏览器既有 SSE 连接）；
-    // 皮肤等其它设置变更保留连接，settings_saved 广播可即时送达浏览器，无需手动刷新
+    // 端口/令牌实际变更才重启 HTTP 服务器（重启会断开浏览器既有 SSE 连接）；皮肤等其它设置变更保留连接，settings_saved 广播可即时送达浏览器，无需手动刷新
     const httpPortWanted = parseInt(cfg.http_port, 10) || 9527;
     const httpTokenWanted = String(cfg.http_token || '').trim();
     if (httpServerInfo && httpServerInfo.close && (httpServerInfo.port !== httpPortWanted || httpServerInfo.token !== httpTokenWanted)) {
@@ -2358,12 +2198,8 @@ function registerIpc() {
     return url ? { ok: true, url } : { ok: false, error: 'HTTP 服务未就绪' };
   });
   // 设置页：检查更新（仅在自动更新启用时生效，UPDATE_ENABLED=false 时返回停用）。
-  // ⚠ notifyMain 必须为 true（默认）：三条入口的结果统一由主窗口弹（index.html 的 #updateResultMask
-  //   + app.js 的 showUpdateResult）。设置页在软件端是主窗口内的 iframe，自弹浮层会被
-  //   .settings-frame（z-index 9999 且带 transform）裁切，所以 settings.js 的 showUr 内有
-  //   IN_APP_IFRAME 闸门 —— 软件端不弹、交给主窗口；浏览器端设置页是独立页面（txapi 的 SSE
-  //   事件表不含 update_*）才由它自己弹。此处若传 notifyMain:false，软件端就会【两边都不弹】。
-  // ⚠ checkForUpdate 内的三处事件都有 !silent 闸门：后台自动/每日检查不会弹窗打扰。
+  // ⚠ notifyMain 必须为 true（默认）：三条入口的结果统一由主窗口弹（index.html 的 #updateResultMask + app.js 的 showUpdateResult）。
+  //   设置页是主窗口内的 iframe，自弹浮层会被 .settings-frame 裁切 —— 传 false 会导致软件端【两边都不弹】。
   ipcMain.handle('check_update', (e, silent) => {
     return checkForUpdate({ silent: !!silent });
   });
@@ -2401,7 +2237,7 @@ function registerIpc() {
     if (guidePanelOpen) closeGuidePanel(); else closeSettingsPanel();
     return { ok: true };
   });
-  // 设置页：通用「选择目录」对话框（parent 取调用方窗口，引导窗口/设置窗口/主窗口通用）
+  // 设置页：通用「选择目录」对话框（parent 取调用方窗口；引导面板与主窗口通用）
   let settingsPickingDir = false; // 目录选择中的互斥标记（勿删：pick_directory 依赖它）
   ipcMain.handle('pick_directory', async (e, title, defaultPath) => {
     settingsPickingDir = true;
@@ -2415,7 +2251,7 @@ function registerIpc() {
   // ⚠ 必须走异步版：同步 checkEnv 会在冷启动时用 spawnSync 阻塞主进程事件循环数十秒
   //（首次加载 200MB+ 未签名 ffmpeg + 安全软件扫描），直接把窗口显示推迟到分钟级
   ipcMain.handle('check_env', () => api.checkEnvAsync());
-  // 首次引导窗口：保存工作路径
+  // 首次引导面板：保存工作路径
   ipcMain.handle('save_guide', (e, s) => {
     const root = s && typeof s.root === 'string' ? s.root.trim() : '';
     if (!root || !fs.existsSync(root) || !fs.statSync(root).isDirectory()) return { ok: false, error: '路径无效或不存在' };
@@ -2460,21 +2296,12 @@ function registerIpc() {
     if (r.ok) persistFfmpegDir(r.dir);
     return r;
   });
-  // 启动检测 FFmpeg 环境：**确证缺失即静默自动下载**
-  //   · 组件不内置只是为了省体积，不该把「体积优化」转成用户的决策负担 → 不弹确认；
-  //   · 下载进度走状态栏（env_fix_progress，见 api.onFfmpegProgress）；
-  //   · 只有**下载失败**才提示（横幅可重试 + 吐司），此时才需要用户介入。
-  // ⚠ 用异步版（不阻塞事件循环）；且延迟到窗口就绪之后再跑，避免与首帧竞争
-  // ⚠ 冷启动首次加载 ffmpeg 可能超时 → probeFailed：此时**不下载也不弹窗**，延后 10 秒重探一次 ——
-  //   ⚠ 不要把「超时」当成「缺滤镜」：否则冷启动必然误报「FFmpeg 组件不完整」（热态重跑却正常）
-  // 组件「能用但版本过旧」时**静默升级**：旧源（ffmpeg-static）最高 6.1.1，其进度行**不含 elapsed（实际耗时）**，
-  // 界面那一行永远为空。这是换源留下的历史包袱，不该让用户承担 → 启动空闲期自动升到 FFmpeg-Builds（国内镜像）。
-  // 失败**不弹窗**（只在运行日志留痕），且 7 天内不重复尝试，避免每次启动都去下 140MB。
+  // 启动检测 FFmpeg 环境：**确证缺失即静默自动下载**（不弹确认）；
+  // 下载进度走状态栏（env_fix_progress，见 api.onFfmpegProgress）；只有下载失败才提示（横幅可重试 + 吐司）。
   function maybeUpgradeFfmpeg() {
     try {
       // ⚠ 内置已就位时一律不下载、不升级：内置是随程序发布的固定版本，不存在「过旧」问题；
-      //   而数据目录那份遗留会被「清理数据目录」清掉，读不到 _meta.json 会被误判成版本过旧/缺失，
-      //   于是每次启动静默重下 310MB —— 正好把用户刚清理的空间又填回去。
+      //   数据目录那份遗留会被「清理数据目录」清掉，读不到 _meta.json 会被误判为缺失/过旧 → 触发下载反而占回刚清理的空间。
       if (api.ffmpegBuiltinReady && api.ffmpegBuiltinReady()) return;
       const dir = String(config.ffmpeg_dir || path.join(storageDir(), 'ffmpeg'));
       const markPath = path.join(storageDir(), 'ffmpeg', '_upgrade.json');
@@ -2507,25 +2334,16 @@ function registerIpc() {
     } catch (e) {}
   }
 
-  // 旧版遗留的**一次性**清理：内置组件就位后，数据目录那份 310MB「下载组件」即成为纯遗留 ——
-  // 它只增不减，且普通用户无从知晓可以删。
-  // 闸门（**三个都要满足，缺一不动**）：
-  //   ① 内置组件就位（`ffmpegBuiltinReady`）；
-  //   ② 环境探测确认内置**确实可用**（不是"文件在"就算数 —— 缺滤镜/编码器同样不可用）；
-  //   ③ 数据目录那份确实存在，且**不是当前正在用的那一份**（防止把唯一可用组件删掉）。
-  // 清理**走回收站**（可还原，遵循项目硬约束），并落一次性标记，此后不再检查。
+  // 旧版遗留的**一次性**清理：内置组件就位后，数据目录那份「下载组件」即成为纯遗留（只增不减）。
+  // 闸门（三个都满足才动）：内置组件就位 + 环境探测确认内置可用 + 该份不是当前正在用的那一份；清理走回收站。
   function cleanupLegacyFfmpeg(env) {
     try {
-      // ⚠ 刻意**不留任何标记文件**。
-      //   本操作天然幂等 —— 每轮就是「没有遗留就跳过」，成本一次 existsSync；
-      //   不留标记反而更正确：将来若又冒出遗留（例如回装旧版再升级），照样能被清掉 ——
-      //   有了"一次性"标记，那种情况就永远不会再清，反倒留坑。
+      // ⚠ 刻意**不留标记文件**：每轮「没有遗留就跳过」，天然幂等；有标记反而会永久排除将来再出现的遗留。
       if (!api.ffmpegBuiltinReady || !api.ffmpegBuiltinReady()) return;   // 内置不在 → 绝不动那份兜底
       if (!env || env.downloadNeeded) return;                            // 内置不可用 → 同上
       const active = String(env.ffmpegDir || '');
       // ⚠ 遍历**所有数据根**（当前 + 历史），不是只看 storageDir()：
-      //   静默搬迁之后数据根变成 appdata，而旧版本那份自动下载的组件留在**程序目录**里 ——
-      //   只扫当前根会永远看不见它（实测 310.5 MB 就是这样攒下来的）。
+      //   静默搬迁之后数据根变成 appdata，而旧版本那份自动下载的组件留在**程序目录**里 —— 只扫当前根会永远看不见它。
       for (const base of [storageDir()].concat(legacyDataDirs())) {
         let legacy = '';
         try { legacy = path.join(base, 'ffmpeg'); } catch (e) { continue; }
@@ -2547,8 +2365,7 @@ function registerIpc() {
           if (allowRetry) setTimeout(() => probe(false), 10000);
           return;
         }
-        // 组件已就绪 → 再看**版本是否过旧**（旧源 6.1.1 缺 elapsed），过旧则静默升级；
-        // 同时做 A7 旧版遗留的一次性清理（内置可用才动，见上）
+        // 组件已就绪 → 再看**版本是否过旧**（< 7.0 缺 elapsed）则静默升级，同时清理旧版遗留（见 cleanupLegacyFfmpeg，内置可用才动）
         if (!env.downloadNeeded) { cleanupLegacyFfmpeg(env); maybeUpgradeFfmpeg(); return; }
         api.ensureFfmpeg().then((r) => {
           if (r && r.ok) {
@@ -2567,13 +2384,10 @@ function registerIpc() {
   ipcMain.handle('list_dir', async (e, dir) => api.listDir(dir));   // 工具页目录浏览对话框（preload 已定义，此处必须注册）
   ipcMain.handle('open_path', async (e, p) => { const target = path.resolve(p); if (fs.existsSync(target)) { const err = await shell.openPath(target); return err ? { ok: false, error: err } : { ok: true }; } return { ok: false, error: '路径不存在' }; });
   ipcMain.handle('open_parent', async (e, p) => { const target = path.dirname(path.resolve(p)); if (fs.existsSync(target)) { const err = await shell.openPath(target); return err ? { ok: false, error: err } : { ok: true }; } return { ok: false, error: '路径不存在' }; });
-  // 打开「文件夹」类操作的统一入口，按目标类型分流：
-  //   目录 → 在资源管理器中打开该目录（进入，而不是打开父级再选中它）；
-  //   文件 → 打开其所在文件夹并选中该文件（定位）。
+  // 打开「文件夹」类操作的统一入口，按目标类型分流：目录 → 在资源管理器中打开该目录（进入，而不是打开父级再选中它）；文件 → 打开其所在文件夹并选中该文件（定位）。
   ipcMain.handle('open_folder_select', async (e, p, opts) => {
     const target = path.resolve(String(p || '').replace(/^"|"$/g, ''));
-    // opts.create：调用方明确知道该目录「按需生成」（如备份目录要等首次备份才落盘）——
-    // 此时先按需创建，避免点「打开」直接报「路径不存在」
+    // opts.create：调用方明确知道该目录「按需生成」（如备份目录要等首次备份才落盘）——此时先按需创建，避免点「打开」直接报「路径不存在」
     if (opts && opts.create && target) {
       try { fs.mkdirSync(target, { recursive: true }); } catch (e3) { /* 创建失败仍走下方判定，返回真实错误 */ }
     }
@@ -2683,8 +2497,7 @@ function askDiscardConfig() {
   return true;
 }
 
-// 关闭主窗口：已记忆行为直接生效；未记忆时请求主窗口弹窗引导选择（可勾选"不再提醒"持久化）。
-// 关闭前先确认配置未保存修改（覆盖当前配置/保存为当日配置/取消），避免修改丢失。
+// 关闭主窗口：已记忆行为直接生效；未记忆时请求主窗口弹窗引导选择（可勾选"不再提醒"持久化）。关闭前先确认配置未保存修改（覆盖当前配置/保存为当日配置/取消），避免修改丢失。
 function handleMainWindowClose() {
   if (!mainWin || mainWin.isDestroyed()) return;
   // 最小化到托盘：窗口仅隐藏，未保存的配置修改不丢失，无需询问
@@ -2716,24 +2529,20 @@ function createWindow() {
   mainWin.loadFile(path.join(__dirname, 'frontend', 'index.html'));
   // 页面加载完成即放行「窗口加载后」初始化。注册必须紧跟 loadFile：
   // ⚠ 若推迟到第一次 runAfterWindowLoad 调用时才注册，那时页面往往已经加载完，
-  // 监听永不触发 → 只能等 3 秒兜底 → 托盘 / HTTP 就绪被无谓推迟约 2.7 秒。
+  // 监听永不触发 → 只能等固定兜底时间 → 托盘 / HTTP 就绪被无谓推迟。
   try {
     mainWin.webContents.once('did-finish-load', () => {
       logTiming('主窗口 did-finish-load');
       setImmediate(() => flushAfterWindowLoad('did-finish-load'));
     });
   } catch (e) {}
-  // 普通启动：页面就绪后显示；开机自启（--autostart）保持隐藏，仅托盘常驻。
-  // 扫描（缓存未命中时）全程后台进行，不推迟显示、也不弹扫描小窗。
+  // 普通启动：页面就绪后显示；开机自启（--autostart）保持隐藏，仅托盘常驻。扫描（缓存未命中时）全程后台进行，不推迟显示、也不弹独立窗口。
   mainWin.once('ready-to-show', () => {
     logTiming('主窗口 ready-to-show（首帧可显示）');
-    // 冷启动定位用：把「回调返回」与 show() 各自夹出来。冷态出现过 ready-to-show 之后
-    // 事件循环被冻数十秒（3 秒兜底定时器被推迟到二十多秒才跑）的情形 —— 此处三条埋点可一次判定
-    // 卡点究竟在 show() 之内、还是其后的初始化里。
+    // 冷启动定位用：分别记录「回调返回」与 show() 的耗时，判定卡点在 show() 之内还是其后的初始化。
     setImmediate(() => logTiming('ready-to-show 回调后 setImmediate'));
     if (IS_AUTOSTART) return;
-    // 不再因扫描而推迟显示：扫描全程后台进行，窗口首帧就绪即显示，
-    // 列表由后台扫描完成后自动填充。⚠ 不要"等扫描完再显示主窗口"：那是启动冻结感的来源。
+    // 不因扫描推迟显示：扫描全程后台，窗口首帧就绪即显示，列表由后台扫描完成后自动填充。⚠ 不要"等扫描完再显示主窗口"：那是启动冻结感的来源。
     logTiming('即将 show()');
     mainWin.show();
     logTiming('show() 返回');
@@ -2744,16 +2553,13 @@ function createWindow() {
   mainWin.on('closed', () => { mainWin = null; });
 }
 
-// 启动阶段计时落日志（app.timing）：冷启动排查的唯一数据来源，避免今后只能靠体感猜
+// 启动阶段计时落日志（app.timing）：冷启动排查的数据来源
 function logTiming(label) {
   try { runLog.sys('app.timing', '启动阶段 · ' + label, { sinceProcessStart: Math.round(bootMs()) }); } catch (e) {}
 }
 
-// 窗口渲染完成后再执行后台初始化：把重活（读任务日志、起 HTTP、建托盘）排到窗口可见之后，
-// 使其不再叠加到「点了图标迟迟不出窗口」的体感上。
-// ⚠ 不能用 ready-to-show 作为唯一触发：开机自启场景窗口从不 show，"首帧显示"语义不成立；
-// 用 did-finish-load（页面加载完成，与窗口是否可见无关）保证两种启动方式都能及时触发。
-// 另加 3 秒兜底：页面加载异常时也不能把后续初始化永久挂住。
+// 窗口渲染完成后再执行后台初始化：把重活（读任务日志、起 HTTP、建托盘）排到窗口可见之后，避免叠加成「点了图标迟迟不出窗口」。
+// ⚠ 不能用 ready-to-show 作为唯一触发：开机自启场景窗口从不 show，「首帧显示」语义不成立；用 did-finish-load + 3 秒兜底。
 let _afterLoadDone = false;
 const _afterLoadQueue = [];
 // 放行「窗口加载后」初始化。触发源有两处：
@@ -2772,10 +2578,8 @@ function runAfterWindowLoad(fn) {
   setTimeout(() => flushAfterWindowLoad('兜底超时'), 3000);   // 兜底
 }
 
-// 首次引导窗口：工作路径缺失时打开（仿设置页样式），用户主动点按钮才弹资源管理器；
-// 可保存并关闭，也可直接点右上角关闭跳过（跳过时主窗口进入"空列表 + 中央选择路径"引导态）
-// 首次引导：改为在主窗口内以 iframe 显示（与设置页同一模式，独立窗口已取消）。
-// 返回 Promise：保存成功或被跳过（关闭）后 resolve，调用方 await 语义保持不变。
+// 首次引导：工作路径缺失时在主窗口内以 iframe 显示（与设置页同一模式）；用户主动点按钮才弹资源管理器，
+// 可保存并关闭，也可关闭跳过（跳过时主窗口进入"空列表 + 中央选择路径"引导态）。
 let guidePanelOpen = false;
 let guidePanelResolve = null;
 function openGuideWindow() {
@@ -2807,13 +2611,12 @@ function closeGuidePanel() {
 // 跳过（root 仍无效）时保持 root 为空：主窗口进入「空项目列表 + 居中选择路径」引导态
 async function ensureConfig() {
     const br = getBatchRoot(config);   // 工作目录取自批量模式的 batch.root
-    // ⚠ 工作目录可能在机械盘：主进程**不得**同步 stat —— 冷态首次访问会冻结事件循环；
-    //   改用 fs.promises 异步判断，且只判一次。
+    // ⚠ 工作目录可能在机械盘：主进程**不得**同步 stat —— 冷态首次访问会冻结事件循环；用 fs.promises 异步判断，且只判一次。
     let ok = false;
     if (br) {
       try { const st = await fs.promises.stat(br); ok = st.isDirectory(); } catch (e) { ok = false; }
     }
-    // 开机自启为静默后台启动：配置缺失也不弹首次引导窗，保持无打扰（用户稍后手动打开时再引导）
+    // 开机自启为静默后台启动：配置缺失也不显示首次引导，保持无打扰（用户稍后手动打开时再引导）
     if (!IS_AUTOSTART && !ok) {
       await openGuideWindow(); // 保存或右上角关闭（跳过）都会关闭该窗口
     }
@@ -2824,10 +2627,7 @@ async function ensureConfig() {
 app.whenReady().then(async () => {
   // ── 主进程事件循环心跳（启动期）──
   // 「托盘图标在、点不动、要等很久才出窗口」= 主进程事件循环被同步操作占死的典型表现。
-  // 单靠各阶段打点看不出"两次打点之间事件循环是否卡住"，故起一个 500ms 心跳：
-  // 正常应每 500ms 一跳；若某两个心跳间隔远大于 500ms，说明中间那段代码阻塞了事件循环，
-  // 该间隔会被记成 app.timing 的「事件循环卡顿」事件（含卡顿时长），直接把元凶段暴露出来。
-  // 启动完成后（60 秒或首次交互后）自动停，不影响稳定态。
+  // 单靠各阶段打点看不出「两次打点之间事件循环是否卡住」，故起一个 500ms 心跳：间隔明显超过 500ms 即记 app.timing「事件循环卡顿」事件（含卡顿时长）。
   if (!global.__vlHeartbeat) {
     global.__vlHeartbeat = { last: Date.now(), n: 0 };
     const hb = setInterval(() => {
@@ -2850,25 +2650,15 @@ app.whenReady().then(async () => {
   registerIpc();
   logTiming('whenReady 后 注册 IPC 完成');
   // ── 启动顺序原则：**能在窗口显示后做的，绝不放在窗口显示前** ──
-  // 早期实现把 ensureConfig / createTray / createWindow / HTTP / restoreTasks 全串在这里，
-  // 任一环节慢都会直接叠加到「点了图标迟迟不出窗口」的体感上（而 restoreTasks 要读上百条任务日志）。
-  // 现在只保留「窗口必须先有的最小集」，其余一律在首帧之后再跑。
+  // 此处只保留窗口必须先有的最小集（createWindow）；ensureConfig / createTray / HTTP / restoreTasks 一律在首帧之后再跑，避免任一环节慢叠加成「点了图标迟迟不出窗口」。
   createWindow();
   logTiming('主窗口已创建（loadFile 已发起）');
-  // ── 启动期全量扫描的「小窗 + 异步预热」 ──
-  // 缓存未命中（首次启动 / 工作目录结构变化）时才需要全量扫描，实测冷态可达 20-30 秒。
-  // 此时：① 弹轻量扫描小窗给即时反馈；② 主窗口推迟到扫描完成再显示（避免空白窗口）；
-  //      ③ 在后台异步预热，前端随后调 list_projects 时直接命中同一结果，不重复扫描。
-  // ⚠ 判定必须走**异步版**（isScanCacheFreshAsync）：同步版会在机械盘冷态首次访问时
-  //    冻结主进程达 117 秒（实测），连托盘和窗口都出不来。
-  // ⚠ 开机自启（--autostart）直接跳过整段：托盘静默常驻，用户不打开就不该弹小窗；
-  //    用户真去唤起时由 warmScanOnDemand() 按需补扫。
+  // ── 启动期全量扫描：缓存未命中时后台预热（不弹窗、不推迟窗口显示） ──
   (() => {
     if (IS_AUTOSTART) return;                 // 自启形态静默，不打扰
     if (!getBatchRoot(config)) return;        // 未配置工作路径：无扫描可言
-    // 缓存未命中（首次启动 / 工作目录结构变化）时才预热全量扫描，实测冷态可达 20-30 秒。
-    // 扫描全程后台：主窗口立即显示、界面可交互 —— 不弹小窗、也不推迟显示
-    // ⚠ 不要"弹小窗 + 等扫描完才显示主窗口"：那是启动冻结感的来源。
+    // 扫描全程后台：主窗口立即显示、界面可交互 —— 不弹窗、也不推迟显示
+    // ⚠ 不要"等扫描完才显示主窗口"：那是启动冻结感的来源。
     // ⚠ 判定必须走**异步版**（isScanCacheFreshAsync）：同步版会在机械盘冷态首次访问时冻结主进程上百秒。
     const runWarmScan = () => {
       logTiming('启动需要全量扫描（后台进行）');
@@ -2885,9 +2675,7 @@ app.whenReady().then(async () => {
   runAfterWindowLoad(() => {
     const _t0 = process.hrtime.bigint();
     const _ms = () => Math.round(Number(process.hrtime.bigint() - _t0) / 1e6);
-    // 首次引导窗口（配置缺失时）：必须在窗口加载后，避免阻塞启动。
-    // ⚠ ensureConfig 内部已改为异步 stat（工作目录在机械盘，同步 stat 会冻结事件循环）。
-    //   这里补打完成埋点：下次冷态若它仍慢，只会体现在这行，不再拖累 createTray / HTTP。
+    // 首次引导（配置缺失时）：必须在窗口加载后，避免阻塞启动。 ⚠ ensureConfig 内部用异步 stat（工作目录在机械盘，同步 stat 会冻结事件循环）；此处补打完成埋点。
     ensureConfig().catch(() => {}).then(() => { logTiming('窗口加载后：ensureConfig 完成（' + _ms() + 'ms）'); });
     logTiming('窗口加载后：createTray 开始');
     try { createTray(); } catch (e) {}
@@ -2898,8 +2686,6 @@ app.whenReady().then(async () => {
     // 数据缓存失效清理：**窗口就绪后 15 秒**的空闲期增量执行（限量 600 条 + 细让路 + 批间小睡）。
     // ⚠ 绝不放在启动关键路径：冷态全量核验近万条机械盘路径会把事件循环冻住几十秒
     //   （窗口已画出来、用户却点不动近一分钟）。清理是维护任务，摊到多次启动完成即可。
-    // 启动后空闲期（15s）：先做 video_cache 失效核验，再做缓存治理
-    // （保守失效 + 保留期 + 释放显著时 VACUUM）—— 恢复默认「用户无需手动清缓存」
     setTimeout(() => {
       try { api.gcVideoCacheIdle().catch(() => {}); } catch (e) {}
       try { api.gcCachesIdle().catch(() => {}); } catch (e) {}
@@ -2909,17 +2695,14 @@ app.whenReady().then(async () => {
       if (config.auto_check_update !== false) setTimeout(() => checkForUpdate({ silent: true }), 3000);
       scheduleDailyUpdateCheck();
     }
-    // 任务列表恢复：读上百条任务日志，是最重的一步 —— 放到窗口加载后且让出一轮事件循环，
-    // 保证窗口已经画出来再占用主进程。
-    // ⚠ 这里只计「同步段」：批量任务的输出目录校验已由 backend 转入异步（冷态下同步 existsSync
-    //   会逐任务冷访问机械盘 → 冻结主进程，实测约 9 秒），故异步部分不计入本耗时。
+    // 任务列表恢复：读上百条任务日志，是最重的一步 —— 放到窗口加载后且让出一轮事件循环，保证窗口已经画出来再占用主进程。
+    // ⚠ 这里只计「同步段」：输出目录校验在 backend 侧为异步（同步 existsSync 会逐任务冷访问机械盘），异步部分不计入本耗时。
     setTimeout(() => {
       const _t = process.hrtime.bigint();
       try { api.restoreTasks(); } catch (e) {}
       logTiming('窗口加载后：任务恢复同步段完成（耗时 ' + Math.round(Number(process.hrtime.bigint() - _t) / 1e6) + 'ms · 输出目录校验已转异步）');
-      // 存量备份迁移（先迁后清）：老版本（画布合成路径不读设置）把备份写进了数据目录，
-      // 用户早已设好自定义根 → migrateBackups 那种"值变化才触发"的时机永远不会到，得在启动时补一次。
-      // 必须**先迁后清**：否则"保留 N 天"的清理可能先把数据目录里那些旧备份删掉，用户等于白丢。
+      // 存量备份迁移（先迁后清）：老版本把备份写进数据目录，而 migrateBackups 只在备份根值变化时触发，故启动时补迁一次。
+      // 必须**先迁后清**：否则"保留 N 天"的清理可能先删掉数据目录里的旧备份，用户等于白丢。
       try { api.migrateLegacyBackupsAsync().then(() => { try { api._cleanupBackupsAsync(); } catch (e) {} }); }
       catch (e) { try { api._cleanupBackupsAsync(); } catch (e2) {} }
     }, 0);
@@ -2961,9 +2744,8 @@ app.on('window-all-closed', () => {
 });
 
 // ── 崩溃留痕 ──
-// 程序异常退出后，"发生了什么"往往只剩这一行 —— 这是本日志最该覆盖的场景。
-// 注意：监听 uncaughtException 会让 Node 不再自动退出，因此记录后仍需 process.exit(1)
-// 保持「未捕获异常即退出」的原有行为，避免进程带病继续运行。
+// 崩溃留痕：未捕获异常时同步写入日志。
+// 注意：监听 uncaughtException 会让 Node 不再自动退出，因此记录后仍需 process.exit(1)，保持「未捕获异常即退出」的行为，避免进程带病继续运行。
 process.on('uncaughtException', (err) => {
   try {
     runLog.logEventSync('ERR', 'app.uncaughtException',
@@ -2978,9 +2760,7 @@ process.on('unhandledRejection', (reason) => {
 });
 // ── 窗口内容就绪等待 ──
 // 女仆皮肤带 64KB CSS + 多张 webp 装饰图（sidebar-corner / maid-swag / top-trim-tile / maid-chibi …），
-// 首帧必须等这些资源解码完成，否则会「先出空框、再刷出装饰」—— 正是设置页（每次重建）与
-// 切换皮肤后的托盘菜单（首次注入新变量）出现的刷新感。
-// 这里统一等：字体就绪 → 图片解码完成（含 <img>）→ 两帧重绘；超时兜底避免卡住不显示。
+// 首帧必须等这些资源解码完成，否则会「先出空框、再刷出装饰」；统一等字体就绪 → 图片解码完成（含 <img>）→ 两帧重绘，并有超时兜底。
 async function waitForWindowContent(win, timeoutMs) {
   if (!win || (win.isDestroyed && win.isDestroyed())) return;
   try {
@@ -3001,10 +2781,7 @@ async function waitForWindowContent(win, timeoutMs) {
   } catch (e) {}
 }
 
-// 渲染进程 / 子进程异常退出（主进程仍在运行，但往往正是故障现场）
-// ★ 自愈（偶发白屏且显示源码，托盘菜单同样异常，只能强制结束重开）：
-//   这里**必须做恢复** —— 只记日志的话，一旦渲染进程异常，界面就永久白屏，必须手动重启。
-//   现补「自动重载」：崩溃后重建页面；带次数限制（5 分钟内最多 3 次），避免真正性崩溃时无限循环。
+// 渲染进程 / 子进程异常退出（主进程仍在运行）；★ 自愈：渲染进程异常时**必须做恢复** —— 只记日志的话界面会永久白屏，只能手动重启。
 const _renderGoneAt = [];
 function _shouldAutoReload() {
   const now = Date.now();

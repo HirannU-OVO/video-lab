@@ -1,5 +1,4 @@
-// engines/modules/mask/index.js —— 遮罩叠加（迁移自旧版脚本，行为等价优先）
-// 模式1=遮罩+水印（预处理预合成）/ 模式2=仅水印 / 模式3=仅遮罩；多原片×多遮罩全组合。
+// engines/modules/mask/index.js —— 遮罩叠加（行为等价优先）：模式1=遮罩+水印（预合成）/ 模式2=仅水印 / 模式3=仅遮罩；多原片×多遮罩全组合。
 'use strict';
 
 const fs = require('node:fs');
@@ -226,9 +225,8 @@ async function run(ctx, env = process.env) {
   }
 
   // ── 主流程（锁 + 批量合成） ──
-  // ⚠ 锁**不能**落在 outputDir（被处理的输出目录）：那会让目录变「非空」，
-  //   破坏「空目录 → 直接输出」规则，也会在用户目录里留残留文件。
-  //   与 batch 同口径：放在缓存库同级（跨进程稳定），库未注入时退回系统临时目录。
+  // ⚠ 锁**不能**落在 outputDir（被处理的输出目录）：那会让目录变「非空」，破坏「空目录 → 直接输出」规则，
+  //   也会在用户目录里留残留文件；与 batch 同口径放在缓存库同级（跨进程稳定），库未注入时退回系统临时目录。
   const lockDir = path.dirname(String(process.env.VL_CACHE_DB || '').trim() || cfg.outputDir);
   try { fs.mkdirSync(lockDir, { recursive: true }); } catch (e) {}
   const lockPath = path.join(lockDir, '.video-lab-mask.lock');
@@ -294,19 +292,7 @@ async function run(ctx, env = process.env) {
         if (vidDur < maskDur && (maskDur - vidDur) > 1.0) {
           logger.warn(`原片时长（${Math.round(vidDur * 100) / 100} s）比遮罩时长（${Math.round(maskDur * 100) / 100} s）短超过1秒，将按原片时长输出`);
         }
-        // 音频来源判定：有音频流还不够 —— 可能是静音音轨（有流但全程没声音），
-        // 这种情况按「无音频」处理，成片改用原视频音轨，否则成片会没有声音。
-        //
-        // ⚠ 留痕分两条通道，各司其职（沿用引擎既有的诊断通道设计）：
-        //   · **用户视图**（任务窗口）只给一句话结论：用户关心的是「这条音轨从哪来」，
-        //     不需要看文件名 / 分贝值 / 探测字段（实测反馈：一行太长）。
-        //   · **运行日志**（engine-<日期>.log）给**完整可定位**的信息：完整文件路径、
-        //     探测字段、实测均值、最终决定。缺了它就无法回答「判的到底是哪个文件」——
-        //     遮罩常来自外部素材文件夹（同名文件遍地），只给 basename 根本定位不到；
-        //     而 mode 1 探测的还是**预处理后的合并文件**（%TEMP%\MaskWatermarkTemp\combined_*.mov），
-        //     用户更会误以为是自己的原遮罩有问题，方向从一开始就错了。
-        //   实现走 `@@VLDIAG@@` 前缀行：backend 的 pushLine 会先把**所有**引擎行落进
-        //   engine 日志（在状态检查之前），再把带前缀的行从用户视图里剥离 —— 正好是我们要的两分法。
+        // 音频来源判定：有音频流还不够（可能是静音音轨），这种情况按「无音频」处理，成片改用原视频音轨。
         const srcLabel = srcForDur ? path.basename(String(srcForDur)) : '(空)';
         const srcKind = cfg.mode === 1 ? '预处理合并文件' : '遮罩原文件';
         const diagAudio = (decision, extra) => {
@@ -352,11 +338,7 @@ async function run(ctx, env = process.env) {
               if (mM) vol = parseFloat(mM[1]);
               else vdWhy = '输出中无 mean_volume' + ((vd && vd.code !== 0) ? `（ffmpeg 退出码 ${vd.code}）` : '');
             } catch (e) { vdWhy = String((e && e.message) || e); }
-            // ★ 只有**确实测出**平均音量低于 -60dB（近乎静音）才降级为「无音频」；
-            //   测不出来（命令失败 / 超时 / 输出格式变化）一律**维持「有音频」** ——
-            //   把工具自身的失败算成素材没有声音，会静默丢掉遮罩音轨，用户完全无从察觉。
-            //   （原实现 `if (!(vol > -60)) maskHasAudio = false;` 把 NaN 也判成无音频，
-            //     与上方 catch 注释「探测失败则按有音频处理」自相矛盾。）
+            //   测不出来（命令失败 / 超时 / 输出格式变化）一律**维持「有音频」**：把工具失败算成素材没有声音会静默丢掉遮罩音轨。
             if (isFinite(vol)) {
               if (!(vol > -60)) {
                 maskHasAudio = false;
@@ -375,8 +357,7 @@ async function run(ctx, env = process.env) {
         ffArgs = ['-y', '-loglevel', 'error', '-stats', '-t', String(targetDur),
           '-i', j.vidPath, '-i', srcForDur,
           '-filter_complex', '[1:v]setpts=PTS-STARTPTS[ov];[0:v][ov]overlay=0:0[outv]',
-          // 音频来源：遮罩自带音轨时用遮罩音轨；遮罩没有音频流时回退原视频音轨，
-          // ⚠ 否则成片会完全没有声音（固定取 1:a? 时，遮罩无声即输出无音轨）
+          // 音频来源：遮罩自带音轨时用遮罩音轨；遮罩没有音频流时回退原视频音轨，否则固定取 1:a? 会输出无音轨的成片。
           '-map', '[outv]', '-map', maskHasAudio ? '1:a?' : '0:a?',
           // 编码参数统一走底座：nvencArgs 给视频段（含 profile/level），aacTail 给音轨+容器。
           // ⚠ 不要在此手写编码参数 —— 音频尾巴与 faststart 必须跟底座走，

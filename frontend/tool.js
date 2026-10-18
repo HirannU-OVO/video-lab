@@ -1,12 +1,6 @@
 // -*- coding: utf-8 -*-
 // 视频处理工具窗口（第 4 个模块的前端）
 //
-// 表单**由引擎侧的步骤 schema 自动渲染** —— 新增处理能力 = 引擎加一个步骤文件，
-// 本页不用改（这正是把 schema 放进注册表的原因）。
-//
-// 两条约定：
-//   · 不向用户展示执行顺序（顺序是固定的内部逻辑，展示只会增加理解负担）
-//   · 未勾选的步骤参数置灰不可用，从视觉上表达"不参与本次处理"
 (function () {
 
   // 全局兜底统一由 log-bootstrap.js 注入（四窗口共用）；本页只挂 toast。
@@ -134,7 +128,6 @@
   // ── 表单渲染 ──
   // ── 转分辨率专用交互：常用比例 + 宽高联动 + 锁链 ──
   // resize 是表单自动渲染的**唯一特例**：比例/锁链是纯前端交互，引擎只收最终 width/height。
-  // 比例表、标准档位、比例判定都在 common.js —— 画布与后处理共用同一份
   const RESIZE_RATIOS = VL.RATIO_RATIOS;
   const RATIO_PRESETS = VL.RATIO_PRESETS;
   // 画布的锁链状态提到模块级：cvSyncSizeUI() 在 IIFE 之外，也要读它判断是否点亮锁链
@@ -217,7 +210,6 @@
       // 常用比例是固定选项；非常用比例没有对应 option ⇒ 落到「自定义」并把它标成实际比值
       // ⚠ 判断的是「下拉里有没有这一项」（presets），不是「识别表里有没有」（ratios）：
     //   21:9 能被识别出来，但下拉没有这个 option —— 那就该显示在「自定义」项上，
-    //   而不是把 value 设成一个不存在的选项（那会让下拉变空）。
     var known = VL.isPresetRatio(match);
       sel.value = known ? match : '自定义';
       setCustomRatioLabel(sel, known ? '' : match);
@@ -337,7 +329,6 @@
   // ── 参数收集与回填 ──
   // 勾选状态的**唯一入口**：点标题行与点复选框都走这里。
   // ★ 不能靠「派发不指定 bubbles 的 change 事件」—— 那种事件不冒泡，
-  //   委托在容器上的 change 收不到，就会出现「勾上了但参数还是灰的」（实测踩到）。
   function setStepOn(sid, on) {
     state.sel[sid] = !!on;
     var node = $('stepGroups').querySelector('[data-step-id="' + sid + '"]');
@@ -400,7 +391,7 @@
       var sid = t.getAttribute('data-check');
       if (sid) {
         setStepOn(sid, !!t.checked);
-        // 步骤勾选/取消进日志：出片参数对不上时，第一要知道的是"当时勾了哪些步骤"
+        // 步骤勾选/取消进日志：记录本次勾选的步骤
         try {
           if (window.VL && VL.vlLogAction) {
             var on = [];
@@ -416,8 +407,7 @@
       if (!step || !key) return;
       var isBool = !!t.getAttribute('data-bool');
       state.values[step][key] = isBool ? !!t.checked : t.value;
-      // 步骤参数变更进日志（与勾选同一入口）：排障时要能还原"每个参数当时是什么值"，
-      // 否则光知道选了哪些步骤，无法判断是哪个参数导致的结果
+      // 步骤参数变更进日志（与勾选同一入口）：记录每个参数的当前取值
       try {
         if (window.VL && VL.vlLogAction) {
           var v = isBool ? String(!!t.checked) : String(t.value);
@@ -484,7 +474,6 @@
 
   // ── Web 目录选择器 ──
   // 浏览器端没有本机文件对话框；系统对话框依赖本体窗口的前台状态（焦点在浏览器时
-  // 会被压在后面，看起来像「点了没反应」）。改为页面内自绘选择器：
   // list_dir 只读目录名/文件名，桌面端与浏览器端体验一致。
   function renderInputHint() {
     var hint = $('inputHint');
@@ -781,9 +770,6 @@
   // ════════════ 画布合成（竖转横）：单帧预览 + 参数双向同步 ════════════
   // 舞台三层结构：背景层底图（精确渲染的纯背景）＋ 内容层（拖动期用内容原帧做本地几何变换，
   // 零延迟可跟手）＋ 覆盖层（手柄与吸附参考线）；非拖动状态显示精确合成图。
-  // 数据流：参数区 ↔ cv.params ↔ 预览。拖动只改本地几何 —— 与滤镜表达式数学等价（同一套偏移/缩放
-  // 公式），因此不会出现「拖动所见与出片不同」；松手后再由主进程按同一套滤镜链渲染精确帧校正
-  // （圆角、边框、模糊等本地无法精确呈现的效果以精确帧为准）。
   var cv = {
     ready: false,
     params: {
@@ -1074,7 +1060,6 @@
     cv.timer = setTimeout(function () {
       cv.timer = 0;
       // 渲染进行中：只记「待渲」标记，等这次回来立刻用**最新参数**补渲一次 —— 不重复排队。
-      // （实测：每次调整都发请求会互相等待，单帧耗时从 0.35s 累积到 2.8s，越调越卡）
       if (cv.inflight) { cv.pending = true; return; }
       cvDoPreview();
     }, delay);
@@ -1222,7 +1207,6 @@
    * 吸附（**四宫格**：只对齐**中线与四条边**，不用三分线）。
    * 内容盒的左/中/右三处，各自吸附画布的左边、中线、右边；上/中/下同理。
    * ⚠ 取**距离最近**的一条线吸合：早先按"先命中先返回"处理，候选一多会互相竞争
-   *   —— 表现为「在顶部附近往上拖反而往下走、往下拖又往上走」。
    */
   function cvSnap(b, alt) {
     if (alt) { cvDrawGuides(0, 0, false); return b; }
@@ -1251,7 +1235,6 @@
    * 尺寸吸附（手柄缩放专用）：只保留两档 —— **满屏（贴满画布四边）** 与 **1/2（正好一半）**。
    * 档位刻意精简：调试中档位过多会让吸附互相争抢、反而难停在目标值；这两档覆盖了"正好占满屏幕 / 正好占一半"的实际需求。
    * 等比缩放只有一个自由度：候选（按画布宽，以及把画布高按当前箱比例折算到宽）统一在**箱宽**上比较取最近命中；
-   * 阈值与位置吸附一致（cv.snap，按视图像素折算到画布像素）。传入目标箱宽 w 与箱比例 ratio，命中返回 { w, tag }，否则 null。
    */
   function cvSnapSizeW(w, ratio) {
     var W = cvCanvasW(), H = cvCanvasH();
@@ -1345,7 +1328,6 @@
     cv.drag = null;
     cvDrawGuides(0, 0, false);
     // 松手后：开启「实时预览」才渲染，且走**防抖** —— 连续拖动只在停下后渲一帧，
-    // 否则每次松手都发一次请求会互相排队（实测耗时从 0.35s 累积到 2.8s，越调越卡）。
     // 未开启实时预览则纯本地结束：拖动全程零渲染。
     cvRequestPreview({ immediate: false });
   }
@@ -1437,7 +1419,6 @@
             wEl.value = String(pr2[0]); hEl.value = String(pr2[1]);
             toast('已锁定为 16:9：改宽/高会按比例联动', 'info');
           } else {
-            // 非常用比例没有整数比，无法按比例联动 —— 明说，不要表现成"点了没反应"
             toast('当前是自定义比例（' + g + '），无法按比例联动；请先选一个常用比例', 'info');
           }
         }
@@ -1614,9 +1595,6 @@
     // ⚠ 先把输出设置区的当前 DOM 值同步回 outStore，再读数据。
     //   原因：输出控件（outDir / outSuffix / outBackupDir 等）**没有 input 监听**，
     //   值只在 outCollect() 被调用时才存回 outStore，而 outCollect 只在「切换标签页」
-    //   (outBind) 时触发 —— 用户在输出区填了目录、直接点开始合成时读到的仍是空值，
-    //   界面报「请选择输出文件夹」，而输入框里明明有路径。
-    //   在读取入口做一次同步，比给每个控件挂事件更可靠（控件会增删，入口只有一个）。
     try { outCollect(); } catch (e) {}
     var o = outStore.canvas;
     if (o.mode === 'directory' && !o.dir) return { error: '请选择输出文件夹（或把输出方式改为「覆盖原视频」）' };
@@ -1629,7 +1607,6 @@
       // ⚠ 候选清单为空时**必须报错，不能静默降级**：清单只在成功扫描过背景目录后才有值，
       //   若未扫描（或扫描未完成）就提交，老逻辑会当成普通单任务跑出一条成片 ——
       //   用户明明勾选了「每个背景各出一批」，却只拿到 1 条，且界面没有任何提示。
-      //   宁可拦下来告诉他要先扫描，也不要跑出一个与预期不符的结果。
       if (!(cv.bgList || []).length) {
         return { error: '已勾选「每个背景各出一批」，但背景候选还没扫描 —— 请点背景目录旁的「扫描」后再开始合成' };
       }
@@ -1715,14 +1692,6 @@
    * 气泡确认框（含可选输入行）。
    *
    * 为什么需要它：保存预设、重命名这类操作**不是破坏性的**，用整屏遮罩的大窗（showDialog）
-   * 会打断操作流、把界面切走；气泡贴在被点的按钮旁边，视线不用移开。
-   * 样式复用 styles.css 里已有的 .vl-pop 一套（tool.html 已引入，零新增 CSS）。
-   *
-   * @param {{title?:string, message?:string, okLabel?:string, cancelLabel?:string, danger?:boolean,
-   *          input?:{value?:string, placeholder?:string, maxlength?:number}}} opts
-   * @param {HTMLElement} [anchor] 定位锚点（一般是触发按钮）；省略则居中
-   * @returns {Promise<true|string|null>} 无输入框：确认 true / 取消 null；
-   *                                      有输入框：确认返回**输入内容** / 取消 null
    */
   function confirmPopover(opts, anchor) {
     var o = opts || {};
@@ -1890,21 +1859,11 @@
   }
 
   /** 把参数写回全部控件（用于预设加载与初始化） */
-  /**
-   * 编码格式名的**旧取值规范化**。
-   * 下拉选项曾经带括号说明（如 `H.264（最通用）`），后来去掉了括号；
-   * 而已存的预设里仍是旧字符串 —— 直接写进 select 会因匹配不到 option 而变成空值，
-   * 于是"加载预设"看起来正常、实际把编码格式丢了。这里统一收敛到新取值。
-   */
+  /** 编码格式名的旧取值规范化：已存预设里可能是历史字符串，直接写进 select 会因匹配不到 option 而变成空值，故先映射到当前取值。 */
   /**
    * 需要用户**立刻注意到**的提示（操作被拦下 / 操作失败）。
    *
    * 为什么不能只用 setStatus：它在面板下方，用户操作时视线在按钮与表单上，
-   * 「点了没反应」多半是因为原因只写在了他看不到的地方。
-   * toast 负责被看见，状态栏同步留一条痕迹。
-   *
-   * @param {string} msg
-   * @param {'info'|'ok'|'error'} [kind] 缺省 error
    */
   function notify(msg, kind) {
     var m = String(msg == null ? '' : msg);
@@ -1937,8 +1896,7 @@
       set('cvBorderColor', p.borderColor);
       set('cvWm', p.watermark);
       // 输出编码三项（与后处理同义的选项）：预设里也存着它们，应用预设时必须一并回到界面。
-      // ⚠ 此处漏掉的表现很隐蔽：加载预设看着正常，编码格式 / CQ / 格式却仍停在上一次的取值上，
-      //   用户以为"预设带着这些"，实际下一次提交用的是界面上残留的旧值。
+      // ⚠ 此处漏掉的表现很隐蔽：加载预设看着正常，编码格式 / CQ / 格式却仍停在上一次的取值上。
       set('cvEncCodec', cvNormCodec(p.encCodec));
       set('cvEncCq', p.encCq); set('cvEncCqVal', p.encCq);
       set('cvContainer', String(p.container || 'mp4') === 'mov' ? 'mov' : 'mp4');
@@ -2059,10 +2017,6 @@
    * 状态栏的**数量提示**：把「这次会生成多少个成片」直接算出来摆在这儿。
    *
    * 为什么不用「就绪 —— 选好文件夹、勾选要做的处理后点开始处理」这类操作说明：
-   * 那是纯操作说明，用户看一眼界面就懂，占着状态栏这个黄金位置没有信息量。
-   * 而「会出多少条」恰恰是最容易算错、也最需要提前知道的事 ——
-   * 勾上「每个背景各出一条」后总量是 **背景数 × 内容数**，
-   * 5 个背景配 80 个视频就是 400 条，不提前说清很容易做完才发现多出十倍。
    */
   function cvCountHint() {
     if (outBound !== 'canvas') return false;      // 后处理面板沿用原提示

@@ -1,4 +1,4 @@
-// engines/modules/batch/index.js —— 批量拼接（迁移自旧版脚本，行为等价优先）
+// engines/modules/batch/index.js —— 批量拼接（行为等价优先）
 // 解析 TXT 配置 → 扫描素材（含 .lnk 展开、索引自动修复、1080×1920 合规过滤）→ 选片状态机
 // （Round/RoundUsed/SubRound/SubUsedInRound/SubUsageCount）→ 渐进替换重试 → ffmpeg 拼接 → 命名/分组/日志。
 'use strict';
@@ -11,12 +11,10 @@ const { probe } = require('../../base/probe');
 const { acquireLock } = require('../../base/lock');
 const { stripQuotes, exists, sortKey, renameWithRetry, tempNameFor, videoExts } = require('../../base/paths');
 const { pickCandidate, pickRandom, failKey, triedPathsFor } = require('../../base/retry');
-// 「加速换档重试」策略：本模块是它的原始出处，现已抽到 base/ladder.js 由批量与复刻共用。
-// 这里不再内联任何档位常量 —— 改动档位语义请改 ladder.js，否则两侧行为会再次分叉。
+// 「加速换档重试」策略统一由 base/ladder.js 提供（批量与复刻共用）；本模块不内联档位常量，档位语义只改 ladder.js。
 const ladder = require('../../base/ladder');
 
-// 缓存作用域位掩码（与 engines/base/cache.js 的 SCOPES 同源，惰性取用：
-// 持久层不可用时不应影响任务执行，故不在模块顶层 require）。
+// 缓存作用域位掩码（与 engines/base/cache.js 的 SCOPES 同源，惰性取用：持久层不可用时不应影响任务执行，故不在模块顶层 require）。
 const SCOPES_FALLBACK = { batch: 1, replica: 2, mask: 4 };
 let _scopesCache = null;
 function scopes() {
@@ -45,11 +43,7 @@ function ticksOf(stat) {
   return stat.mtimeMs * 10000 + DOTNET_EPOCH_TICKS;
 }
 
-/**
- * 精确 .NET Ticks（BigInt）。
- * 缓存写回必须与既有条目的 LastWriteTime 精确相等，Number 精度不够；
- * 实测 statSync(p,{bigint:true}).mtimeNs/100n + 偏移与 .NET DateTime.Ticks 计算值逐 tick 一致（差 0）。
- */
+/** 精确 .NET Ticks（BigInt）：缓存写回必须与既有条目的 LastWriteTime 精确相等，Number 精度不够。 */
 function ticksBigOfFile(videoPath) {
   try {
     const st = fs.statSync(videoPath, { bigint: true });
@@ -61,9 +55,9 @@ function ticksBigOfFile(videoPath) {
 
 /** video_cache 持久层：VL_CACHE_DB 指向的 cache.db，由主进程注入（backend 的 _spawnEngine）。
  *  库未注入或不可用时返回 null，缓存退化为内存态（不影响出片，只是每次重探）。
- *  收益：全量读为库内全表读（数千条约 3ms），写回只落本次新探测的条目而非重写全量。
+ *  写回只落本次新探测的条目，不重写全表。
  *  ⚠ 不要加 `existsSync` 前置检查：`CacheStore.open()` 自己会建目录与库文件 ——
- *    前置检查会让**库还没被创建时引擎直接放弃写库**，使用计数与现场探测结果被静默丢弃
+ *    加检查会让「库还没被创建时引擎直接放弃写库」，使用计数与现场探测结果被静默丢弃
  *    （首次运行 / 新机器 / 隔离环境必现；常规路径下因主进程先建好了库而被掩盖）。 */
 function openVideoStore() {
   const dbPath = String(process.env.VL_CACHE_DB || '').trim();
@@ -79,7 +73,7 @@ function openVideoStore() {
 }
 
 // ────────────────────────── .lnk 解析 ──────────────────────────
-// 与 backend 共用同一份实现（engines/base/lnk.js）：纯 Node 读二进制解析，替代 COM（WScript.Shell）
+// 与 backend 共用同一份实现（engines/base/lnk.js）：纯 Node 读二进制解析，不起子进程。
 const { parseLnkTarget, resolveBrokenTarget } = require('../../base/lnk');
 
 /** 解析快捷方式目标（对齐 Get-ShortcutTarget；失败返回 null 并告警，不中断） */
@@ -353,10 +347,9 @@ function selectVideo({ srcPath, track, folderData, excludedPaths, excludedSubGro
 
   // ── 多子组分支（组维度轮询）──
   // **硬约束**：同一成片内，该源的不同片段必须来自**不同子组**。
-  // 降重由两条保证：① 组间按组使用计数均衡（subUsageCount 最少优先）
-  //                ② 组内按片段使用计数最少优先（selectVideoCandidate 内建）
-  // ⚠ 不要用「组内存在全局从未用过的片段」作组间门槛：小组用一次即出局、
-  //   负载会全压到最后一个大组（表现为「无可用片段」）。
+  // 降重由两条保证：① 组间按组使用计数均衡（subUsageCount 最少优先）；
+  //   ② 组内按片段使用计数最少优先（selectVideoCandidate 内建）。
+  // ⚠ 不要用「组内存在全局从未用过的片段」作组间门槛：小组用一次即出局、负载全压到最后一个大组。
   const excludedSubSet = new Set(excludedSubGroups || []);
   const allGroups = [...folderData.subGroupList];
 
@@ -424,8 +417,7 @@ function selectVideo({ srcPath, track, folderData, excludedPaths, excludedSubGro
 function parseOnlyNameIndex(name) {
   const s = String(name || '');
   const base = path.basename(s, path.extname(s));
-  // 末段 = 可选后缀标识（不含短横与数字）+ 序号 + 可选组后缀。
-  // `[^-\d]*` 同时兼容历史上漏掉分隔符的名字（...-resume2A.mp4），已产出的成片仍可续跑。
+  // 末段 = 可选后缀标识（不含短横与数字）+ 序号 + 可选组后缀；`[^-\d]*` 同时兼容漏掉分隔符的旧名字，已产出的成片仍可续跑。
   const m = /-([^-\d]*)(\d+)([A-Z]?)$/.exec(base);
   return m ? parseInt(m[2], 10) : 0;
 }
@@ -461,11 +453,9 @@ async function run(ctx, env = process.env) {
     ? videoStore.loadVideoMap({ scopesMask: scopes().batch | scopes().replica })
     : {};
   const memInfo = new Map();          // 本次任务内的探测结果缓存
-  // 本次真正探测过的条目 → 任务结束后合并写回（只增/更新，不删；GC 仍归 backend）
-  // 目的：让执行期现场探测的新文件沉淀进缓存库，供预检测复用，避免重复 ffprobe
+  // 本次真正探测过的条目 → 任务结束后合并写回（只增/更新，不删；GC 仍归 backend），让执行期现场探测的新文件沉淀进缓存库供预检测复用。
   const probedForWriteBack = new Map();
-  // 本任务内的使用计数（文件名 → { UsageCount, LastWriteTime }）：
-  // 由缓存库认领结果填充，出片后再按增量累加，仅作本次调度依据（持久化在库内）
+  // 本任务内的使用计数（文件名 → { UsageCount, LastWriteTime }）：由缓存库认领结果填充，出片后按增量累加，仅作本次调度依据（持久化在库内）。
   const usageCacheMap = {};
 
   /** 视频信息（对齐 Get-CachedVideoInfo：Ticks 命中则复用，否则探测并记内存） */
@@ -529,8 +519,7 @@ async function run(ctx, env = process.env) {
   };
 
   // ── TXT 输入校验 ──
-  // ⚠ 失败文案面向**普通用户**：只讲「怎么了 + 怎么办」，禁止出现「环境变量 / 脚本 / 手动输入」等
-  //   技术措辞（用户不会用命令行，写出来只会让人以为是自己操作错了）。
+  // ⚠ 失败文案面向**普通用户**：只讲「怎么了 + 怎么办」，禁止出现「环境变量 / 脚本 / 手动输入」等技术措辞。
   const txtCandidate = stripQuotes(cfg.txt).replace(/^"|"$/g, '');
   let txtFilePath = '';
   if (!txtCandidate) {
@@ -612,8 +601,7 @@ async function run(ctx, env = process.env) {
   // ── 索引自动修复不存在的目录 ──
   const invalidInput = async (msg) => {
     if (msg) { logger.info(''); logger.info(msg); }
-    // ⚠ 不要说「请修改 TXT」—— 走到这里的多数原因跟 TXT 无关（素材不合规、水印不是 PNG、
-    //   文件夹里没有视频…），旧文案会把人往错误方向引。改为中性、可执行的措辞。
+    // ⚠ 不要说「请修改 TXT」—— 走到这里的多数原因跟 TXT 无关（素材不合规、水印不是 PNG、文件夹里没有视频…），改用中性、可执行的措辞。
     logger.info('请按上面的提示处理后，重新拖入 TXT。');
     return 1;
   };
@@ -715,9 +703,8 @@ async function run(ctx, env = process.env) {
   const folderVideos = new Map();
   const usageTracker = new Map();
 
-  // 计数认领：路径发生变化（改名 / 移位）的素材先尝试继承既有条目的使用计数，
-  // 避免被当作全新素材重新计数。与 app 侧预检测共用持久层的同一实现，保证两条路径行为一致。
-  // 继承的计数沿用既有语义「≥1 归为 1」（脚本只关心「是否用过」）。
+  // 计数认领：路径发生变化（改名 / 移位）的素材先尝试继承既有条目的使用计数，避免被当作全新素材重新计数。
+  // 与 app 侧预检测共用持久层的同一实现，保证两条路径行为一致；继承的计数沿用既有语义「≥1 归为 1」。
   // 未认领到计数的素材在本次任务内按 0 起算，其计数由出片时的增量写入库。
   const claimUsageFor = (vPath) => {
     if (!videoStore) return null;
@@ -834,7 +821,7 @@ async function run(ctx, env = process.env) {
 
     if (allVideos.length === 0) {
       logger.info('');
-      // 写清「什么才算合规」：旧文案只说"分辨率/时长不符"，用户无从知道标准是竖版 1080×1920
+      // 写清「什么才算合规」：合规标准是竖版 1080×1920 且有时长。
       logger.info(`❌ 路径 ${f} 里没有可用素材：只认竖版 1080×1920 且有时长的视频（素材确实符合时，请检查 FFprobe 是否可用）`);
       return invalidInput('');
     }
@@ -903,8 +890,7 @@ async function run(ctx, env = process.env) {
   logger.lockAcquired('开始执行拼接任务');
 
   let hasError = false;
-  // 当前加速档位（0 基）：必须定义在**函数级** —— 除了「档位循环」内部，
-  // 失败诊断（round / fail 事件）也要读它。
+  // 当前加速档位（0 基）：必须定义在**函数级** —— 除了「档位循环」内部，失败诊断（round / fail 事件）也要读它。
   // ⚠ 若用 const 定义在 retryCount 循环体内，循环外引用会抛 `thrStep is not defined`
   //   （只在首个「超阈值未达标」成片才走到该路径，报错后整批中断）。
   let thrStep = 0;
@@ -931,8 +917,7 @@ async function run(ctx, env = process.env) {
     }
     // ★ 通知主进程「配置的归属位置已改变」：主进程据此立刻失效配置树缓存并广播前端。
     //   这一步只可能发生在引擎进程内（主进程 spawn 时文件还在原处），所以必须由引擎主动上报；
-    //   否则界面会继续显示已失效的旧条目（开始任务后列表仍是「0927*」外部配置，
-    //   点进去是空的，要等低频轮询或手动刷新才恢复）。
+    //   否则界面会继续显示已失效的旧条目（开始任务后列表仍是「0927*」外部配置，点进去是空的）。
     logger.info('配置正本就位：' + path.basename(txtDest));
 
     const logFilePath = path.join(outDir, `${tag}-${txtName}-拼接日志.txt`);
@@ -941,8 +926,7 @@ async function run(ctx, env = process.env) {
 
     logger.info('');
 
-    // 续跑：仅重做 BATCH_ONLY_NAMES 指定的序号；totalOutput / groupCount 保持原始值不动，
-    // 使成片命名（-序号）与分组后缀（A/B/C）与首次运行完全一致
+    // 续跑：仅重做 BATCH_ONLY_NAMES 指定的序号；totalOutput / groupCount 保持原始值不动，使成片命名与分组后缀与首次运行一致。
     let indexList = [];
     for (let i = 1; i <= totalOutput; i++) indexList.push(i);
     let resumeMode = false;
@@ -970,13 +954,9 @@ async function run(ctx, env = process.env) {
 
     const dPrefix = datePrefix(taskDate(cfg.submitTs));
     const parentFolder = path.basename(baseDir);
-    // ★ 分级降级：先按用户设置跑足重试轮数（100 轮足够），
-    //   仍凑不出组合再逐级加大加速倍率；倍率设硬顶，避免画面加速过狠。
-    //   红线：输出时长始终以 maxTotalDuration 封顶（平台规则，超出无法过审）——
-    //   加大倍率只放宽「允许的组合时长」，不改输出上限。
-    // 「每档轮数」直接取设置页「重试次数」的设定值：设定值即「实际的改档重试轮数」。
-    // ⚠ 不要用 Math.max(100, ...) 之类兜底：会把 ≤100 的设定值一律抬成 100，用户填的数形同虚设。
-    // 档位梯度、允许时长、提前进档一律走 L（base/ladder.js），本模块不保留私有副本。
+    // ★ 分级降级：先按用户设置跑足重试轮数，仍凑不出组合再逐级加大加速倍率；倍率设硬顶，避免画面加速过狠。
+    //   红线：输出时长始终以 maxTotalDuration 封顶（平台规则，超出无法过审）—— 加大倍率只放宽「允许的组合时长」。
+    //   「每档轮数」直接取设置页「重试次数」的设定值；⚠ 不要用 Math.max(100, ...) 等兜底，会把 ≤100 的设定值一律抬成 100。
     const L = ladder.createRunner({
       maxDuration: cfg.maxTotalDuration,
       speedThreshold: cfg.speedThreshold,
@@ -988,8 +968,7 @@ async function run(ctx, env = process.env) {
     for (const outIndex of indexList) {
       logger.info('');
       logger.info('-'.repeat(48));
-      // 续跑：进度按「本次补做」视角显示（第 k / N 片）—— 否则会显示成整批的 X / 20，
-      // 与实际「本次只补 N 片」不符（用户会误以为做了整批）。绝对序号在命名与日志中不受影响。
+      // 续跑：进度按「本次补做」视角显示（第 k / N 片），否则会显示成整批的 X / 20 与实际不符；绝对序号在命名与日志中不受影响。
       logger.progress('生成', resumeMode ? (indexList.indexOf(outIndex) + 1) : outIndex,
         resumeMode ? indexList.length : totalOutput);
 
@@ -1007,8 +986,7 @@ async function run(ctx, env = process.env) {
       const exhaustedSrcs = new Set();
       let retryCount = 0;
 
-      // 某源位置的「真实剩余候选数」（本轮未用 + 未被本片排除 + 未被跨轮失败记忆排除）。
-      // 用于两处：① 失败分支判定「素材真用尽」还是「组/排除状态受限」；② 诊断报告源状态。
+      // 某源位置的「真实剩余候选数」（本轮未用 + 未被本片排除 + 未被跨轮失败记忆排除）：用于失败分支判定「素材真用尽 / 组排除受限」与诊断报告。
       const countRemain = (i, exMap) => {
         const p = String(sourceRequests[i]);
         const fd = folderVideos.get(p);
@@ -1136,8 +1114,7 @@ async function run(ctx, env = process.env) {
               if (dur > maxDur) { maxDur = dur; retryTargetSrc = pi; }
             }
             if (retryTargetSrc < 0) {
-              // 本档可替换源已全部用尽：若还有加速档位，提前进入下一档（放宽允许时长）再试，
-              // 而不是直接判失败 —— 否则设定值给出的「每档 N 轮」跑不满、升档兜底形同虚设。
+              // 本档可替换源已全部用尽：若还有加速档位，提前进入下一档（放宽允许时长）再试，避免「每档 N 轮」跑不满。
               const nextStart = L.nextStepStart(retryCount);
               if (nextStart >= 0) {
                 L.announceStepSkip();
@@ -1150,8 +1127,7 @@ async function run(ctx, env = process.env) {
           continue; // 首轮失败：静默进入渐进替换
         }
 
-        // 诊断通道：记录每轮「凑出多少 / 允许多少 / 在哪档 / 是否达标」——
-        // 只进内存缓冲，任务失败时随错误一并交给后端（用户视图不受影响）
+        // 诊断通道：记录每轮「凑出多少 / 允许多少 / 在哪档 / 是否达标」，只进内存缓冲，任务失败时随错误一并交给后端。
         logger.diag('round', { n: outIndex, r: retryCount, step: thrStep + 1,
           dur: Math.round(totalDuration * 10) / 10, allow: Math.round(ladderAllowed * 10) / 10,
           ok: totalDuration <= ladderAllowed, exhausted: exhaustedSrcs.size });
@@ -1198,15 +1174,12 @@ async function run(ctx, env = process.env) {
         let diagText = userMsg;
         // 面向用户的「如何解决」：时长凑不满属于素材/配置问题，给出可操作建议而非笼统「反馈日志」
         let userHow = '';
-        // ★ 可操作诊断：只给「用尽」这类结论时，人不知道补素材还是调参数、
-        //   程序也无从选择修复方式。这里把「能凑出多少 / 缺口多少 / 哪些源耗尽 / 可调什么」一并写进
-        //   错误详情 —— 人照着提示就能动手，也为后续「分级自动修复」留下决策数据。
+        // ★ 可操作诊断：把「能凑出多少 / 缺口多少 / 哪些源耗尽 / 可调什么」写进错误详情，人照着提示就能动手。
         try {
           const overPct = Math.round((cfg.speedThreshold - 1) * 100);
           const isOver = totalDuration > cfg.maxTotalDuration;
           const gap = isOver ? (totalDuration - cfg.maxTotalDuration) : (cfg.maxTotalDuration - totalDuration);
-          // 源状态按「真实剩余候选数」报告：⚠ 只看 exhaustedSrcs 标记会在候选被排除集挡光时
-          // 仍显示「仍可用」，与「无可用片段」的报错自相矛盾。
+          // 源状态按「真实剩余候选数」报告：⚠ 只看 exhaustedSrcs 标记会在候选被排除集挡光时仍显示「仍可用」，与报错自相矛盾。
           const remainOf = (i) => countRemain(i, sourceExcludedPaths);
           const srcStat = sourceRequests.map((p, i) => {
             const nm = path.basename(String(p));
@@ -1231,7 +1204,6 @@ async function run(ctx, env = process.env) {
         // 命名前的失败：输出「序号」协议行 —— 后端据此记录 failedIndices，续跑时按序号补做。
         // ⚠ 顺序很关键：**必须先记序号、再写诊断** —— 诊断一旦抛错（如引用作用域越界的变量），
         //   序号就没机会落盘 → 任务虽标为失败，续跑却报「没有找到需要完成的成片」，只能整批重做。
-        //   诊断属于"锦上添花"，绝不能阻断"记录失败序号"这条主流程。
         logger.failIndex(outIndex, userMsg);
         try {
           logger.diag('fail', { n: outIndex, rounds: retryCount + 1, step: thrStep + 1,
@@ -1240,9 +1212,7 @@ async function run(ctx, env = process.env) {
             detail: diagText,
             exhausted: Array.from(exhaustedSrcs).map((i) => i + 1) });
         } catch (eDiag) { /* 诊断失败绝不影响失败序号与后续流程 */ }
-        // 时长凑不满不是程序 bug：明确归为「素材或配置」，并把可操作建议透给用户
-        // （补素材 / 放宽时长上限）。⚠ 不传 hint 会落到默认的「反馈日志」并被误归为「程序」，
-        // 用户看不懂、也不会去补素材或调参数。
+        // 时长凑不满不是程序 bug：归为「素材或配置」并给出可操作建议；⚠ 不传 hint 会落到默认「反馈日志」并被误归为「程序」。
         const failHint = userHow
           ? { who: '素材或配置', how: userHow }
           : { who: '程序', how: '若反复出现，请把运行日志（log 目录里的 error-日期.log）反馈以便定位' };
@@ -1277,13 +1247,10 @@ async function run(ctx, env = process.env) {
       let finalOutName = `${nameItems.join('-')}-${suffixStr}${outIndex}.mp4`.replace(/-{2,}/g, '-');
       let finalOut = path.join(outDir, finalOutName);
       // ★ 先写临时名，编码成功后再原子改名：
-      //   ⚠ 不要直接写正式名：一旦「编码到一半意外停止」（进程被杀 / 断电 / 编码器崩溃），
-      //   磁盘上会留下**正式名的半截文件** —— 后果有两层：
-      //     ① 用户会把它当成品拿走，但根本放不出来；
-      //     ② 续跑按产物反推「还缺哪些序号」时会把它算作已完成 → 该序号被永久跳过且不报错。
-      //   用临时名后：**正式名 ⇔ 完整可播放产物**，反推逻辑不必再猜。
-      // 临时名 = `<随机>.tmp`（tempNameFor 统一生成）：与正式名完全无关，用户一眼可辨「这不是视频」，
-      // 不会被误当成品传给客户；ffmpeg 无法从 `.tmp` 推断容器，故 encArgs 显式 `-f mp4` 强制 mp4 封装。
+      //   ⚠ 不要直接写正式名：编码到一半意外停止（进程被杀 / 断电 / 编码器崩溃）会留下**正式名的半截文件** ——
+      //   ① 用户会把它当成品拿走，但根本放不出来；② 续跑反推「还缺哪些序号」时会算作已完成 → 该序号被永久跳过。
+      //   用临时名后：**正式名 ⇔ 完整可播放产物**；临时名 = `<随机>.tmp`（tempNameFor 统一生成），
+      //   ffmpeg 无法从 `.tmp` 推断容器，故 encArgs 显式 `-f mp4` 强制 mp4 封装。
       const tmpOut = tempNameFor(finalOut);
 
       // ── 输入文件存在性 ──
@@ -1340,8 +1307,7 @@ async function run(ctx, env = process.env) {
       logger.clipDuration(targetDur);
       const { code, stderr } = await runFfmpeg(inputArgs.concat(encArgs), { onProgress: (line) => logger.raw(line) });
       if (code !== 0) {
-        // ffmpeg 的真实报错要带出来，不能只留「编码失败」—— 退出码与 stderr 尾部一并带出：
-        // 结论进用户视图，完整尾部进诊断通道（任务失败时落运行日志）
+        // ffmpeg 的真实报错要带出来，不能只留「编码失败」：退出码与 stderr 尾部一并带出，结论进用户视图、完整尾部进诊断通道。
         const ffTail = logger.ffmpegTail(stderr);
         logger.diag('ffmpeg.fail', { step: 'batch.encode', n: outIndex, code, tail: ffTail });
         logger.error(`第 ${outIndex} 个成片`, '一次性编码失败');

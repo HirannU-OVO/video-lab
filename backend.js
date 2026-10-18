@@ -33,48 +33,30 @@ const FFMPEG_REQUIRED_FILTERS = [
   'format', 'signalstats', 'metadata',
 ];
 
-// 必需编码器（硬件编码硬约束）：三档转码格式都走 NVENC ——
-// 只查滤镜查不到编码器能力（老版本 ffmpeg 没有 av1_nvenc，会"检测合格但选 AV1 就失败"）
+// 必需编码器（硬件编码硬约束）：三档转码格式都走 NVENC ——只查滤镜查不到编码器能力（老版本 ffmpeg 没有 av1_nvenc，会"检测合格但选 AV1 就失败"）
 const FFMPEG_REQUIRED_ENCODERS = ['h264_nvenc', 'hevc_nvenc', 'av1_nvenc'];
 
-// 环境探测超时（毫秒）：冷启动首次加载 ffmpeg 时（未签名的大型二进制 + 安全软件扫描 +
-// 机械盘冷读）单次执行可能远超 20 秒。探测本身是异步的、不阻塞事件循环，
-// 所以宁可多等，也不要因为超时把「没探到」误判成「缺滤镜」。
-// 可用 VL_ENV_PROBE_TIMEOUT_MS 覆盖（回归用：设为极小值即可稳定复现「探测失败」）。
+// 环境探测超时（毫秒）：探测异步、不阻塞事件循环，宁可多等，也不要因超时把「没探到」误判成「缺滤镜」。
 const ENV_PROBE_TIMEOUT_MS = Math.max(1, Number(process.env.VL_ENV_PROBE_TIMEOUT_MS) || 45000);
 
-// 成片存在性判定的内存缓存有效期（毫秒）：启动预热写入后，期内 snapshotTasks 纯内存判定、
-// 不再逐任务碰磁盘；超期回退实时探测（用户在资源管理器手动删掉成片后仍能纠正）。
+// 成片存在性判定的内存缓存有效期（毫秒）：启动预热写入后，期内 snapshotTasks 纯内存判定、不逐任务碰磁盘；超期回退实时探测（用户在资源管理器手动删掉成片后仍能纠正）。
 
-// 启动保护期：启动后这段时间内空闲队列不消费任务（首屏渲染与首次操作期间零 磁盘竞争）。
-// 20 秒足够覆盖「窗口出现 → 项目列表渲染 → 用户第一眼扫过」，之后后台才开始慢慢校验。
+// 启动保护期：启动后这段时间内空闲队列不消费任务（首屏渲染与用户首次操作期间零磁盘竞争），20 秒后后台才开始校验。
 const IDLE_BOOT_GRACE_MS = 20000;
 
-// 前台活动让路窗口：最近这段时间内有过前台活动（渲染/读取/任务）就让队列再等一会儿 ——
-// 与预检测的「行内优先、后台让路」同一思路。
+// 前台活动让路窗口：最近这段时间内有过前台活动（渲染/读取/任务）就让队列再等一会儿。
 const IDLE_FOREGROUND_HOLD_MS = 3000;
-
-
 
 // 后台全量重扫的最小间隔（**外部更改的兜底通道**）：
 // 已知的变更时刻（保存配置 / 任务启停）走「立即失效 + 广播」，不经这里；
-// 这里只兜底**外部**对素材盘的改（用户手动增删改文件、别的程序写入）——
-// 原始设计就是「外部删改 / 任务迁移 → 低频轮询兜底」（见前端 refreshActiveVersions 的 4 秒轮询，
-// 它每次都会重拉项目列表，因此只要这里的重扫把缓存刷新，界面就会在下一轮自动跟上）。
-// 取值权衡：一次全量要遍历整个工作根（实测约 3000 次 readdir），机械盘上不能按秒做，
-// 但也不能长到让外部改动迟迟不出现 —— 60 秒 + 队列的前台/任务让路（只在真空闲时跑）是可接受的平衡。
+// 这里只兜底**外部**对素材盘的改（用户手动增删改文件、别的程序写入），且只在队列空闲、前台让路时执行。
 const SCAN_FULL_MIN_INTERVAL_MS = 60 * 1000;
 // 成片存在性结论的**持久化**有效期（verify_cache）：命中则连热启动也省掉重复核验。
-// 取 10 分钟：只用来「合并同一批文件的重复校验」，不做长期真相缓存 ——
-// 陈旧信息的窗口必须短，否则用户在资源管理器里删了成片，界面会一直说"还在"。
+// 只用于「合并同一批文件的重复校验」，不做长期真相缓存（窗口必须短，否则删了成片界面仍说「还在」）。
 const HAS_OUTPUT_PERSIST_TTL_MS = 10 * 60 * 1000;
 
 // ── 不判冷热，用后台队列 + 自适应节流 ──────────────
-// ⚠ 不要用「开机时长」或启动探针区分冷/热启动：判据脆（开机 3 小时后启动依然是冷盘；
-//   探针样本又必须"启动早期没碰过"），且判错代价双向 —— 判成热踩几十秒冻卡、判成冷无谓推迟精度。
-// 本模块策略：启动期一律不发起批量文件 IO，校验全部进**空闲队列**，
-// 队列串行单发 + 按实测耗时自适应节流（见 _idleKick），慢盘自动放慢、快盘自动加速。
-// 精准性由「TTL + 持续自愈」保证：校验发现差异即写回 verify_cache 并增量刷新界面。
+// ⚠ 不要用「开机时长」或启动探针区分冷/热启动：判据都不可靠，判错代价双向。
 
 // 空闲队列每个批次核验的路径数（见 gcVideoCacheIdle：清理任务按批入队，由队列自适应节流执行）
 
@@ -337,7 +319,7 @@ function zhLiveLine(kv) {
     }
     if (k === 'elapsed') {
       // 与 time= 保持**同一种格式**（HH:MM:SS.xx）：ffmpeg 原生 elapsed 是 H:MM:SS.xx（小时无前导零），
-      // 这里只补齐小时位，不再换成「1分23秒」这类中文 —— 与同行的时间列对齐才便于比对。
+      // 这里只补齐小时位（不换成「1分23秒」这类中文），与同行的时间列对齐才便于比对。
       const em = String(v).match(/^(\d+):(\d{1,2}):(\d{1,2}(?:\.\d+)?)$/);
       v = em
         ? (em[1].padStart(2, '0') + ':' + em[2].padStart(2, '0') + ':' + em[3])
@@ -362,33 +344,25 @@ class Api {
     this.onScanProgress = null;   // 各扫描/重建环节进度回调（main 注入，推送主窗口渲染实时状态）
     this._precheckToken = 0;      // 预检测取消令牌：token 变化即中断旧探测（重置/换路径/手动取消）
     this._inlineProbing = 0;      // 行内预检测进行中计数：后台大探测遇其让路，保证用户操作优先
-    // 过期锁清理移入空闲队列（见 restoreTasks 末尾）：启动期不做同步扫盘。
-    // 锁残留只是历史垃圾，不影响功能 —— 晚清理无妨，但绝不该占用启动路径。
+    // 过期锁清理排入空闲队列（见 restoreTasks 末尾）：启动期不做同步扫盘；锁残留不影响功能，晚清理无妨。
     this._loadAppSettings();      // 应用级设置：settings.db 为主（config 只作兼容回退）
     // ffprobe 探测并发上限：保持低值，避免占用过多 CPU/IO 拖慢整机
     this.probeConcurrency = 4;
     this._videoCache = null;
     this._videoInfoCache = new Map();
     // 成片存在性判定的内存结果（taskId → { v, at }）：由 _prewarmHasOutputAsync 分批异步填充，
-    // 使 snapshotTasks / _taskHasOutput 在恢复期后是**纯内存判定**，不再逐任务碰磁盘。
+    //   使 snapshotTasks / _taskHasOutput 在恢复期后是**纯内存判定**，不逐任务碰磁盘。
     this._hasOutputMemo = new Map();
     // 统一空闲校验队列（见 _idleEnqueue）：启动期不发起批量文件 IO，校验全靠它后台串行完成
     this._idleJobs = [];
     this._idleRunning = false;
     this._idleDelayMs = 50;                                  // 自适应节流间隔（实测反馈驱动）
     this._idleStats = { done: 0, slow: 0, fast: 0, maxMs: 0 };
-    // 启动保护期（「不要冻结窗口，前端全部用缓存渲染，预检测都能后台检测释放，
-    // 这些地方也可以做到」）——照预检测那套「后台检测不冻前台」的模式：
-    // 队列在启动后这段时间内**不消费任何任务**，保证首屏渲染与用户首次操作期间完全不与前台争 磁盘 IO；
-    // 到期后按自适应节流开工，并在有任务运行/前台刚有活动时继续让路。
+    // 启动保护期：照预检测那套「后台检测不冻前台」的模式，队列在启动后这段时间内**不消费任何任务**，保证首屏渲染与用户首次操作期间完全不与前台争磁盘 IO。
     this._idleStartAt = Date.now() + IDLE_BOOT_GRACE_MS;
     this._lastForegroundAt = 0;
-    // 「缓存优先」是**默认行为**，没有"启动快速路径"标志：
-    //   读取一律先命中内存/持久化缓存；指纹校验与重建一律排入空闲队列 —— 后者自带启动保护期
-    //   （`_idleStartAt`）与前台让路（`_lastForegroundAt`），那才是"启动期"的正确落点，有真实语义；
-    //   只有用户主动刷新（force）才绕过缓存真扫。
-    //   ⚠ 不要再用"时间窗口"近似启动期（曾用 `_bootFast` + 60 秒窗口，窗口内外行为不同）：
-    //   会出现「force 刷新被拦下 → 列表变空」「清内存缓存后被持久化旧值读回 → 新配置不显示」两类缺陷。
+    // 「缓存优先」是**默认行为**：读取先命中内存/持久化缓存，指纹校验与重建一律排入空闲队列
+    // （自带启动保护期 `_idleStartAt` 与前台让路 `_lastForegroundAt`，启动期不直接扫盘）。
     this._videoCacheDirty = false; // 缓存内容是否有未落盘变更：无变更时预检测不再重复写整份缓存
     this._videoCacheDirtyKeys = new Set();   // 待写回的路径（增量 upsert）
     this._videoCacheRemovedKeys = new Set(); // 待删除的路径
@@ -400,8 +374,8 @@ class Api {
     this._lnkParser = undefined;   // .lnk 解析器（惰性取底座引擎实现）
     this._txtTree = null;
     // ⚠ 这里**不要**排队 video_cache 失效清理：清理是维护性任务，不该占据启动。
-    //   构造函数里 setImmediate 全量跑会把冷态事件循环冻住几十秒（窗口已画出但点不动）。
-    //   现改为窗口就绪后 15 秒的空闲期增量执行（见 gcVideoCacheIdle：限量 + 细让路 + 批间小睡）。
+    //   全量同步跑会把冷态事件循环冻住，窗口画出来也点不动。
+    //   故排到窗口就绪后 15 秒的空闲期增量执行（见 gcVideoCacheIdle：限量 + 细让路 + 批间小睡）。
     this._txtTreeRoot = null;
     this._projectsCache = null;
     this._projectsInflight = null;   // 进行中的 listProjectsAsync（并发合并，避免同一份扫描跑多遍）
@@ -426,7 +400,7 @@ class Api {
     this.taskSeq = 0;
     this.onTasksChanged = null; // 由 main 进程注入，用于向渲染进程推送任务快照
     this.onVersionsChanged = null; // 由 main 进程注入：配置文件写操作后广播，供前端即时自愈
-    // 排队调度：同一时刻仅运行一个任务，其余按创建顺序排队（由软件安排制作顺序，不再依赖抢锁）
+    // 排队调度：同一时刻仅运行一个任务，其余按创建顺序排队（由软件安排制作顺序，不依赖抢锁）
     this._taskQueue = [];
     this._runningTaskId = null;
     // 计划序号：新建任务入队时递增分配，暂停任务保留、启动任务移除、拖拽/置顶重排后重算。
@@ -443,8 +417,7 @@ class Api {
     return this.storageDir ? path.join(this.storageDir, 'settings.db') : '';
   }
 
-  // Node 引擎根目录：由 main 按形态动态解析传入（源码形态 app\engines，分发形态 resources\Engines）；
-  // 未传入时按本文件所在目录同级探测作为兜底
+  // Node 引擎根目录：由 main 按形态动态解析传入（源码形态 app\engines，分发形态 resources\Engines）；未传入时按本文件所在目录同级探测作为兜底
   get enginesDir() {
     if (this.enginesDirFixed) return this.enginesDirFixed;
     const parent = __dirname;
@@ -458,17 +431,10 @@ class Api {
 
   /**
    * 往任务日志（任务窗口里那份）加一行 —— 全项目唯一入口。
-   *
-   * 为什么收敛：任务日志的写入点有 20 处，且都是裸的 `task.log.push(...)`，
-   * 各处写法不一（有的判空、有的判重、有的先读 restored.log 再 push）。
-   * 散落的代价是「这一行怎么来的」要在 20 个地方各自读懂，加新行时也无从参照。
-   * 统一入口后：判空 / 去重 / 行数上限三件事只在一处维护。
-   *
+   * 判空 / 去重 / 行数上限三件事只在这里维护。
    * @param {object} task 任务对象（需有 log 数组）
    * @param {string} line 一行文本（不含换行）
-   * @param {{dedupe?:boolean, cap?:number}} [o]
-   *   dedupe —— 与最后一行相同则不写（用于「应用退出」这类可能重复触发的事件）
-   *   cap    —— 单任务日志行数上限（默认 2000；超出丢最旧的，防止长任务吃内存）
+   * @param {{dedupe?:boolean, cap?:number}} [o] dedupe：与最后一行相同则不写；cap：行数上限（默认 2000）
    */
   _taskLog(task, line, o) {
     if (!task || !task.log) return false;
@@ -500,8 +466,7 @@ class Api {
   _engineMark(tag, what) {
     try { this._ensureRunLog().engineTaskMark(tag, what); } catch (e) {}
   }
-  // 任务 env 的业务字段快照 —— 复现「成片命名 / 输出目录 / 续跑范围」的唯一凭据，
-  // 任务记录一旦被清除就再也没有别处留存了。
+  // 任务 env 的业务字段快照 —— 还原「成片命名 / 输出目录 / 续跑范围」的唯一凭据，任务记录一旦被清除就再也没有别处留存了。
   _envBrief(env) {
     const E = env || {};
     const keys = ['REPLICA_TXT', 'REPLICA_OUTPUT_DIR', 'BATCH_COUNT', 'BATCH_GROUP', 'BATCH_SUBMIT_TS',
@@ -557,8 +522,7 @@ class Api {
       this.root = newRoot || '';
       return;
     }
-    // 更换工作目录（即使重选相同目录）：仅清内存触发重载，不物理删除文件——
-    // 水印/默认分组数按 root+项目 隔离保存，属设置数据，不能被换目录/清缓存抹掉
+    // 更换工作目录（即使重选相同目录）：仅清内存触发重载，不物理删除文件——水印/默认分组数按 root+项目 隔离保存，属设置数据，不能被换目录/清缓存抹掉
     this._wmCache = null;
     this._wmCacheLoadedRoot = null;
     this.root = newRoot;
@@ -606,12 +570,7 @@ class Api {
   }
 
   // 配置文件写操作统一收口：清缓存 + 广播，前端据此即时自愈版本/日期分支/侧栏徽章。
-  // ⚠ 关键是「刚存的配置前端必须立刻能看到」：
-  //   ① 用户已在交互，此后按真实语义读取，不能继续吃启动期读入的缓存；
-  //   ② 传入具体文件路径时**就地并入**配置树缓存（新增/修改/删除都能立刻反映，且无需全量重扫）；
-  //   ③ 未传路径（删除分支 / 重命名 / 水印批量替换等）→ **清掉持久化配置树**，
-  //      下次读取必然重扫，宁可慢一点也不能显示陈旧内容
-  //      （注意：这类操作常发生在二级/三级目录，**不会改变一级目录 mtime**，靠指纹发现不了）。
+  // ⚠ 关键是「刚存的配置前端必须立刻能看到」：用户已在交互，此后按真实语义读取，不能继续吃启动期缓存。
   _markConfigModified(...paths) {
     const list = paths.filter(Boolean);
     let merged = 0;
@@ -623,9 +582,7 @@ class Api {
     } else {
       // ✅ 并入完整：**保留**更新后的配置树（_upsertTxtTreeEntry 已把它写回持久化）。
       //    ⚠ 这里不要无条件 _invalidateCaches()：会把刚并入并落盘的树清掉 —— 而新增/改动配置
-      //    常发生在二级/三级目录、**不改变一级目录 mtime**（见上方注释）→ 指纹不变 →
-      //    下次读取命中「旧指纹缓存」→ 新配置**突然消失**，必须点刷新（force 真扫）才回来。
-      //    此处只失效「项目列表 / 版本 / 日志」这类派生缓存即可。
+      //    常发生在二级/三级目录、**不改变一级目录 mtime**（见上方注释）→ 指纹不变 → 只能失效「项目列表 / 版本 / 日志」等派生缓存。
       this._projectsCache = null;
       this._projectsInflight = null;
       this._projectsSeq = (this._projectsSeq || 0) + 1;   // 在跑的旧任务结果作废
@@ -637,8 +594,7 @@ class Api {
     if (typeof this.onVersionsChanged === 'function') { try { this.onVersionsChanged(); } catch (e) {} }
   }
 
-  // 配置写操作后把该文件**就地并入**配置树缓存（增量刷新）：
-  // 列表与版本立刻反映新/改/删的配置，无需等下一次全量扫描。返回是否已并入。
+  // 配置写操作后把该文件**就地并入**配置树缓存（增量刷新）：列表与版本立刻反映新/改/删的配置，无需等下一次全量扫描。返回是否已并入。
   _upsertTxtTreeEntry(filePath) {
     if (!Array.isArray(this._txtTree) || this._txtTreeRoot !== this.root) return false;
     const full = path.resolve(String(filePath || ''));
@@ -682,7 +638,7 @@ class Api {
     } catch (e) {}
   }
 
-  // 增量落盘：只写新增/变更的键、删失效键（原实现每次重写整份 JSON）
+  // 增量落盘：只写新增/变更的键、删失效键（不重写整份 JSON）
   _saveScanCache() {
     this._scanDirty = false;
     if (!this._useDbCache()) { this._scanDirtyKeys.clear(); this._scanRemovedKeys.clear(); return; }
@@ -729,22 +685,12 @@ class Api {
     } catch (e) {}
   }
 
-  // 一次性收集根目录下所有非复刻日志 txt（刷新时写入日志缓存）
-  // 返回 { files:[{ project, name, path, date, config }] }
-  // 归属规则：date 取文件路径中「最近的 4 位 MMdd 目录」（日志绝不会存在于别的日期文件夹），
-  //           project 取路径第一级目录（即左侧项目名）。配置与日志都按此规则归一后匹配。
-  //
-  // ⚡ 启动性能（关键）：命中持久化缓存（log_index:<root>）且「根目录树指纹」未变时，
-  //    直接复用缓存返回，**跳过 walkFiles 全量遍历 + 每文件 statSync**。
-  //    原实现虽然 _loadLogCache() 读回了缓存，但紧接着 `const files = []` 丢弃、无条件重扫，
-  //    使持久化缓存形同虚设（冷启动白扫约 6600 个文件、耗时秒级）。
-  //    失效判定用「根目录 + 各一级项目目录的 mtimeMs 摘要」：目录 mtime 对增删子项敏感，
-  //    新增/删除项目或目录即变化；文件内容变化不改目录 mtime，但日志列表只关心「有哪些文件」，
-  //    内容变化不影响本列表（config 归属由路径决定），故无需更细粒度指纹。
+  // 一次性收集根目录下所有非复刻日志 txt（刷新时写入日志缓存）。
+  // 返回 { files:[{ project, name, path, date, config }] }；归属规则：date 取路径中最近的 4 位 MMdd 目录，project 取路径第一级目录。
   _collectLogFiles(force = false) {
     // **缓存优先（默认行为）**：内存 → 持久化缓存直接用，随后排入空闲队列做后台校验；
     // 只有「缓存缺失（首次运行 / 新机器）」或 force（用户主动刷新）才真扫。
-    // 不再有"启动期"专有分支 —— 启动与运行走同一条路，行为不随 60 秒边界变化。
+    // 没有「启动期」专有分支：启动与运行走同一条路，行为不随 60 秒边界变化。
     if (!force) {
       const cached = (this._logCache && this._logCacheRoot === this.root) ? this._logCache : this._cachedLogFiles();
       if (cached && cached.files && cached.files.length) { this._enqueueScanVerify(); return cached; }
@@ -769,8 +715,7 @@ class Api {
     return this._logCache;
   }
 
-  // 日志树指纹：根目录 + 各一级目录（排除项除外）的 mtimeMs 摘要。
-  // 目录增删子项会更新父目录 mtime —— 够用且只读少量目录（非全量 walkFiles）。
+  // 日志树指纹：根目录 + 各一级目录（排除项除外）的 mtimeMs 摘要。目录增删子项会更新父目录 mtime —— 够用且只读少量目录（非全量 walkFiles）。
   _logTreeFingerprint() {
     try {
       const parts = [];
@@ -841,16 +786,8 @@ class Api {
     return h;
   }
 
-  // 一次性收集根目录下所有项目的配置 TXT（每项目仅递归扫描一次）
-  //
-  // ⚡ 启动性能（关键）：加「持久化指纹复用」。原实现是纯内存缓存（this._txtTree），
-  //    跨启动必然失效 → 每次冷启动都要重新 walkFiles(6600 文件) + 对 1055 个 txt
-  //    逐个 statSync + contentHash（readFileSync 读全内容），实测约 31 秒。
-  //    现改为把结果按「目录树指纹」持久化（cache_kv 的 txt_tree:<root>）：
-  //    指纹未变则直接复用，跳过全部遍历与读文件。
-  //    指纹 = 各一级项目目录的 mtimeMs 摘要 —— 目录增删子项会更新其 mtime，
-  //    足以发现「新增/删除配置或目录」；文件内容变更不改目录 mtime，但内容只用于
-  //    去重（同内容配置保留一份），短暂延后一次不影响列表正确性，且下次任一目录变动即自愈。
+  // 一次性收集根目录下所有项目的配置 TXT（每项目仅递归扫描一次）：结果按「目录树指纹」持久化复用。
+  // 指纹 = 各一级项目目录的 mtimeMs 摘要：目录增删子项即变化；指纹未变则跳过全部遍历与读文件。
   _collectAllTxt(force) {
     // **缓存优先（默认行为）**：内存 → 持久化缓存直接用，并排入空闲队列做后台校验；
     // 仅「缓存缺失」或 force（用户主动刷新）才真扫。
@@ -914,21 +851,15 @@ class Api {
   }
 
   // 把「配置树 / 日志索引」的后台校验排入空闲队列（后台检测 + 自愈）。
-  // ⚠ 必须**无条件重建**，不能只靠指纹判变：
-  //   目录树指纹只看「根 + 一级目录 mtime」，而外部新增/删除几乎都发生在
-  //   「项目\月\日」这类**子目录**里 —— 子目录内容变化**不改变父目录 mtime**，
-  //   指纹永远认为"没变"，缓存就一直返回旧列表（表现为「文件明明在、前端就是不显示」）。
-  //   指纹粒度与操作粒度不匹配时不能靠它兜底。
-  //   现行做法：空闲期统一重扫一次（串行、节流、可中断/让路），任何外部变化都会在后台
-  //   被发现并刷新前端；用持久化的 last_full_at 控制频率，避免每次启动都全量遍历。
+  // ⚠ 必须**无条件重建**，不能只靠指纹判变：指纹只看「根 + 一级目录 mtime」，而外部新增/删除
+  //   几乎都发生在「项目\月\日」这类**子目录**里 —— 子目录变化不改变父目录 mtime，指纹发现不了。
   _enqueueScanVerify() {
     this._verifyEnqueue('scanverify', this.root, async () => {
       // 频率控制：距上次全量重扫不足间隔就跳过
       let lastFull = 0;
       try { if (this._useDbCache()) lastFull = Number(this._cacheStore.getKv('scan_full_at:' + this.root) || 0) || 0; } catch (e) { lastFull = 0; }
       if (lastFull && (Date.now() - lastFull) < SCAN_FULL_MIN_INTERVAL_MS) return;
-      // 让路/中断：**只在有任务运行/排队时**中断（执行层）——
-      // 前台活动只影响"何时开始"（队列调度层的 _idleKick），不该让已经开始的重扫半途而废。
+      // 让路/中断：**只在有任务运行/排队时**中断（执行层）——前台活动只影响"何时开始"（队列调度层的 _idleKick），不该让已经开始的重扫半途而废。
       const shouldStop = () => {
         try { return !!(this.hasRunningTask() || this.hasQueuedTask()); } catch (e) { return false; }
       };
@@ -952,9 +883,8 @@ class Api {
   }
 
   // 配置 TXT 树持久化（cache_kv，键 txt_tree:<root>）：存 { fp, items }
-  // fp 为"上次扫描时目录长什么样"的记录，仅供排查；读取不再做指纹比对
+  // fp 为"上次扫描时目录长什么样"的记录，仅供排查；读取不做指纹比对
   // （指纹粒度与写入粒度不匹配，比对反而会命中旧值）——校验统一交给 _enqueueScanVerify。
-  // 读取入口：_cachedTxtTree()（连指纹都不算）。
 
   _saveTxtTree(items, fp) {
     if (!this._useDbCache()) return;
@@ -966,7 +896,6 @@ class Api {
   // ── 启动期只读缓存（「直接用缓存里的内容渲染前端，不要动 磁盘，
   //    哪怕 磁盘里的内容全没了，也是之后再自愈/重新检测的事」）──
   // 缓存命中 → 立即返回；**缓存没有 → 返回 null，由调用方按空列表渲染**，绝不回退到扫描。
-  // 扫描一律走空闲队列（后台、串行、节流），完成后刷新界面 —— 不引入任何"等待/静默期"冻结。
   _cachedTxtTree() {
     if (this._txtTree && this._txtTreeRoot === this.root) return this._txtTree;
     const raw = this._txtTreeCacheRaw();
@@ -1005,19 +934,14 @@ class Api {
     });
   }
 
-
   // 配置树/日志索引发生实质变化后通知前端重拉列表（main 注入 onVersionsChanged → versions_changed）
   _notifyTreeChanged() {
     try { if (typeof this.onVersionsChanged === 'function') this.onVersionsChanged(); } catch (e) {}
   }
 
-  // 扫描缓存是否新鲜（毫秒级）：仅比对目录树指纹，不做任何遍历。
+  // 扫描缓存是否新鲜：仅比对目录树指纹，不做任何遍历。
   // 供 main 判断「启动是否需要弹扫描小窗」——命中则连小窗都不必出现。
   // 扫描缓存是否新鲜（异步版，启动专用）：判定缓存是否可直接用。
-  // 启动期走「快速路径」——只读库、**不算目录树指纹**（指纹要 stat 素材盘，冷态就是那几十秒的来源），
-  // 有缓存即视为新鲜，真正的校验排入空闲队列（_enqueueScanVerify）；退出快速路径后才比对指纹。
-  // 目录树指纹走 fs.promises —— **绝不阻塞主进程事件循环**（同步版曾冻结 117 秒）。
-  // 分段耗时写入 this._lastFreshTiming（{ db, fp, kv, total } 毫秒），由 main 落进 app.timing。
   async isScanCacheFreshAsync() {
     const timing = { db: 0, fp: 0, kv: 0, total: 0 };
     const _all = process.hrtime.bigint();
@@ -1031,10 +955,9 @@ class Api {
       const useDb = this._useDbCache();
       timing.db = _ms(t0);
       if (!useDb) { reason = 'no-db'; return false; }
-      // **不算指纹（默认行为）**：指纹要 stat 根 + 各一级目录，冷态机械盘上就是那几十秒的来源。
-      // 有持久化缓存即视为新鲜 → 主窗口直接显示、扫描小窗不弹；
-      // 真正的校验交给空闲队列（_enqueueScanVerify：无条件重扫 + 频率控制 + 前台让路），
-      // 发现变化再重建并刷新界面（自愈）。只有用户主动刷新（force）才真扫。
+      // **不算指纹（默认行为）**：指纹要 stat 根 + 各一级目录，冷态机械盘上开销明显。
+      // 有持久化缓存即视为新鲜 → 主窗口直接显示、扫描小窗不弹；真正的校验交给空闲队列
+      // （_enqueueScanVerify：无条件重扫 + 频率控制 + 前台让路），发现变化再重建并刷新界面（自愈）。
       t0 = process.hrtime.bigint();
       const rawIdx = this._cacheStore.getKv('log_index:' + this.root);
       const rawTree = this._cacheStore.getKv('txt_tree:' + this.root);
@@ -1068,8 +991,7 @@ class Api {
       const cached = (this._txtTree && this._txtTreeRoot === this.root) ? this._txtTree : this._cachedTxtTree();
       if (cached) { this._enqueueScanVerify(); return cached; }
     }
-    // 只有真要扫时才计算指纹（读取路径不算 —— 那是"启动期零 IO"的前提）：
-    // 指纹随扫描结果一起落库，仅作为"上次扫描时目录长什么样"的记录。
+    // 只有真要扫时才计算指纹（读取路径不算 —— 那是"启动期零 IO"的前提）：指纹随扫描结果一起落库，仅作为"上次扫描时目录长什么样"的记录。
     const fp = await this._logTreeFingerprintAsync();
     this._loadScanCache();
     const out = [];
@@ -1108,8 +1030,7 @@ class Api {
     }
     this._txtTree = out;
     this._txtTreeRoot = this.root;
-    // ⚠ 被中断（用户操作/任务抢占）时**不落盘**：残缺结果会覆盖掉完整缓存，导致别的项目凭空消失。
-    // 下次空闲会自动再补一次（job 未记 last_full_at）。
+    // ⚠ 被中断（用户操作/任务抢占）时**不落盘**：残缺结果会覆盖掉完整缓存，导致别的项目凭空消失。下次空闲会自动再补一次（job 未记 last_full_at）。
     this._txtTreeTruncated = stopped;
     if (this._scanDirty) {
       const prefix = this.root + '\n';
@@ -1137,7 +1058,7 @@ class Api {
     return h;
   }
 
-  // 异步版 listProjects：缓存命中时与同步版等价（毫秒级）；未命中走异步扫描，不阻塞主进程。
+  // 异步版 listProjects：缓存命中时与同步版等价；未命中走异步扫描，不阻塞主进程。
   // 返回值与 listProjects 完全一致（供 IPC / HTTP 路由替换）。
   // 前台活动打点：渲染/读取等前台请求会让空闲队列让路（照预检测的「行内优先、后台让路」）
   _touchForeground() { this._lastForegroundAt = Date.now(); }
@@ -1154,12 +1075,10 @@ class Api {
       try { setImmediate(() => { this._emitScan('mark'); this._warmWatermarkCache(); }); } catch (e) {}
     }
     if (!force && this._projectsCache) return this._projectsCache;
-    // 并发合并：启动预热、托盘唤起、前端 IPC / HTTP 首次加载几乎同时调用，
-    // 不合并则同一份扫描并发跑多遍（各自遍历工作目录 + 读文件），冷态下代价成倍放大。
+    // 并发合并：启动预热、托盘唤起、前端 IPC / HTTP 首次加载几乎同时调用，不合并则同一份扫描并发跑多遍（各自遍历工作目录 + 读文件），冷态下代价成倍放大。
     if (!force && this._projectsInflight) return this._projectsInflight;
     const seq = this._projectsSeq || 0;
-    // ⚠ force 必须**透传给收集器**：否则它们会「指纹未变 → 命中持久化缓存」，
-    //   刷新等于什么都没做（新增配置位于日期子目录，只改变子目录 mtime，一级目录指纹发现不了）。
+    // ⚠ force 必须**透传给收集器**：否则它们会「指纹未变 → 命中持久化缓存」，刷新等于什么都没做（新增配置位于日期子目录，只改变子目录 mtime，一级目录指纹发现不了）。
     const copts = force ? Object.assign({}, opts, { force: true }) : opts;
     const run = (async () => {
       this._emitScan('walk');
@@ -1238,14 +1157,8 @@ class Api {
   }
 
   // ── 项目登记表：软件内新建、但还没有任何 TXT 配置的项目 ──
-  // 为什么需要：项目列表由「扫描到的 TXT」按 pdir 反推（见 _buildProjectsData），
-  //   从软件新建的项目在用户放素材前没有任何 TXT，靠扫描永远不出现；而用户点完
-  //   「添加新项目」就该立刻看到它 —— 故把这类项目登记进 cache_kv（键 proj_reg:<工作根>）。
-  // 自愈：外部把目录删了（手动清理 / 换工作路径 / 盘符变动），下次重建列表时用 existsSync
-  //   核验登记项，目录不在即摘除登记（与缓存 GC 里 txt_tree 的处理同一思路）。
-  // ⚠ 只登记「名字」，路径一律由对应的根现拼 —— 换工作路径后登记表不会张冠李戴。
-  // ⚠ batch 与 mask 是【两套不同的工作根】，登记表必须按 kind 分开存：
-  //   键 = proj_reg:<kind>:<工作根>（kind = batch | mask）
+  // 项目列表按扫描到的 TXT 反推（见 _buildProjectsData），新建项目在放素材前扫不到，故登记进 cache_kv：
+  // 键 = proj_reg:<kind>:<工作根>（batch / mask 是两套工作根，分开存）；只登记名字，路径按当前根现拼。
   _projRegKey(root, kind) { return root ? ('proj_reg:' + (kind || 'batch') + ':' + root) : ''; }
   _loadProjReg(root, kind) {
     const k = this._projRegKey(root, kind);
@@ -1279,8 +1192,7 @@ class Api {
     const cur = this._loadProjReg(root, kind);
     if (cur.includes(n)) this._saveProjReg(root, kind, cur.filter((x) => x !== n));
   }
-  // 核验登记项（批量侧）：目录仍在 → 保留登记（并回报其中「扫描结果里没有的」= 待合并的新建项目）；
-  // 目录已消失 → 就地摘除（自愈）。
+  // 核验登记项（批量侧）：目录仍在 → 保留登记（并回报其中「扫描结果里没有的」= 待合并的新建项目）；目录已消失 → 就地摘除（自愈）。
   _survivingProjReg(scannedNames) {
     const reg = this._loadProjReg(this.root, 'batch');
     if (!reg.length) return [];
@@ -1320,9 +1232,7 @@ class Api {
             const cfg = this.readConfig(versions[0].path, { peek: true });
             // ⚠ 只有**命中缓存**的 peek 才可信：未命中时 readConfig 返回乐观结构（带 `_peek`），
             //   此时"读不出素材路径"只代表**这份配置还没被读过**，不代表它是空白配置。
-            //   不区分就会踩这个坑：任务把配置移入成片文件夹后，正本路径从未被读取过 → 被判成
-            //   「空白配置」→ 前端「空白配置恒置顶」生效 → 表现为「刷新后置顶、再刷新才回位」
-            //   （且与缓存是否刷新无关，所以前几次修缓存都不见效）。
+            //   不区分会把「还没读过」误判成「空白配置」（前端空白配置恒置顶 → 刷新后置顶、再刷新才回位）。
             if (cfg && !cfg._peek) {
               empty = !(cfg.folders || []).some((f) => String(f && typeof f === 'object' ? f.path : f).trim() !== '');
             }
@@ -1337,8 +1247,7 @@ class Api {
       projects.push({ name: path.basename(pdir), mtime, txts });
     }
     projects.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
-    // 合并「软件内新建、尚无 TXT」的项目（项目登记表）：扫描结果里已有的同名项跳过，
-    // 其余作为空项目加入 —— 用户从软件新建后立刻可见（登记表方法见上方说明）
+    // 合并「软件内新建、尚无 TXT」的项目（项目登记表）：扫描结果里已有的同名项跳过，其余作为空项目加入 —— 用户从软件新建后立刻可见（登记表方法见上方说明）
     const _scannedNames = new Set(projects.map((p) => p.name));
     for (const nm of this._survivingProjReg(_scannedNames)) {
       projects.push({ name: nm, mtime: 0, txts: [], isEmptyProject: true });
@@ -1371,8 +1280,7 @@ class Api {
     return new Set([...counter.entries()].filter(([, c]) => c > 1).map(([n]) => n));
   }
 
-  // 从配置树缓存派生版本列表（零磁盘 IO）：项目列表页本来就是这么取版本的，
-  // 这里让 listVersions 在启动期也走同一条路。
+  // 从配置树缓存派生版本列表（零磁盘 IO）：项目列表页就用这条路径取版本，这里让 listVersions 在启动期也走同一条路。
   _versionsFromTreeCache(project, name) {
     const all = this._cachedTxtTree();
     if (!Array.isArray(all) || !all.length) return null;
@@ -1384,11 +1292,7 @@ class Api {
 
   // ⚠ force 的语义（**这条是性能红线，别随手改成恒真**）：
   //   · 默认 false = 走日志索引缓存。**启动/渲染路径必须用它** ——
-  //     P0-基线/verify-bootio.js 断言「版本/配置路径对素材盘的访问为 0 次」，
-  //     恒真会让启动预热直接打出上千次素材盘 IO（实测 1771 次，断言当场失败）。
-  //   · true = 合并前无条件真扫日志索引（约 200ms）。只给**用户主动打开/切换配置**用 ——
-  //     那里的 hasLog 会驱动前端「覆盖当前配置」按钮的禁用，必须基于磁盘真相，
-  //     否则会出现"日志已经删了、按钮却仍然禁用"的死局。
+  //     恒真会让启动预热直接打出上千次素材盘 IO。
   listVersions(project, name, force) {
     // **缓存优先**：能从配置树缓存派生就直接返回（零磁盘访问）；
     // 缓存里没有（首次运行 / 刚新建的配置）才落到下面的目录扫描兜底 ——
@@ -1396,11 +1300,7 @@ class Api {
     const fromCache = this._versionsFromTreeCache(project, name);
     // 每版本是否有可跳日志（缓存命中路径也必须算，否则前端恒判「配置没有对应日志」）。
     // ⚠ hasLog **只在 force 时计算**，非 force 一律留空（[] → 逐版本判定为 false）：
-    //   `_collectLogFiles()` 是「**缓存优先**」而非「缓存必需」—— 日志索引缓存尚未建立时
-    //   （启动预热就是这样）它照样真扫。实测：即便不传 force，这一步也会打出 2 次素材盘 IO，
-    //   足以让「启动期零素材盘访问」的断言失败（P0-基线/verify-bootio.js）。
-    //   消费方只在 force 路径需要 hasLog（打开/切换配置 → 驱动「覆盖当前配置」的禁用），
-    //   其余路径拿到 false 无副作用：前端 !!(undefined) 本就是 false，行为等价。
+    //   `_collectLogFiles()` 是「缓存优先」而非「缓存必需」——未建立缓存时照样真扫、打出素材盘 IO；非 force 路径的消费方拿到 false 无副作用。
     const logs = force ? this._collectLogFiles(true).files : [];
     if (fromCache) {
       fromCache.forEach((v) => { v.hasLog = this._versionHasLog(v, project, name, logs); });
@@ -1410,10 +1310,9 @@ class Api {
     if (!fs.existsSync(pdir) || !fs.statSync(pdir).isDirectory()) return [];
     const key = this.root + '\u0000' + project + '\u0000' + name;
     if (this._versionsCache.has(key)) {
-      // 自动失效：目录级指纹核对——成片夹/日期目录 mtime 变化（新增成片、外部 * 被挪走等）
-      // 说明缓存树过期，失效重扫一次让版本列表自愈（排队任务渐进 -1/-2 无需手动刷新）
+      // 自动失效：目录级指纹核对——成片夹/日期目录 mtime 变化（新增成片、外部 * 被挪走等），说明缓存树过期，失效重扫一次让版本列表自愈（排队任务渐进 -1/-2 无需手动刷新）
       if (this._versionsFp.get(key) === this._versionFingerprint(pdir, name)) {
-        // 防御：命中缓存仍校验磁盘存在性（指纹秒级竞态等极端情况兜底），已删除/迁移的版本决不返回
+        // 防御：命中缓存仍校验磁盘存在性（指纹竞态等极端情况兜底），已删除/迁移的版本决不返回
         const cached = this._versionsCache.get(key);
         const alive = cached.filter((v) => { try { return fs.existsSync(v.path); } catch (e) { return false; } });
         if (alive.length === cached.length) return alive;
@@ -1423,7 +1322,7 @@ class Api {
       this._invalidateCaches();
     }
     const versions = this._buildVersions(pdir, name);
-    // 安全网：磁盘已不存在的版本（删除/迁移）一律过滤，缓存不再返回残留分支
+    // 安全网：磁盘已不存在的版本（删除/迁移）一律过滤，缓存不返回残留分支
     const alive = versions.filter((v) => { try { return fs.existsSync(v.path); } catch (e) { return false; } });
     // 每版本是否有可跳日志：配对锚点是「成片文件夹」
     //   - 成片内配置：仅当同一成片文件夹内存在对应日志才可跳
@@ -1461,12 +1360,8 @@ class Api {
     if (!/^\d{4}$/.test(d)) return false;
     const match = (f) => f.project === project && f.config === name && f.date === d;
     // ★ 0 字节日志不算「有日志」—— 与 _configHasEffectiveLog 必须是**同一口径**。
-    //   为什么：hasLog 现在同时驱动两个决定 —— 前端据此**禁用「覆盖当前配置」**，
-    //   后端 _configHasEffectiveLog 据此**拒绝覆盖请求**。两处不一致就会出现
-    //   「按钮看起来禁用了、请求发出去却被放行」的错位。
-    //   （实测踩过：16:40 那次紧急停止留下的空日志 → 前端判有日志、后端判无 → 覆盖被放行，
-    //     配置内容被清空。两处统一为"非空才算"后，前后端一致。）
-    //   空日志没有配对价值（复刻读它同样是空），忽略它不会削弱复刻的配对保护。
+    //   hasLog 同时驱动前端「禁用覆盖当前配置」与后端「拒绝覆盖请求」两个决定；两处不一致会出现
+    //   「按钮看起来禁用了、请求发出去却被放行」的错位。空日志没有配对价值（复刻读它同样是空）。
     const alive = (f) => { try { return fs.statSync(f.path).size > 0; } catch (e) { return false; } };
     if (v.isExternal) return logs.some((f) => match(f) && alive(f));
     // 成片内：必须与配置位于同一成片文件夹的日志才能跳
@@ -1492,7 +1387,6 @@ class Api {
     // 顺序稳定化：
     // txs 可能来自「增量并入」（新条目追加在末尾）或「全量扫描」（目录遍历序），两者顺序不同，
     // 会让下面 dedupeByDir 的 -1/-2 编号互换 → 同一份配置在两次刷新间位置跳动。
-    // 按路径排序即与全量扫描一致，读取路径与刷新结果因此恒定。
     const byFull = (a, b) => String(a.full).localeCompare(String(b.full), 'zh-CN');
     sources.sort(byFull);
     copies.sort(byFull);
@@ -1510,12 +1404,9 @@ class Api {
     const labels = [...groups.keys()].sort((a, b) => compareDateSortKey(b, a));
     for (const label of labels) {
       const g = groups.get(label);
-      // 同一日期分支下，按「成片文件夹」去重（每夹一份配置，目录含时间，升序即旧→新）：
-      //   - 多个成片文件夹 → 全部序号化，最旧 = <MMdd>-1，依次 -2…（无无后缀正本）
-      //   - 单个成片文件夹 → 无后缀正本 <MMdd>
-      //   - 成片文件夹外的单独配置 → <MMdd>*（isExternal）
+      // 同一日期分支下按「成片文件夹」去重（升序即旧→新）：多个夹全部序号化（最旧 <MMdd>-1，依次 -2…）；单个夹用无后缀 <MMdd>；夹外单独配置为 <MMdd>*（isExternal）。
       const chengpian = dedupeByDir(g.copies);
-      // 外部 * 配置若与任一成片文件夹正本内容完全一致，则被正体覆盖，不再显示（不一致时才同时显示）
+      // 外部 * 配置若与任一成片文件夹正本内容完全一致，则被正体覆盖、不显示（不一致时才同时显示）
       const outsideSrc = g.source;
       const outside = outsideSrc && !chengpian.some((c) => c.hash === outsideSrc.hash) ? [outsideSrc] : [];
       if (chengpian.length > 1) {
@@ -1565,9 +1456,7 @@ class Api {
     return { ok: true, pending, deleted };
   }
 
-  // 配置内容缓存（「将需要 io 的部分全部缓存化，txt 路径以及里面的全部内容」）：
-  //   打开配置 = 一次主键查询 + **一次 stat 校验**，内容直接取缓存（免读整份文件、免解析）；
-  //   指纹不同才回退读文件并更新缓存（否则每次打开都要读全文件 + 解析，IO 为 O(文件大小)）。
+  // 配置内容缓存：打开配置 = 一次主键查询 + 一次 stat 校验，内容直接取缓存（免读文件、免解析）；指纹不同才回退读文件并更新缓存。
   _configFromCacheRow(filePath, row) {
     const raw = row.raw || '';
     let parsed = {};
@@ -1654,17 +1543,8 @@ class Api {
   }
 
   // 「该配置是否已有**有效**日志」—— 配置与日志强联动判定的唯一入口（改名、覆盖保存共用）。
-  // 为什么必须走真扫、且必须忽略 0 字节日志：
-  //   ① **真扫**：这里要拿结论去**拒绝用户**，依据只能是磁盘真相。`_collectLogFiles()` 默认优先
-  //      返回内存/持久化缓存（769-776），后台校验又受 60 秒频率控制；持久化缓存的指纹只覆盖
-  //      「一级项目目录」的 mtime（_logTreeFingerprint），用户删掉成片子目录里的日志**根本改不动它**。
-  //      实测后果：用户照着提示"先处理掉日志"、文件确实删了，判定仍是"有日志"，改不动也覆盖不了。
-  //      本判定只出现在用户主动操作（改名/保存）路径上，非渲染路径，真扫代价可接受；
-  //      真扫会回写缓存，同一次操作里的后续查询一并受益。
-  //   ② **空日志不算**：0 字节日志没有任何配对价值（复刻读它同样是空），却会把两条出口全堵死 ——
-  //      而紧急停止/失败留下的恰恰就是这种空日志（引擎建了文件、首片没做完就中断，
-  //      一个字都没写进去，见 batch/index.js:938 建空文件、1429 每完成一片才追加）。
-  // 配对范围与 _versionHasLog 保持一致：成片内配置只认同目录的日志；外部 * 配置放宽到当天任意位置。
+  // ⚠ 必须真扫：结论用于**拒绝用户**，只能依据磁盘真相；_collectLogFiles() 的缓存指纹只覆盖一级项目目录 mtime，子目录里删日志察觉不到。
+  // ⚠ 0 字节日志不算（与 _versionHasLog 同一口径）：没有配对价值，却会把改名/覆盖两条出口全堵死。
   _configHasEffectiveLog(abs, project, baseName, dir) {
     try {
       this._collectLogFiles(true);                        // ← 无条件真扫：先把缓存刷成磁盘真相
@@ -1679,12 +1559,7 @@ class Api {
     } catch (e) { return false; }
   }
 
-  // 就地改名**当前这一个**配置文件。两条边界：
-  //   ① 不做「配置级改名」（把该配置在其它日期分支的历史版本一并改名）—— 那会把"把这个文件改对"
-  //      变成"整个配置换名"，与场景不符（用户只是在某个日期分支发现名字不对）。
-  //   ② **有对应日志即拒绝**：日志文件名里嵌着配置名（MMdd-HH时MM分-配置名-拼接日志.txt），
-  //      两者强联动（复刻要按名字配对读日志）。与其改名时连带搬日志（动到日志风险更大），
-  //      不如只允许「本来就没有日志可断」的配置改名 —— 判断依据就是现成的 hasLog。
+  // 就地改名**当前这一个**配置文件：不做「配置级改名」（不波及其它日期分支的历史版本，只改用户指定的这个文件）。
   _renameConfigFile(filePath, newName) {
     const abs = path.resolve(filePath);
     const ext = path.extname(abs) || '.txt';
@@ -1700,8 +1575,7 @@ class Api {
     if (hasLog) {
       return { ok: false, error: '该配置已有对应日志（配置与日志按名字配对，复刻依赖它），改名会让日志失去关联；如需改名请先处理掉日志' };
     }
-    // 任务占用保护：非终态任务把它记在 env.REPLICA_TXT 上（续跑也直接读这个路径）——
-    // 改名会让任务读不到配置，故有引用即拒绝，让用户等任务结束后再改。
+    // 任务占用保护：非终态任务把它记在 env.REPLICA_TXT 上（续跑也直接读这个路径）——改名会让任务读不到配置，故有引用即拒绝，让用户等任务结束后再改。
     const busyStates = ['running', 'queued', 'paused', 'interrupted', 'stopped'];
     const busy = [...((this.tasks && this.tasks.values) ? this.tasks.values() : [])]
       .filter((t) => t && busyStates.indexOf(t.status) >= 0);
@@ -1739,12 +1613,8 @@ class Api {
       target = rn.path; renamed = true;
     } else {
       // ★ 强联动保护（最后一道防线）：**已有有效日志的配置，禁止就地覆盖**。
-      //   为什么：日志记录着那次任务实际用了哪些片段，配置名又嵌在日志名里 —— 两者是一对一的
-      //   「任务正本 + 运行记录」。就地覆盖会让配置内容与这份日志脱钩：复刻按
-      //   「日志的结构 + 本配置的素材池」生成，池被改过之后产出的片子不再符合"复刻"的定义；
-      //   而这种改动**不留任何痕迹**（改名至少还有日志名做锚点），用户很难察觉自己做过。
-      //   正确出口是「保存为当日配置」：新名字、新日志，与旧的那份彻底脱钩。
-      //   前端会据此禁用「覆盖当前配置」按钮并给出引导，这里兜住键盘/脚本等绕过路径。
+      //   配置名嵌在日志名里，两者是一对一的「任务正本 + 运行记录」；就地覆盖会让配置内容与该日志脱钩，
+      //   复刻按旧日志结构生成、产出会不符合「复刻」定义，且不留痕迹。正确出口是「保存为当日配置」。
       const project = this._projectOf(target);
       const dir = path.dirname(target);
       if (this._configHasEffectiveLog(target, project, oldBase, dir)) {
@@ -1754,8 +1624,7 @@ class Api {
     const text = this._rewriteText(folders, excludes, watermark);
     fs.writeFileSync(target, text, 'utf-8');
     this._putConfigCache(target, text, this._parseConfigText(target, text));   // 保存即更新内容缓存（下次打开零 IO）
-    // 传入路径 → 就地并入配置树，列表/版本立刻可见（无需重扫）；改名时把旧路径一并传入，
-    // 旧条目并入失败会触发配置树整体作废（比手工摘条目更稳）
+    // 传入路径 → 就地并入配置树，列表/版本立刻可见（无需重扫）；改名时把旧路径一并传入，旧条目并入失败会触发配置树整体作废（比手工摘条目更稳）
     if (renamed) this._markConfigModified(target, filePath);
     else this._markConfigModified(target);
     if (renamed) {
@@ -1782,14 +1651,12 @@ class Api {
     fs.writeFileSync(filePath, text, 'utf-8');
     this._putConfigCache(filePath, text, this._parseConfigText(filePath, text));
     this._markConfigModified(filePath);
-    // 新配置写进了新日期目录，界面上的日期分支就是旧的 —— 必须广播，
-    // 否则左侧仍停在改动前的那个分支，用户要手动切过去才看得见刚保存的配置。
+    // 新配置写进了新日期目录，界面上的日期分支就是旧的 —— 必须广播，否则左侧仍停在改动前的那个分支，用户要手动切过去才看得见刚保存的配置。
     try { this._notifyTreeChanged(); } catch (e2) {}
     return { ok: true, path: filePath };
   }
 
-  // 新增空白配置：今日目录下创建无素材路径的 TXT（与保存为当日配置同目录规则）；
-  // 项目启用主流水印时自动一并写上新配置的水印行
+  // 新增空白配置：今日目录下创建无素材路径的 TXT（与保存为当日配置同目录规则）；项目启用主流水印时自动一并写上新配置的水印行
   newEmptyConfig(project) {
     try {
       if (!this.root || !project) return { ok: false, error: '未指定项目' };
@@ -1834,7 +1701,7 @@ class Api {
       if (mode === 'folder' && !inChengpian) return { ok: false, error: '该配置不在成片文件夹内（外部配置），不能整体删除；请选「仅移除该配置」' };
       if (mode === 'folder') {
         if (dir.length <= root.length) return { ok: false, error: '不允许删除工作根目录' };
-        // 整个文件夹走回收站（可还原），不再递归永久删除
+        // 整个文件夹走回收站（可还原），不递归永久删除
         if (!this._recycleFile(dir)) return { ok: false, error: '移入回收站失败' };
       } else {
         if (mode === 'both') {
@@ -1860,11 +1727,9 @@ class Api {
         try { fs.rmdirSync(cur); } catch (e) { break; }
         cur = path.dirname(cur);
       }
-      // ★ 删除 TXT 后必须刷新**日志索引缓存**：配置与日志同属一批被索引的 TXT，
-      //   删掉任何一个都会让 log_index 缓存过期。而 _collectLogFiles() 默认吃缓存
-      //   （内存 → 持久化；持久化指纹只覆盖「一级项目目录」mtime，删子目录里的文件它察觉不到），
-      //   后果是界面继续挂着已经删掉的日志条目、改名前的日志配对判定也继续看得见它。
-      //   此处就地真扫一次把缓存刷成磁盘真相 —— 删除是低频用户操作，这点代价可接受。
+      // ★ 删除 TXT 后必须刷新**日志索引缓存**：配置与日志同属一批被索引的 TXT，删掉任何一个都会让 log_index 过期。
+      //   而 _collectLogFiles() 默认吃缓存（内存 → 持久化），持久化指纹只覆盖「一级项目目录」mtime，
+      //   删子目录里的文件它察觉不到 → 此处就地真扫一次，把缓存刷成磁盘真相。
       try { this._collectLogFiles(true); } catch (e) {}
       this._markConfigModified();
       return { ok: true };
@@ -1892,11 +1757,8 @@ class Api {
   // ── 数据缓存持久层（<storageDir>\cache.db）──
   // 唯一持久层：Ticks 以 TEXT 精确承载（INTEGER 列读 Int64 会抛 RangeError）、
   // 支持增量写与 backend↔引擎跨进程并发（WAL）。
-  // 旧 JSON 数据由启动期的布局迁移器（engines/base/migrate.js）一次性并入，此处不做 JSON 迁移。
-  // 库不可打开时（极端异常）退化为纯内存：本次会话照常出片与预检测，只是不落盘，也不产生任何回退文件。
 
-  // 作用域位掩码：与 engines/base/cache.js 的 SCOPES 同源（惰性取用，避免构造期依赖引擎目录）；
-  // 取不到时用等价内联值兜底，行为不随加载失败而改变。
+  // 作用域位掩码：与 engines/base/cache.js 的 SCOPES 同源（惰性取用，避免构造期依赖引擎目录）；取不到时用等价内联值兜底，行为不随加载失败而改变。
   get _scopes() {
     if (!this._scopesCache) {
       try { this._scopesCache = require(path.join(this.enginesDir, 'base', 'cache.js')).SCOPES; }
@@ -1955,7 +1817,7 @@ class Api {
   }
 
   // 移入系统回收站（可还原）。两步走：① 同步把原路径改名摘除 —— 调用方（如重跑前清旧产物）
-  // 需要"旧文件立刻不再冲突"，异步送站做不到这一点；② 再异步送回收站。
+  // 需要原路径立刻空出来，异步送站做不到这一点；② 再异步送回收站。
   // 送站失败时文件以 .bak 形态保留，绝不静默永久删除。
   _recycleFile(p) {
     if (!p || !fs.existsSync(p)) return false;
@@ -2018,11 +1880,8 @@ class Api {
   _ticksToStr(v) { return String(v == null ? '' : v); }
 
   // 文件指纹：mtime（Ticks）+ 字节大小。
-  // ⚠ 只比 mtime 不足以判断"素材是否被替换"：Windows 的 CopyFile（含资源管理器粘贴）、
-  //   解压、同步工具都会保留源文件的修改时间 —— 覆盖同名素材后时间戳可能分毫不变，
-  //   指纹不变 → 预检测一直沿用旧结论，表现为"重新覆盖正确文件后仍显示不合格，
-  //   刷新配置/切换配置/刷新预缓存都无效，只有重开软件才好"。
-  //   大小与 mtime 一起比：一次 statSync 同时取到，且分辨率/内容变过的文件大小几乎必变。
+  // ⚠ 只比 mtime 不足以判断"素材是否被替换"：Windows CopyFile / 解压 / 同步工具都会保留源文件修改时间，
+  //   覆盖同名素材后时间戳可能分毫不变；size 与 mtime 一起比（一次 statSync 同时取到，内容变过大小几乎必变）。
   _fileFingerprint(p) {
     try {
       const st = fs.statSync(p, { bigint: true });
@@ -2165,8 +2024,7 @@ class Api {
     try { return Number(fs.statSync(p).size) || 0; } catch (e) { return 0; }
   }
 
-  // 遮罩素材信息：先按「遮罩作用域」查缓存，命中直接用时长；未命中才 ffprobe 并写回缓存。
-  // 遮罩列表会被反复打开，接缓存后不再每次都启动 ffprobe 全量探测。
+  // 遮罩素材信息：先按「遮罩作用域」查缓存，命中直接用时长；未命中才 ffprobe 并写回缓存。遮罩列表会被反复打开，接缓存后不必每次启动 ffprobe 全量探测。
   async _maskMediaInfo(videoPath) {
     const cached = this._fetchScopedVideoInfo(videoPath, this._scopes.mask);
     if (cached) return cached;
@@ -2176,12 +2034,8 @@ class Api {
   }
 
   // 计数认领：缓存未命中的路径（本轮新素材）先尝试从既有条目继承使用计数。
-  // 素材改名 / 移位后不再被当作全新素材重新计数；与任务引擎共用持久层的同一实现，
+  // 素材改名 / 移位后不会被当作全新素材重新计数；与任务引擎共用持久层的同一实现，
   // 保证「刷新预检测」与「跑任务」两条路径行为一致。
-  // 认领成功后原条目的路径整体转到新路径（含计数与作用域标记），旧路径随之消失。
-  // 返回真正发生迁移的条数（已在库中的路径不算）。
-  // 认领使用计数：新路径（素材被替换/移动后）继承既有同字节条目的使用计数。
-  // scopesMask 默认批量|复刻；遮罩素材刷新时传 mask —— 三类归属各自认领，互不干扰。
   _claimUsageForPaths(paths, scopesMask) {
     if (!paths || !paths.length || !this._useDbCache()) return 0;
     const store = this._cacheStore;
@@ -2198,8 +2052,7 @@ class Api {
     return n;
   }
 
-  // 并发探测缺失缓存的视频并写回缓存；返回 path -> info 映射
-  // onProbe(done) 可选：每完成一个视频（含缓存命中）回报累计计数
+  // 并发探测缺失缓存的视频并写回缓存；返回 path -> info 映射；onProbe(done) 可选：每完成一个视频（含缓存命中）回报累计计数
   async _resolveVideoInfos(videoPaths, onProbe) {
     const result = new Map();
     const needProbe = [];
@@ -2228,10 +2081,7 @@ class Api {
     return result;
   }
 
-  // 缓存落盘：只写脏键（增量事务）。
-  // 刻意不做同步写：大缓存下序列化 + write 可达数十毫秒，同步执行会推迟同期 IPC 响应，
-  // 前端表现为行内徽章长时间停在「检测中…」。
-  // full=true 用于「重置后整体替换」——此时内存对象即全量，脏键集合不代表全量。
+  // 缓存落盘：只写脏键（增量事务），不做同步写（大缓存序列化会推迟同期 IPC 响应）。
   async _saveVideoCache(full) {
     const snapshot = this._videoCache;
     // 纯内存态（库不可用）：无需落盘，清脏标记即可
@@ -2261,7 +2111,6 @@ class Api {
   // 失效清理「判定分区」：分出「当场可判」与「需核验文件是否存在」两组。
   // 免 IO 是本函数的意义：本轮刚枚举过的路径（knownPaths）必然存在，无需再 stat；
   // 非当前 root 的残留条目直接判删，同样无需 stat。只有两者都不适用（手动清理、目录已从配置移除）
-  // 才落到 verify —— 这正是把「数千次同步 stat」压缩成「通常为零」的关键。
   _videoCacheGcPlan(knownPaths) {
     const c = this._videoCache;
     const verify = [];
@@ -2276,8 +2125,6 @@ class Api {
   // video_cache 失效清理（异步分批）：核验「文件是否仍存在」，不存在只置位、不删除。
   // 保留期内的条目仍留在库中 —— 素材移位后新路径才有机会认领它的使用计数；
   // 到期仍不存在才真删；文件重新出现则清除置位（复活），计数一并保留。
-  // 每 YIELD 条让出一次事件循环：主线程始终能响应 IPC，前端不再出现长时间「检测中…」。
-  // 判定分区由持久层给出（库走 gcPlan，纯内存态走 _videoCacheGcPlan），语义一致。
   async _gcVideoCache(knownPaths, opts) {
     if (!this.storageDir) return 0;
     const limit = Number(opts && opts.limit) > 0 ? Number(opts.limit) : 0;   // 0 = 不限量（手动入口）
@@ -2292,8 +2139,7 @@ class Api {
     const list = (limit > 0 && all.length > limit) ? all.slice(0, limit) : all;
     const _t = Date.now();
     const gone = [], back = [];
-    // ⚠ 让路粒度 24（不要再放大）：冷态下一次让路前最多 24 次随机 IO —— 256 次足以把机械盘队列打满、
-    // 连带主线程一起冻住几十秒。
+    // ⚠ 让路粒度 24（不要再放大）：冷态下一次让路前最多 24 次随机 IO，再多会把机械盘队列打满、连带冻住主线程。
     const YIELD = 24;
     let yields = 0;
     // 阶段 5：接入统一让路查询（_verifyEnqueue 提供的 ctx.shouldYield）——
@@ -2314,8 +2160,7 @@ class Api {
         if (busy || yields % 4 === 0) await new Promise((r) => setTimeout(r, busy ? 30 : 10));   // 每 4 批让磁盘喘一口
       }
     }
-    // 记录「这批刚核验过」→ 有效期内（默认 7 天）不再重复访问磁盘：
-    // 冷启动 IO 总量因此与「过期条数」成正比，而不是与库的大小成正比（本机库内 7269 条）。
+    // 记录「这批刚核验过」→ 有效期内（默认 7 天）不重复访问磁盘：冷启动 IO 总量与过期条数成正比，而非库大小。
     if (store && store.markVerified && list.length) { try { store.markVerified(list, Date.now()); } catch (e) {} }
     if (this._lg && (limit > 0 || (opts && opts.idle))) {
       this._lg('SYS', 'cache.gc',
@@ -2335,10 +2180,9 @@ class Api {
     }
     const expired = plan.expired || new Set();
     const stillMissing = gone.filter((p) => !expired.has(p));
-    // 到期回收**不依赖本次核验**：missing_since 已经把「文件不在了」记在库里，
-    // 到期与否纯看时间，无需再 stat。原实现写成 `gone ∩ expired` 是建立在
-    // 「每次都会重验所有 missing 条目」的前提上 —— TTL 免重验后那个前提不成立，
-    // 结果就是到期条目永远删不掉（内部回归用例 抓到的正是这个）。
+    // 到期回收**不依赖本次核验**：missing_since 已把「文件不在了」记在库里，到期与否纯看时间，无需再 stat。
+    // 不可写成 `gone ∩ expired`：那建立在「每次都会重验所有 missing 条目」的前提上，
+    // TTL 免重验后前提不成立，到期条目会永远删不掉。
     const remove = Array.from(expired);
     let removed = 0;
     try {
@@ -2363,12 +2207,9 @@ class Api {
   }
 
   // ── 缓存治理：自动清理（保守 + 保留期）· 构成统计 · 手动清理 ──
-  // 口径：
-  //   ① 保守规则 —— 只删「指向已不存在目录/文件」的条目：客观失效，绝不误删仍在用的缓存；
-  //   ② 保留期   —— 内容缓存（视频/目录/TXT 条目）超过 cache_keep_days 未更新也清理。
-  //                 缓存可再生，不影响成片与配置；任务记录与运行日志不属于「内容缓存」，不在此列。
-  //   ③ 触发     —— 启动后空闲期（节流 ≥24h）+ 库体积超阈值；
-  //   ④ 释放显著 → VACUUM 回收页碎片（会重写库文件，必须留在空闲期执行）。
+  // 口径：① 只删「指向已不存在目录/文件」的条目（客观失效，绝不误删仍在用的缓存）；
+  //   ② 内容缓存超 cache_keep_days 未更新也清理（任务记录与运行日志不在此列）；③ 启动后空闲期触发 +
+  //   库体积超阈值；④ 释放显著时 VACUUM 回收页碎片（必须留在空闲期执行）。
   _cacheKeepDays() {
     const n = parseInt(this.config && this.config.cache_keep_days, 10);
     return (Number.isFinite(n) && n >= 0) ? n : 30;
@@ -2448,7 +2289,7 @@ class Api {
     // ⑤ video_cache 的失效条目沿用既有 GC（missing_since 超期回收）
     try { removed += (await this._gcVideoCacheNow()) || 0; } catch (e) {}
     // ⚠ VACUUM 的条件**不能**是「删除后文件是否立即变小」—— SQLite 删除只把页释放进 freelist，
-    //   文件大小不变（实测移除 3197 条后仍 56.2MB）；只有 VACUUM（并截断 WAL）才真正回收。
+    //   文件大小不变（移除大量条目后大小几乎不变）；只有 VACUUM（并截断 WAL）才真正回收。
     if (removed > 0) { try { store.vacuum(); } catch (e) {} }
     const size = store.dbSizeBytes();
     const out = { at: now, removed, freed: Math.max(0, before - size), size };
@@ -2485,13 +2326,7 @@ class Api {
   }
 
   // ── A6（「内置FFmpeg与数据目录自维护·方案」§五）：数据目录清理 ──
-  // 口径：**宁少勿多，绝不误伤**。
-  //   · 只清「可再生的内部产物」与「历史残留」；成片、备份、日志一律不碰；
-  //   · 日志是事后唯一证据→ 只展示体积、永不清理，按各自保留期自清；
-  //   · ⚠ **在跑 / 排队 / 暂停 / 失败 / 停止的任务，其 TXT 快照是「启动前还原配置」与「续跑」的
-  //     唯一依据 —— 必须保留**。这是本功能最容易踩的坑：一键清理若把排队任务的快照清掉，
-  //     那些任务启动时就拿不到自己的配置了。
-  //   · ffmpeg\ 仅在「当前正用它」时不可清，换过组件目录的用户可据此回收（本机 310 MB）。
+  // 口径：**宁少勿多，绝不误伤** —— 只清可再生的内部产物与历史残留，成片、备份、日志一律不碰。
   _ddSize(p) {
     try { const st = fs.statSync(p); return st.isFile() ? st.size : 0; } catch (e) { return 0; }
   }
@@ -2524,11 +2359,8 @@ class Api {
     const add = (o) => items.push(Object.assign(
       { key: '', label: '', count: 0, bytes: 0, files: [], cleanable: true, reason: '', desc: '' }, o));
     // ── 扫描根 = 当前数据根 + 历史数据根 ─────────────────────────────────
-    // 为什么要有「历史数据根」这一维：数据目录已固定为 %APPDATA%\Video Lab，而程序目录里
-    // 可能仍留着更早版本写入的 ffmpeg\ / preview\ / txt-snap\ / log\ 等 —— 它们不在当前
-    // 数据根之下，只扫 <storageDir> 就永远看不见、也无法列入清单交给用户处理。
-    // ⚠ 同一 key 下**合并所有根的文件**（当前根在前）：用户勾一次即可连旧版残留一起清掉，
-    //   不必分辨某个文件究竟躺在哪一份数据根里；展示侧用 legacyN 标注来源。
+    // 程序目录里可能仍留着更早版本写入的 ffmpeg\ / preview\ / txt-snap\ / log\ 等，只扫 <storageDir> 看不见。
+    // ⚠ 同一 key 下**合并所有根的文件**（当前根在前），用 legacyN 标注来源；用户勾一次即可连旧版残留一起清。
     const roots = [dir];
     for (const d of (this._legacyDirs || [])) {
       try {
@@ -2563,13 +2395,9 @@ class Api {
     } catch (e) {}
 
     // ② TXT 提交快照：只清「任务记录已不存在 / 任务已完成」两类（含旧版本数据根里的残留）。
-    //   ⚠ 不按时间清理 —— 失败 / 停止 / 中断的任务会常驻在任务列表里，用户可能很久以后
-    //     才想起要续跑；那时快照若已被按时间删掉，配置就还原不出来了。
-    //     快照的寿命完全跟随任务记录：**任务在，快照就在；用户清除任务时才一并删除**。
-    //     （单条清除走 clearTask、统一回收走 persistTasks，两处都会删，不需要这里兜时间。）
+    //   ⚠ 不按时间清理：失败 / 停止 / 中断的任务会常驻列表，可能很久后才续跑，快照删了配置就还原不出来。
     try {
-      // ⚠ 用绝对路径列表（跨根）：旧版本数据根里的快照，其任务必然已不在当前任务表内，
-      //   会落到 dead 分支 —— 正是我们要的；仍在跑/排队的（跨根同名）照旧保留。
+      // ⚠ 用绝对路径列表（跨根）：旧版本数据根里的快照，其任务必然已不在当前任务表内，会落到 dead 分支 —— 正是我们要的；仍在跑/排队的（跨根同名）照旧保留。
       const all = walkRoots('txt-snap', (n) => /\.txt$/i.test(n));
       const dead = [], keep = [];
       for (const p of all) {
@@ -2579,8 +2407,7 @@ class Api {
         if (!t || t.status === 'done') dead.push(p);
         else keep.push(n);              // 失败/中断/停止/暂停/在跑：续跑与启动前还原还要用
       }
-      // ⚠ 必须写 files: dead —— 这条曾是 `files` 简写（该作用域无此变量），
-      //   ReferenceError 被外层 catch 静默吞掉，导致整项从清单里消失且毫无提示（已被隔离测试抓出）。
+      // ⚠ 必须显式写 `files: dead`（该作用域无此变量）：写错会 ReferenceError 并被外层 catch 静默吞掉，导致整项从清单里消失且毫无提示。
       add({ key: 'txtsnap', label: 'TXT 提交快照（已无用）', files: dead, legacyN,
         desc: '快照只在任务启动前用于还原配置；任务记录已不存在或任务已完成时它再无用途'
           + (legacyN ? '；另含程序目录里的遗留文件' : '') });
@@ -2633,8 +2460,7 @@ class Api {
           : (usedN ? '' : '没有发现可回收的组件目录') });
     } catch (e) {}
 
-    // ⑥⑦ 只展示不清理的两项：让用户知道它们的去向，免得以为"没清干净"
-    // ⚠ 统计跨根（旧版本数据根里同样有 log\ 与 backup\）—— 否则用户会以为"旧目录里没东西"
+    // ⑥⑦ 只展示不清理的两项（让用户知道它们的去向）：统计跨根（旧版本数据根里同样有 log\ 与 backup\）。
     try {
       const lg = [];
       for (const r of roots) { try { for (const p of this._ddWalk(path.join(r, 'log'))) lg.push(p); } catch (e) {} }
@@ -2651,8 +2477,7 @@ class Api {
         desc: '在「视频处理」设置里开启自动清理并按保留天数处理' });
     } catch (e) {}
 
-    // ⑧ 旧版更新包残留：≤2.5.0 便携版「下载更新」会把便携包 zip 落到程序目录，
-    //    用户按提示解压覆盖后那份 zip（及其分卷）就留在原地了 —— 少数几百 MB 到 GB 级。
+    // ⑧ 旧版更新包残留：≤2.5.0 便携版「下载更新」落在程序目录的便携包 zip（含分卷），解压覆盖后即无用途。
     try {
       const files = [];
       for (const r of roots) {
@@ -2668,9 +2493,8 @@ class Api {
         desc: '更新时下载落地的便携包（含分卷）；这类包已无用途，可安全回收' });
     } catch (e) {}
 
-    // ⑨ 旧版缓存 JSON：布局改造前使用的独立缓存文件（别名见 engines/base/migrate.js 的 ALIASES）。
-    //    迁移只把它们合并进三库并暂存目录，**落在数据根上的那些没人管**（migrate 只认 Cache\/Config\）
-    //    —— 数据早已并入三库，文件本身可回收。
+    // ⑨ 旧版缓存 JSON（布局改造前的独立缓存文件，别名见 engines/base/migrate.js 的 ALIASES）：数据已并入三库，
+    //    migrate 只认 Cache\/Config\，落在数据根上的那些需在此回收。
     try {
       const RE = /^(scan_cache|video_lab_scan_cache|scan-cache|log_cache|video_cache|usage_cache|task_cache|task_snapshot|mask_cache|mask_session|Batch|watermark_cache|Mask|mask_default_dir|clip_cache)\.json$/i;
       const files = [];
@@ -2687,7 +2511,7 @@ class Api {
         desc: '内容已并进 settings.db / cache.db 的独立缓存 JSON，文件本身可安全回收' });
     } catch (e) {}
 
-    // ⑩ 更早的脚本版（PS1 时代）残留：与新架构完全无关，只在旧数据根里出现
+    // ⑩ 脚本版（PS1 时代）残留：与新架构无关，只在旧数据根里出现
     try {
       const files = [];
       for (const r of roots) {
@@ -2724,11 +2548,8 @@ class Api {
     };
   }
   // 执行清理：一律进回收站（可还原，遵循项目硬约束）；清完重新扫描，返回最新状态。
-  // ⚠ 刻意**不用** `_recycleFile`：它为了"让原路径立刻消失"会先把文件改名成 `*.bak`，而送站是异步的 ——
-  //   后果有二：① 紧接的复扫仍会看到那个 `*.bak`（又被当成「配置备份残留」列出来，读数不准）；
-  //   ② 送站失败时残渣会永久留在目录里，下次扫描继续列出，形成清不掉的死循环。
-  //   这里直接对**原路径**送站并 **await 真实结果**：成功才算移除，失败则保留原文件（下次仍可重试），
-  //   既不产生改名残渣，也不静默永久删除。
+  // ⚠ 刻意**不用** `_recycleFile`：它会先把文件改名成 `*.bak` 再异步送站 —— 紧接的复扫会把 `*.bak`
+  //   当成「配置备份残留」（读数不准），送站失败时还会留下清不掉的残渣；这里直接对原路径送站并 await 结果。
   async dataDirClean(keys) {
     // 容错：单个键也可以直接传字符串（避免"参数形状不对 → 静默清 0 项"的哑失败）
     const want = (Array.isArray(keys) ? keys : (keys === undefined || keys === null ? [] : [keys])).map(String);
@@ -2747,12 +2568,10 @@ class Api {
         if (ok) { removed++; freed += sz; }
       }
     }
-    // 空目录顺手收掉：只收「整目录都是可清项」的那两个（preview / ffmpeg）——
-    // 否则清完会留下空文件夹，用户看不出到底清没清。**txt-snap 绝不整目录动**：
-    // 里面可能还有在跑/排队任务的快照（它们不在本次可清清单里）。
+    // 空目录顺手收掉：只收「整目录都是可清项」的那两个（preview / ffmpeg），否则清完会留下空文件夹。
+    // **txt-snap 绝不整目录动**：里面可能还有在跑/排队任务的快照（它们不在本次可清清单里）。
     try {
-      // 跨根收空壳：历史数据根里的 preview\ / ffmpeg\ 清空后同样要收回，
-      // 否则用户在旧目录里会看到"清完了但文件夹还在"，以为没清干净。
+      // 跨根收空壳：历史数据根里的 preview\ / ffmpeg\ 清空后同样要收回，否则旧目录里会留下空文件夹。
       const bases = [String(this.storageDir || '')].concat(this._legacyDirs || []);
       for (const base of bases) {
         for (const n of ['preview', 'ffmpeg']) {
@@ -2768,17 +2587,15 @@ class Api {
         '清理数据目录 · 移除 ' + removed + ' 项 · 释放 ' + this._humanSize(freed),
         { keys: picked.map((it) => it.key), removed, freed });
     } catch (e) {}
-    // wanted 一并回传：调用方据此区分「没勾选任何项」与「勾了但都被保护/已不存在」——
-    // 后者若默不作声，就成了又一次静默失败。
+    // wanted 一并回传：调用方据此区分「没勾选任何项」与「勾了但都被保护/已不存在」，后者不能默不作声。
     const after = this.dataDirScan();
     return Object.assign({ ok: true, removed, freed, wanted: want.length }, after);
   }
 
-  // 启动后空闲期的失效清理：**入队**（不分冷热），由空闲队列串行 + 自适应节流执行；
-  // 剩下的条目留给后续轮次 —— 清理是维护任务，慢一点没有代价，但绝不能把界面冻住。
+  // 启动后空闲期的失效清理：**入队**（不分冷热），由空闲队列串行 + 自适应节流执行；剩下的条目留给后续轮次 —— 清理是维护任务，慢一点没有代价，但绝不能把界面冻住。
   async gcVideoCacheIdle(perJob) {
-    // **入队**，不再一次性跑 600/全量：队列串行单发 + 自适应节流，慢盘自动放慢、快盘自动加速，
-    // 因此不需要事先判断冷热。剩余条目留给后续轮次（自愈逐步收敛）。
+    // **入队**：队列串行单发 + 自适应节流（慢盘自动放慢、快盘自动加速），因此不需要事先判断冷热；
+    // 剩余条目留给后续轮次（自愈逐步收敛）。
     const N = Number(perJob) > 0 ? Number(perJob) : 4;      // 每条 job 核验的路径数
     const MAX_JOBS = 200;                                    // 每轮最多排入的 job 数（避免队列过长）
     const store = this._useDbCache() ? this._cacheStore : null;
@@ -2809,7 +2626,7 @@ class Api {
     return false;
   }
 
-  // .lnk 目标解析：直接读二进制（不再 spawn pwsh —— 预检测剩余的数百毫秒主要来自这里）。
+  // .lnk 目标解析：直接读二进制（不 spawn pwsh，避免进程启动开销）。
   // 解析器与 batch 模块共用底座实现（engines/base/lnk.js）；失败一律降级为空串，不中断预检测。
   _parseLnkTarget(lnk) {
     if (this._lnkParser === undefined) {
@@ -2850,7 +2667,7 @@ class Api {
   }
 
   // 批量解析 .lnk 快捷方式目标（与视频批量脚本语义一致）：返回 { lnkPath: targetPath }；
-  // 解析失败/失效返回空对象降级，不影响预检测其余流程。纯内存操作，同步即可（不再有 pwsh 进程开销）。
+  // 解析失败/失效返回空对象降级，不影响预检测其余流程。纯内存操作，同步即可（无 pwsh 进程开销）。
   _resolveShortcutTargets(paths) {
     if (!paths || !paths.length) return {};
     const { out, todo } = this._lnkSplit(paths);
@@ -2862,7 +2679,7 @@ class Api {
     return out;
   }
 
-  // 保留异步入口：预检测/重置等调用方无需改动；内部已改为纯内存解析，不再阻塞主线程（原 spawnSync 最坏阻塞 10s）
+  // 保留异步入口：预检测/重置等调用方无需改动；内部为纯内存解析、不阻塞主线程。
   async _resolveShortcutTargetsAsync(paths) {
     return this._resolveShortcutTargets(paths);
   }
@@ -3001,8 +2818,7 @@ class Api {
         if (p) pathSet.add(p);
       }
     }
-    // 遮罩模式登记的素材目录（含手动添加的项目外路径）一并纳入刷新范围 ——
-    // 增量探测成本低，用户点一次即可同时刷新批量与遮罩的预缓存，不必分两处各点一次
+    // 遮罩模式登记的素材目录（含手动添加的项目外路径）一并纳入刷新范围 ——增量探测成本低，用户点一次即可同时刷新批量与遮罩的预缓存，不必分两处各点一次
     for (const p of this._maskSessionDirs()) pathSet.add(p);
     const seen = new Set();
     const allVideos = [];
@@ -3041,8 +2857,7 @@ class Api {
     if (envG) return envG;
     this._videoCache = {};
     this._videoInfoCache = new Map();
-    // 不在开始时删除物理缓存：探测全部完成后才经 _saveVideoCache 原子替换覆盖原缓存；
-    // 若中途取消/异常，原缓存文件保持有效可复用，未完成的探测结果不落盘。
+    // 不在开始时删除物理缓存：探测全部完成后才经 _saveVideoCache 原子替换覆盖原缓存；若中途取消/异常，原缓存文件保持有效可复用，未完成的探测结果不落盘。
 
     // 收集所有配置指向的素材路径（跨路径去重）
     const allVideos = await this._gatherAllVideos();
@@ -3072,8 +2887,7 @@ class Api {
     return { ok: true, total, valid, invalid: total - probed, cancelled };
   }
 
-  // 仅刷新预缓存：不删缓存、不重置，只对「缺失或 mtime 已变」的视频重新探测更新；
-  // 命中（缓存有效）的路径直接跳过，进度按全量候选回报（起始即跳过数）
+  // 仅刷新预缓存：不删缓存、不重置，只对「缺失或 mtime 已变」的视频重新探测更新；命中（缓存有效）的路径直接跳过，进度按全量候选回报（起始即跳过数）
   async refreshPrecache(onProgress) {
     const envG = this._envGuard('refresh_precache');
     if (envG) return envG;
@@ -3112,13 +2926,8 @@ class Api {
     } else { await this._saveVideoCache(); } // 已完成的增量结果才写入缓存；取消/中断保留原缓存
     report({ done: base + probed, total, finished: true, cancelled });
     // 失效清理放到后台执行（用户主动点刷新即清，不受后台 1h 节流限制）。
-    // 传入本次刚枚举出的路径集合：这些文件必然存在，GC 直接判「保留」，不再逐条 fs.stat
-    // （同步 existsSync 会占住主线程数秒～数十秒，把紧随其后的行内预检测 IPC 一起堵住，
-    //  前端表现为刷新完成后徽章仍长时间停在「检测中…」）；剩余候选项也已异步分批并让路事件循环。
-    // 遮罩素材：单独认领使用计数并落库标注 mask 作用域 ——
-    // 作用域位掩码即归属标记（与批量/复刻分开，同一素材多模式共用时按位或累加）；
-    // 它们已在 allVideos 中，失效清理不会误判为「非当前 root 的残留」而删除；
-    // 素材被暂时删除/替换时，DB 侧只置 missing_since 走软删除，并在保留期内等待新路径认领。
+    // 传入本次刚枚举出的路径集合：这些文件必然存在，GC 直接判「保留」，不逐条 fs.stat
+    // （同步 existsSync 会占住主线程，堵住紧随其后的行内预检测 IPC）。
     if (!cancelled) {
       const maskFiles = [];
       for (const d of this._maskSessionDirs()) {
@@ -3175,7 +2984,7 @@ class Api {
 
   // 收集根目录下所有属于某复刻模式的日志文件（命名形如 MMdd-模式名日志.txt）
   // 复刻日志清单：**结果缓存化**（不要直接 walkFiles 全量遍历）—— `_buildProjectsData` 会为
-  // 两种复刻模式各调一次，未缓存时启动期可达数千次 readdirSync。
+  // 两种复刻模式各调一次，未缓存时启动期 readdirSync 次数很多。
   _replicaLogFiles(modeName) {
     const esc = String(modeName || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const pat = new RegExp('^\\d{4}-' + esc + '日志\\.txt$');
@@ -3277,8 +3086,6 @@ class Api {
   // ── 成片名搜索索引：仅索引日志解析出的成片条目（video/clips/watermark/log_path）。
   //    以「配置目录」为单位按目录 mtime 失效，命中直接读内存，未命中重扫该目录；
   //    与数据缓存同库（cache.db 的 clip_index 表），冷启动直接复用，避免每次搜索全量读盘解析。
-  //    旧数据由布局迁移器并入（见 engines/base/migrate.js）。
-  // 打开索引所在连接：与数据缓存同库，直接复用其连接；库不可用时返回 null → 索引退化为纯内存模式
   _openClipDb() {
     try {
       if (!this._useDbCache() || !this._cacheStore) return null;
@@ -3329,8 +3136,7 @@ class Api {
     return entries;
   }
 
-  // 重新检测配置时全量重建索引并落盘（后续搜索/日志列表直接命中，无需再逐目录解析）
-  // onStep(done,total)：每批目录解析完回调一次（供实时进度），末批后落盘
+  // 重新检测配置时全量重建索引并落盘（后续搜索/日志列表直接命中，无需再逐目录解析），onStep(done,total)：每批目录解析完回调一次（供实时进度），末批后落盘
   _rebuildClipIndex(onStep) {
     this._loadClipIndex();
     this._clipIndex.clear();
@@ -3418,8 +3224,7 @@ class Api {
       const list = this._replicaLogFiles(mode).map((f) => {
         const name = path.basename(f);
         const date = name.slice(0, 4);
-        // 分支标签带项目名（MMDD-项目名）：同一天多个项目都做过复刻时，仅凭 MMDD 分辨不出是哪个项目
-        //。项目名取相对根目录的第一段目录。
+        // 分支标签带项目名（MMDD-项目名）：同一天多个项目都做过复刻时，仅凭 MMDD 分辨不出是哪个项目。项目名取相对根目录的第一段目录。
         const proj = this._projectOf(f);
         return { path: f, name, date, label: proj ? (date + '-' + proj) : date };
       });
@@ -3632,8 +3437,7 @@ class Api {
     return { outDir: path.join(base, month, day, mode), mode };
   }
 
-  // 复刻任务的成片输出目录：按提交日期推算复刻产物目录（月份/MMdd/模式目录）；
-  // 目录不存在即明确报错「未生成」，绝不退而求其次指向源日志目录（那里是原始日志与素材）
+  // 复刻任务的成片输出目录：按提交日期推算复刻产物目录（月份/MMdd/模式目录）；目录不存在即明确报错「未生成」，绝不退而求其次指向源日志目录（那里是原始日志与素材）
   taskReplicaOutputDir(taskId) {
     const t = this.tasks.get(taskId);
     if (!t) return { ok: false, error: '任务不存在' };
@@ -3649,8 +3453,7 @@ class Api {
   // ── 任务 TXT 快照 ──
   // 引擎执行成功后会「把 TXT 移入成片目录作为正本」，而 TXT 路径由「项目/月/MMdd/配置名」决定：
   // 同一配置名在同一天提交多个任务时指向同一个文件，前一个任务把它搬走后，后一个任务就没有 TXT 可用；
-  // 排队期间重新生成配置又会覆盖该文件，让先提交的任务用到后改的配置。
-  // 故入队时固化一份任务专属副本，启动前按快照还原（原位内容与快照一致则跳过），两个问题一并解决。
+  // 排队期间重新生成配置又会覆盖该文件。故入队时固化一份任务专属副本，启动前按快照还原（原位内容与快照一致则跳过）。
   _txtSnapPath(taskId) {
     return this.storageDir ? path.join(this.storageDir, 'txt-snap', String(taskId) + '.txt') : '';
   }
@@ -3702,12 +3505,7 @@ class Api {
     };
     this.tasks.set(id, task);
     this._snapshotTaskTxt(task);
-    // 任务参数快照 → 既有 app-<date>.log（**不另开文件种类**）。
-    // ⚠ 为什么不独立成 task-*.log：.log 一族的定位是「机器看的运行日志」，
-    //   再按"任务"切一种出来，就与 app/engine 两类职责重叠 —— 事后排查也要多点开一份。
-    //   runlog 的分片机制（超长不截断、以 ↳[i/n] 续行）本来就能承载完整快照，语义不丢，
-    //   且字段化后正好是"给机器读"的形态。
-    // ⚠ 环境型任务（批量拼接 / 遮罩叠加 / 复刻）没有 spec 对象，快照由 env 派生。
+    // 任务参数快照 → 既有 app-<date>.log（**不另开文件种类**）：.log 族按 app/engine 划分职责，不按任务另开一类。
     try {
       if (env && typeof env === 'object' && !env.TOOL_SPEC) {
         this._lg('RUN', 'task.spec', '任务参数快照 · ' + title, { spec: this._taskSpecTextEnv(task, title, env) });
@@ -3722,10 +3520,7 @@ class Api {
     return String(base || '').replace(/（续跑）\s*$/, '').trim() + '（续跑）';
   }
 
-  // 续跑任务继承原任务的「失败依据」。
-  // 为什么必须继承：续跑任务若在早期步骤失败（如续跑过滤），它自身既无失败记录也无进度
-  // （total 初始为 0）→ 前端判定「无失败可续」，只给「重新开始」，用户被迫整批重做。
-  // 把失败序号 / 失败记录 / 进度总量一并带过去，任何一次续跑失败都不会再把「可继续」的能力弄丢。
+  // 续跑任务继承原任务的「失败依据」：否则续跑任务早期步骤失败时自身无失败记录、total=0，前端会判定「无失败可续」只给「重新开始」，整批被迫重做。
   _inheritResumeBasis(task, t, env) {
     try {
       if (Array.isArray(t.failedIndices) && t.failedIndices.length) {
@@ -3739,8 +3534,6 @@ class Api {
       // ── 本批进度视角：续跑任务本次只做 N 片，但卡片要能同时表达「本批」的完成度 ──
       // batchTotal    = 本批总量（整批要出的片数；续跑不改变它）
       // batchBase     = 本次续跑开始前本批已产出的片数（= 本批总量 − 本次待补数）
-      // resumeIndices = 本次补做的绝对序号（供卡片标注 #4 #6 #20）
-      // total         = 本次视角的分母（本次补做数）
       const batchTotal = Number((env || {}).BATCH_COUNT) || Number((t.progress && t.progress.batchTotal)) || 0;
       const onlyIdx = String((env || {}).BATCH_ONLY_INDEX || '').split(';')
         .map((x) => parseInt(x, 10)).filter((n) => Number.isInteger(n) && n > 0);
@@ -3766,12 +3559,9 @@ class Api {
 
   // 任务成片文件夹：批量任务按提交时刻+配置名精确推算（与脚本实际输出目录一致）；
   // 其余类型取源 TXT 所在目录下以「成片」结尾的子目录。
-  // 找不到即返回空串：绝不回退成源目录 —— 源目录放着原始日志与素材，
-  // 一旦被当成成片目录用于打开/删除，会直接误伤业务文件。
+  // 找不到即返回空串：绝不回退成源目录 —— 源目录放着原始日志与素材，一旦被当成成片目录用于打开/删除会误伤业务文件。
   _taskOutDir(type, srcPath, env) {
-    // 视频处理工具没有「成片目录」概念 —— 必须显式返回空串。
-    // 否则会落到下面的「找以成片结尾的子目录」分支，把源目录旁的成片目录当成工具任务的产物目录，
-    // 而那正是后续删除类操作的目标。
+    // 视频处理工具没有「成片目录」概念 —— 必须显式返回空串。否则会落到下面的「找以成片结尾的子目录」分支，把源目录旁的成片目录当成工具任务的产物目录，而那正是后续删除类操作的目标。
     if (type === 'tool') return '';
     if (type === 'mask') {
       const out = String((env && env.MASK_OUTPUT_DIR) || '').trim();
@@ -3888,8 +3678,7 @@ class Api {
   // 从任务日志中提取人类可读的失败原因（不展示代码/堆栈）
   _deriveFailReason(task) {
     const lines = task.log || [];
-    // 环境是否仍可用：决定「无合格视频」到底是环境问题还是素材问题 ——
-    // ⚠ 探测失败与「确实不合规」共用同一句引擎日志，不加区分会把人引向分辨率/时长排查。
+    // 环境是否仍可用：决定「无合格视频」到底是环境问题还是素材问题 —— ⚠ 探测失败与「确实不合规」共用同一句引擎日志，不加区分会把人引向分辨率/时长排查。
     const envBad = !this.quickEnvCheck().ok;
     const rules = [
       [/连续\s*\d+\s*次重试无法找到满足时长的组合/, '多次尝试仍无法找到符合时长要求的视频组合'],
@@ -3898,8 +3687,7 @@ class Api {
       [/一次性编码失败/, '视频编码失败（请检查源视频与 ffmpeg）'],
       [/无法自动修复/, '存在缺失的视频片段且无法自动修复'],
       [/检测到\s*\d+\s*个片段不存在/, '存在缺失的视频片段'],
-      // ⚠ 两个分支都要留：新文案（里没有可用素材）+ 旧文案（过滤后无任何合规视频）——
-      //   历史任务的日志里写的是旧句，去掉旧分支会让「重开旧任务」的原因归类失效。
+      // ⚠ 两个分支都要留：新文案（里没有可用素材）+ 旧文案（过滤后无任何合规视频）——历史任务的日志里写的是旧句，去掉旧分支会让「重开旧任务」的原因归类失效。
       [/路径\s*.+?\s*(过滤后无任何合规视频|里没有可用素材)/, envBad ? 'FFmpeg / FFprobe 不可用' : '没有可用素材（只认竖版 1080×1920 且有时长的视频）'],
       [/以下路径无法通过索引自动修复/, '存在无法解析的视频路径，请检查 TXT 配置'],
       [/水印必须是有效PNG文件/, '水印文件无效（必须为 PNG 图片）'],
@@ -3922,9 +3710,6 @@ class Api {
   // 任务的成片是否还在磁盘上：仅对「已产出过」的已结束任务判定。
   // 用途是列表提示（成片消失时标题置灰），任务行本身始终保留；
   // 从未产出的任务（未开始即失败等）不参与判定，避免把正常状态显示为异常。
-  // 成片「产出证据」探测目标（纯内存解析，无磁盘 IO）：供同步判定与异步预热共用，
-  // 保证两处探测的路径完全一致（否则预热读的不是判定要读的，等于白读）。
-  // 返回 null 表示该任务无需探测（非终态 / 无任何产出证据）。
   _taskOutputProbes(t) {
     if (!t) return null;
     const st = String(t.status || '');
@@ -3946,8 +3731,7 @@ class Api {
     if (!t) return true;
     // 纯内存判定（零 IO）：结论来自 verify_cache（启动只读库）+ 空闲队列的后台校验。
     // 无结论 / 已过期 → 乐观返回 true，该任务已在队列里（见 _prewarmHasOutputAsync），
-    // 校验完成后写回库并增量刷新界面（自愈）。**任何情况下都不做同步磁盘探测** ——
-    // 同步 stat/readdir 是历次冷启动冻结的源头（实测 5.7s ~ 49.5s），已彻底移除。
+    // 校验完成后写回库并增量刷新界面（自愈）。**任何情况下都不做同步磁盘探测**（同步 stat/readdir 是冷启动冻结的源头）。
     const memo = this._hasOutputMemo && this._hasOutputMemo.get(t.id);
     const ttl = (memo && memo.ttl) || HAS_OUTPUT_PERSIST_TTL_MS;
     if (memo && (Date.now() - memo.at) < ttl) return memo.v;
@@ -3974,15 +3758,14 @@ class Api {
         pos: t.planPos || 0,
         resumeIdx: typeof t.resumeIdx === 'number' ? t.resumeIdx : null,
         queueTotal: this._taskQueue.length,
-        // 成片是否仍在磁盘（仅曾产出过的已结束任务会为 false）：前端据此提示，不影响任务行本身
+        // 成片是否仍在磁盘（仅产出过的已结束任务会为 false）：前端据此提示，不影响任务行本身
         hasOutput: this._taskHasOutput(t),
         log: t.log.slice(-500),
       });
     });
     // 展示排序：运行中 → 待运行区 → 已结束（按创建时间）。
-    // 待运行区显示顺序：按「恢复所有暂停任务后的最终队列顺序」呈现——
-    // 排队任务保持执行队列次序，暂停任务按冻结顺位（resumeIdx）插入到对应位置，
-    // 与「暂停时几号、继续后几号」的显示顺位完全一致。
+    // 待运行区显示顺序：按「恢复所有暂停任务后的最终队列顺序」呈现 ——
+    // 排队任务保持执行队列次序，暂停任务按冻结顺位（resumeIdx）插入到对应位置，与「暂停时几号、继续后几号」一致。
     const ordered = [];
     this._taskQueue.forEach((qid) => { if (this.tasks.get(qid)) ordered.push(qid); });
     list.filter((t) => t.status === 'paused')
@@ -4030,8 +3813,7 @@ class Api {
       store.transaction(() => {
         // 列表中已不存在的任务：连同其日志行与提交快照一并删除
         // ⚠ 快照必须跟着任务走：它只在任务启动前用于还原配置，任务没了就永远用不上；
-        //   而删任务的路径不止一条（单条清除 / 重新开始 / 续跑 / 批量清除），
-        //   在这里统一回收，比在每条路径上各补一行更不容易漏。
+        //   而删任务的路径不止一条（单条清除 / 重新开始 / 续跑 / 批量清除），在这里统一回收最不容易漏。
         const keep = new Set(this.tasks.keys());
         for (const id of store.listTaskIds()) {
           if (keep.has(id)) continue;
@@ -4077,8 +3859,7 @@ class Api {
   }
   // 启动时恢复上次会话的任务列表（退出前已做 running→interrupted、queued→paused 转换）
   restoreTasks() {
-    // 待异步校验输出目录的批量任务（见 _verifyBatchOutDirs）：声明在 try 外，
-    // 保证同步段即使异常，已收集的目录校验仍会继续（校验本身失败也被吞掉，不影响任务恢复）
+    // 待异步校验输出目录的批量任务（见 _verifyBatchOutDirs）：声明在 try 外，保证同步段即使异常，已收集的目录校验仍会继续（校验本身失败也被吞掉，不影响任务恢复）
     const pendingOut = [];
     try {
       if (!this._useDbCache()) return;
@@ -4096,8 +3877,7 @@ class Api {
         t.log = store.getTaskLog(t.id);
         const restored = Object.assign({}, t, { env: t.env || {}, pid: null, progress: t.progress || { current: 0, total: 0 }, log: Array.isArray(t.log) ? t.log : [], failedVideos: Array.isArray(t.failedVideos) ? t.failedVideos : [],
           failedIndices: Array.isArray(t.failedIndices) ? t.failedIndices.filter((n) => Number.isInteger(n) && n > 0) : [] });
-        // 强杀/异常退出恢复兜底：非终态任务转为可继续状态，避免任务从列表凭空消失
-        // （正常退出走 shutdownTasks 已完成转换，此处仅兜底）
+        // 强杀/异常退出恢复兜底：非终态任务转为可继续状态，避免任务从列表凭空消失（正常退出走 shutdownTasks 已完成转换，此处仅兜底）
         if (restored.status === 'queued') {
           restored.status = 'paused'; restored.paused = true;
           this._taskLog(restored, '[上次异常退出，排队任务已转为暂停]', { dedupe: true });
@@ -4110,13 +3890,11 @@ class Api {
         if (restored.type === 'batch' && typeof restored.groupDate !== 'string') restored.groupDate = this._taskGroupDate(restored.type, restored.env, restored.createdAt);
         // 批量任务的成片文件夹：记录指向有效目录（含人工迁移/手工修正后）则保留；
         // 失效时仅按本任务提交时刻+配置名确定性推算规范路径，绝不跨日搜索猜替代品（见 _verifyBatchOutDirs）。
-        // ⚠ 校验必须**异步**：此处位于启动关键路径，同步 existsSync 会逐任务冷访问磁盘
-        //   （实测 49 个历史任务的输出目录在机械盘上 → 冷启动冻结主进程约 9 秒）。故只登记待校验项。
+        // ⚠ 校验必须**异步**：此处位于启动关键路径，同步 existsSync 会逐任务冷访问磁盘，机械盘上会冻住主进程。
         if (restored.type === 'batch') pendingOut.push(restored);
         restored._savedLogLen = restored.log.length; // 已与库一致，避免下次持久化重复重写
         this.tasks.set(restored.id, restored);
-        // 历史脏 ID 的数字部分曾被推到天文数字（科学计数法形态）：超出安全整数一律不采纳，
-        // 否则 taskSeq 永远停在 e 记法大数上，新 ID 的数字部分 ++ 无效且只能靠时间戳后缀保唯一
+        // 历史脏 ID 的数字部分可能极大（科学计数法形态）：超出安全整数一律不采纳，否则 taskSeq 永远停在 e 记法大数上，新 ID 的数字部分 ++ 无效且只能靠时间戳后缀保唯一
         const n = parseInt(String(t.id).replace(/\D/g, ''), 10);
         if (Number.isSafeInteger(n) && n > this.taskSeq) this.taskSeq = n;
       }
@@ -4132,8 +3910,7 @@ class Api {
         '任务恢复完成（同步段 ' + (_t3 - _t0) + 'ms · 读库 ' + (_t1 - _t0) + ' / 主循环 ' + (_t2 - _t1) + ' / GC ' + (_t3 - _t2) + ' · 任务 ' + rows.length + ' 条 · 待异步校验输出目录 ' + pendingOut.length + ' 条）',
         { dbMs: _t1 - _t0, loopMs: _t2 - _t1, gcMs: _t3 - _t2, tasks: rows.length, pendingOut: pendingOut.length });
     } catch (e) {}
-    // 输出目录校验：**一律入队**（异步、串行、节流）—— 不在启动窗口内打素材盘 IO，
-    // 由空闲队列的启动保护期与让路机制决定何时真正执行（比"启动期判断"更准确）。
+    // 输出目录校验：**一律入队**（异步、串行、节流）—— 不在启动窗口内打素材盘 IO，由空闲队列的启动保护期与让路机制决定何时真正执行（比"启动期判断"更准确）。
     if (pendingOut.length) {
       this._verifyEnqueue('outdirverify', this.root, () => this._verifyBatchOutDirs(pendingOut));
     }
@@ -4143,30 +3920,14 @@ class Api {
     try { this._prewarmHasOutputAsync(); } catch (e) {}
     // 维护性任务统一入队（启动期不做任何同步扫盘）：过期锁清理等
     try { this._verifyEnqueue('cleanlocks', this.root, () => this._cleanupStaleLocks()); } catch (e) {}
-    // 旧版遗留的自动兜底（与上面同款：只入队，启动期不扫盘）——
-    // 覆盖 preview\ 残留与超 30 天快照；跨"当前 + 历史"数据根（搬迁后旧程序目录里那批）。
+    // 自动兜底（与上面同款：只入队，启动期不扫盘）：覆盖 preview\ 残留与超 30 天快照，跨「当前 + 历史」数据根。
     try { this._verifyEnqueue('legacysweep', this.root, () => this._sweepLegacyAuto().catch(() => {})); } catch (e) {}
-    // 日志级别持久化恢复（否则级别只在本会话生效，重启回 info）：
-    // 入空闲队列而不是启动路径 —— 读它需要同步打开 settings.db，那正是启动期硬约束禁止的。
+    // 日志级别持久化恢复（否则级别只在本会话生效，重启回 info）：入空闲队列而不是启动路径 —— 读它需要同步打开 settings.db，那正是启动期硬约束禁止的。
     try { this._idleEnqueue('loglevel:' + this.root, () => this._restoreLogLevel()); } catch (e) {}
   }
   // 启动后异步预热「成片是否仍在磁盘」判定所需的目录/文件元数据（restoreTasks 的延后部分）。
   // 为什么需要：_taskHasOutput 是**同步**判定（被 snapshotTasks 逐任务调用），而历史任务的成片
-  // 目录多在机械盘 —— 冷启动首次访问每个目录约几十毫秒，几十个任务就是数秒。
-  // 本方法用 fs.promises 并发把**同一批路径**（_taskOutputProbes 与判定同源）的元数据读进系统缓存，
-  // 之后同步判定即落在缓存上（同一批任务实测 13ms）。判定逻辑与语义**完全不变**，
-  // 只是把「冷读」从启动关键路径挪到异步阶段。完成后复位抑制标志并再 emit 一次，
-  // 让界面从乐观值切到真实值（缺失成片的提示因此最多晚 1~2 秒出现）。
-  // ── 统一空闲校验队列─────────────────────────
-  // 用户原话：「不区分冷热写判定，利用后台检测/自愈机制保证效率和精准性」。
-  // 这比"判冷热"更稳：判据本身很脆（开机时长被证伪；探针样本也依赖"启动早期没碰过该目录"），
-  // 而且判错是双向代价 —— 判成热会踩几十秒冻卡，判成冷会无谓推迟精度。
-  // 改为**用反馈代替预判**：
-  //   · 启动期一律不发起批量文件 IO（不分冷热），只把待校验项**入队**；
-  //   · 队列**串行单发**（一次只飞一个 IO）+ **按实测耗时自适应节流**：
-  //     单次校验慢 → 间隔翻倍（保护系统），连续快 → 间隔减半（尽快收敛）；
-  //   · **任务运行/排队时自动暂停**，空闲再续（绝不与出片抢 IO）；
-  //   · 校验结果写回 verify_cache 并**增量刷新界面**（自愈：发现成片没了/回来了就更新标记）。
+  // 目录多在机械盘 —— 冷启动逐目录访问的代价明显。
   _idleEnqueue(key, run) {
     if (!key || typeof run !== 'function') return false;
     if (!this._idleJobs) this._idleJobs = [];
@@ -4177,11 +3938,8 @@ class Api {
   }
 
   // ── 统一空闲校验 worker（冷启动相关的 IO 一律走这里）──
-  // 所有后台校验（索引重扫 / 复刻清单 / GC / 成片存在性 / 输出目录 / 锁清理）统一从本入口入队，
-  // 换来三件事：① **埋点统一** —— 每次校验一条 `verify.<kind>`（耗时 / 让路次数 / 成败），
-  // 排查不必再逐个猜是哪一项在跑；② **让路统一** —— job 内可用 `ctx.shouldYield()` 查询
-  // "前台刚有活动或有任务在跑"，据此自行分片让出；③ **命名统一** —— `<kind>:<scope>` 便于去重与观测。
-  // ⚠ 本入口只提供外壳，**不改各校验自身的业务逻辑**（避免一次性大改引入回归）。
+  // 所有后台校验（索引重扫 / 复刻清单 / GC / 成片存在性 / 输出目录 / 锁清理）统一从本入口入队：
+  // 埋点统一（每次一条 `verify.<kind>`：耗时 / 让路 / 成败）、让路统一（job 内 `ctx.shouldYield()` 自行分片）、命名统一。
   _verifyEnqueue(kind, scope, run) {
     const k = String(kind || 'verify');
     const key = k + ':' + String(scope == null ? '' : scope);
@@ -4236,7 +3994,7 @@ class Api {
       const dt = Date.now() - t0;
       this._idleStats.done++;
       this._idleStats.maxMs = Math.max(this._idleStats.maxMs, dt);
-      // ★ 自适应节流：这就是"后台检测"的核心 —— 用实测耗时决定节奏，不需要事先知道盘冷不冷
+      // ★ 自适应节流：这就是"后台检测"的核心 —— 用实际耗时决定节奏，不需要事先知道盘冷不冷
       if (dt > 150) { this._idleDelayMs = Math.min(2000, this._idleDelayMs * 2); this._idleStats.slow++; }
       else if (dt < 20) { this._idleDelayMs = Math.max(10, Math.round(this._idleDelayMs / 2)); this._idleStats.fast++; }
       setTimeout(step, this._idleDelayMs);
@@ -4253,8 +4011,7 @@ class Api {
     };
   }
 
-  // 把队列跑空（回归/手动排查用；正常使用不需要）
-  // 注意要同时等 `_idleRunning` 结束：job 是**出队后才执行**的，只看队列长度会提前返回。
+  // 把队列跑空（回归/手动排查用；正常使用不需要），注意要同时等 `_idleRunning` 结束：job 是**出队后才执行**的，只看队列长度会提前返回。
   async drainIdleQueue(timeoutMs) {
     const deadline = Date.now() + (Number(timeoutMs) || 30000);
     while (((this._idleJobs && this._idleJobs.length) || this._idleRunning) && Date.now() < deadline) {
@@ -4264,10 +4021,8 @@ class Api {
   }
 
   // ── 成片存在性：结论持久化 + 懒校验────────────────
-  // 既然已经 sqlite 化，就用一次查询换掉「每次启动核验 262 项目录」：
-  //   启动：只读 verify_cache（零文件 IO）→ 有新鲜结论就直接用；
-  //   校验：只对「无结论 / 过期」的任务做，结果写回库；
-  //   失效：产物变动时按 key 精确失效，而不是定期全量重算。
+  // 用一次查询换掉「每次启动核验 262 项目录」：启动只读 verify_cache（零文件 IO），有新鲜结论直接用；
+  // 校验只对「无结论 / 过期」的任务做并写回库；产物变动时按 key 精确失效，不定期全量重算。
   _hasOutputKey(id) { return 'hasoutput:' + String(id || ''); }
 
   _loadHasOutputFromStore() {
@@ -4306,8 +4061,7 @@ class Api {
   }
 
   _prewarmHasOutputAsync() {
-    // 启动期**只入队**，不发起任何批量文件 IO（不分冷热）——建议的
-    // 「后台检测 + 自愈」：启动只读 SQLite；校验交给空闲队列（串行 + 自适应节流 + 有任务时让路）。
+    // 启动期**只入队**，不发起任何批量文件 IO（不分冷热）——建议的「后台检测 + 自愈」：启动只读 SQLite；校验交给空闲队列（串行 + 自适应节流 + 有任务时让路）。
     const now = Date.now();
     let queued = 0;
     this.tasks.forEach((t) => {
@@ -4357,8 +4111,6 @@ class Api {
   // 批量任务输出目录的异步校验（restoreTasks 的延后部分）。
   // 语义：记录指向有效目录则保留；失效时仅按「提交时刻 + 配置名」
   // 确定性推算规范输出路径（脚本本就会创建的目录），绝不跨日/跨盘搜索猜替代品。
-  // 与同步版的唯一差异：修正发生在任务恢复之后（首次 emitTasks 用的是记录值），
-  // 有修正时会再发一次 emitTasks 让界面刷新 —— 换来的是启动关键路径不再被磁盘 IO 冻住。
   _verifyBatchOutDirs(tasks) {
     const fsp = fs.promises;
     const _t = Date.now();
@@ -4412,8 +4164,7 @@ class Api {
     if (t.status === 'running' || t.status === 'queued' || t.status === 'paused') return { ok: false, error: '进行中的任务不能删除' };
     this.tasks.delete(id);
     this._removeMarker(t);
-    // 任务记录消失 ⇒ 提交快照即成孤儿（它只在任务启动前用于还原配置，任务没了就永远用不上）。
-    // 不删的话它会一直留在 txt-snap/ 里，只有「数据目录清理」手动点一次才可能被收走。
+    // 任务记录消失 ⇒ 提交快照即成孤儿（它只在任务启动前用于还原配置，任务没了就永远用不上）。不删的话它会一直留在 txt-snap/ 里，只有「数据目录清理」手动点一次才可能被收走。
     this._dropTxtSnap(t.id);
     this._emitTasks();
     return { ok: true };
@@ -4479,8 +4230,7 @@ class Api {
     } catch (e) { return { ok: false, error: String(e) }; }
   }
 
-  // 重开失败/中断/停止的任务：完整复用原任务环境变量（含提交时刻，成片命名/日志/输出目录
-  // 与首次开始完全一致）重新制作；重开前删除该任务上次遗留的成片与日志产物。
+  // 重开失败/中断/停止的任务：完整复用原任务环境变量（含提交时刻，成片命名/日志/输出目录与首次开始完全一致）重新制作；重开前删除该任务上次遗留的成片与日志产物。
   rerunTask(id) {
     const t = this.tasks.get(id);
     if (!t) return { ok: false, error: '任务不存在' };
@@ -4547,8 +4297,7 @@ class Api {
         { id: task.id, env: this._envBrief(task.env) });
     }
   }
-  // 孤儿任务标记回收：标记对应的任务已不存在于列表（清除/历史遗留）时删除；
-  // 仍存在的任务（含 done 历史，供「清除成片/日志」精确删除）标记保留。
+  // 孤儿任务标记回收：标记对应的任务已不存在于列表（清除/历史遗留）时删除；仍存在的任务（含 done 历史，供「清除成片/日志」精确删除）标记保留。
   _gcOrphanMarkers() {
     if (!this._useDbCache()) return;
     try {
@@ -4585,21 +4334,8 @@ class Api {
   }
 
   // ── 成片目录收尾（共用，唯一入口）────────────────────────────
-  // 为什么必须存在这两个函数：批量引擎在任务开始时把**源配置移入**成片文件夹当正本
-  // （batch/index.js:922-925 `renameSync(txtFilePath, txtDest)`），于是任务一旦没能正常收尾
-  // （用户紧急停止 / 进程被杀 / 编码失败），磁盘上就同时留下三样东西：
-  //   · 配置正本 —— 孤零零躺在成片目录里，源位置已空。用户在界面上看到配置"像是还在"，
-  //     但它已被搬走：**改不了名**（同目录有空日志 → hasLog 拦）、一旦清除就可能被整目录带走。
-  //   · 0 字节拼接日志 —— 日志是逐片追加的（batch/index.js:938 建空文件、1429 每完成一片追加），
-  //     首片没做完时它就是空的：既无信息价值，又会把该配置的改名路径堵死。
-  //   · `<随机>.tmp` 半截产物 —— 引擎先写临时名、成功才原子改名（tempNameFor），
-  //     被杀时来不及删（batch/index.js:1345 只在 ffmpeg 自行返回非 0 时删）。
-  // 引擎被 taskkill /T /F 硬杀（stopTask），**没有机会自理**，所以收尾只能由主进程做。
-  //
-  // 回迁目标 = 成片目录的**父目录**：引擎的移入规律保证源就是同一 outputRootDir
-  // （batch/index.js:913-925，outDir = outputRootDir/<时间戳>-<配置名>-成片，正本来自该 outputRootDir），
-  // 所以不必依赖 task.env —— **任务记录已被清除的孤儿目录同样能救回来**。
-  // 父目录已有同名配置时一律跳过：绝不覆盖用户的原件（多任务共用同一配置名时会遇到）。
+  // 批量引擎任务开始时把**源配置移入**成片文件夹当正本，任务未能正常收尾（紧急停止 / 进程被杀 / 编码失败）时
+  // 会留下配置正本、0 字节日志、`<随机>.tmp` 半截产物；回迁目标 = 成片目录父目录，父目录已有同名配置则一律跳过。
   _rescueConfigFromOutDir(outDir) {
     const out = { restored: [], skipped: [] };
     const abs = String(outDir || '').trim();
@@ -4623,17 +4359,9 @@ class Api {
   }
 
   // 清扫成片目录里**确定无价值**的残渣：0 字节拼接日志 + 引擎临时产物。
-  // 保守边界（宁可留，不可误删）：
-  //   · 日志只在**0 字节**时删 —— 有内容的日志是复刻配对与事后复盘的唯一凭据，一个字都不能动；
-  //   · 临时产物只认严格形态 `^[0-9a-z]{6,}\.tmp$`（tempNameFor 生成：base36 时间戳 + 8 位随机），
-  //     与续跑清理（见 _verifyAndCleanTaskOutputs）同一形态判定；其它 `.tmp` 一律不动；
-  //   · 目录只在不剩任何文件时收回 —— 有残留就保留，交给用户判断。
-  //   · **删除一律走回收站**：本项目红线是「业务文件不做永久删除」（永久删除仅限中间文件与锁文件，
-  //     由 P0-基线/verify-runlog.js 的断言守着）。0 字节日志对用户仍可能是"那次任务"的唯一痕迹，
-  //     静默抹掉不合适；进回收站可随时还原，代价只是一个 API 调用。
-  //
-  // 删文件统一走这里。**不要**用 fs.unlinkSync 删业务文件 —— 既违红线，也会让上述断言的
-  // 「unlinkSync ≤ 8 处且实参须为中间文件」超限（本项目实测踩过）。
+  // 保守边界（宁可留，不可误删）：日志只删 0 字节（有内容的日志是复刻配对与事后复盘的唯一凭据）；
+  // 临时产物只认 `^[0-9a-z]{6,}\.tmp$` 严格形态（与续跑清理同一判定）；目录只在不剩任何文件时收回；
+  // 删除一律走回收站。
   async _trash(p) {
     try {
       const { shell } = require('electron');
@@ -4661,8 +4389,7 @@ class Api {
         try { await this._trash(fp); out.temps.push(f); } catch (e) {}
       }
     }
-    // 目录已空（连日志/临时产物都没了）→ 收回空壳，不留「成片文件夹空壳」；
-    // 父目录若也因此变空，逐级向上收（到项目根为界）——任一层非空即停
+    // 目录已空（连日志/临时产物都没了）→ 收回空壳，不留「成片文件夹空壳」；父目录若也因此变空，逐级向上收（到项目根为界）——任一层非空即停
     try {
       if (fs.readdirSync(abs).length === 0) {
         fs.rmdirSync(abs);
@@ -4684,7 +4411,6 @@ class Api {
   // 任务终态收尾（stopped / error / interrupted）：回迁正本 + 清扫残渣，一次做完并留痕。
   // 只在**没能正常出片收尾**的终态调用：done 不动（正本留在成片目录是正常形态），
   // paused 不动（软暂停后用户会「继续任务」，此时搬走正本反而添乱）。
-  // 顺序不可颠倒：**先回迁、再清扫** —— 反了会把还没搬走的正本连同空日志一起判断成"杂乱目录"。
   async _settleTaskLeftovers(task, status) {
     try {
       if (!task) return;
@@ -4711,11 +4437,8 @@ class Api {
   }
 
   // 清除任务**记录之前**的"孤儿残渣"收尾：只对**没有任何正式成片**的成片目录动手。
-  // 为什么必须有：任务记录一旦删除，其输出目录就再也无法被「清除任务产物」定位
-  //   （那条路径按当前任务列表遍历）—— 目录里的半截 `.tmp` 与 0 字节日志变成永久垃圾，
-  //   而其中的配置正本还被锁在里面（源位置已空：用户既改不了名，也用不上这份配置）。
-  //   实测路径正是如此：用户紧急停止 → 先清任务记录 → 再点「清除产物」→ 目录已无人认领。
-  // 保守边界：只要目录里有**一个 mp4 就完全不动** —— 那可能是用户还要用的产物。
+  // 任务记录一旦删除，其输出目录就再也无法被「清除任务产物」定位（那条路径按当前任务列表遍历）——
+  // 目录里的半截 `.tmp`、0 字节日志与配置正本会变成永久垃圾。保守边界：目录里只要有一个 mp4 就完全不动。
   async _settleOrphanOutDir(task) {
     try {
       const dir = String((task && task.outDir) || '').trim();
@@ -4745,7 +4468,6 @@ class Api {
   // 按任务标记精确删除失败任务遗留产物：
   // 1) 标记中逐成片记录的输出文件（复刻/批量共用）；
   // 2) batch 专属输出目录内的成片 mp4 与拼接日志（与重制结果同名冲突）；
-  //    源 TXT 正本若已被脚本移入输出目录且原位置不存在，先移回原处保证重开可读取。
   _removeMarkerArtifacts(marker) {
     // 先留痕再删：产物一旦删除，这里是唯一还能还原「删了什么、多大、原修改时间」的地方
     const targets = (marker.videos || []).slice();
@@ -4767,8 +4489,8 @@ class Api {
     const rm = (p) => { try { if (p && fs.existsSync(p)) this._recycleFile(p); } catch (e2) {} };
     for (const v of (marker.videos || [])) rm(v);
     if (marker.type === 'batch' && marker.batchOutDir) {
-      // 正本回迁收敛到共用函数：原实现依赖 marker.env.REPLICA_TXT（任务标记缺失的孤儿目录就救不回来），
-      // 且只认 env 里那一个文件名；新实现按「成片目录里的 .txt 即被移入的正本」判定，父目录有同名则跳过。
+      // 正本回迁收敛到共用函数：不依赖 marker.env.REPLICA_TXT（任务标记缺失的孤儿目录也能救回），
+      // 按「成片目录里的 .txt 即被移入的正本」判定，父目录有同名则跳过。
       this._rescueConfigFromOutDir(marker.batchOutDir);
       try {
         if (fs.existsSync(marker.batchOutDir) && fs.statSync(marker.batchOutDir).isDirectory()) {
@@ -4791,8 +4513,7 @@ class Api {
     return out;
   }
 
-  // 从复刻日志文件中移除指定成片的日志块（按成片文件路径的 basename 精确匹配）
-  // 复刻日志格式：各成片块以「成片文件名.mp4」单行开头，块间以「=×46」分隔，以 EOF 结尾
+  // 从复刻日志文件中移除指定成片的日志块（按成片文件路径的 basename 精确匹配），复刻日志格式：各成片块以「成片文件名.mp4」单行开头，块间以「=×46」分隔，以 EOF 结尾
   _removeLogEntries(videoPaths) {
     if (!Array.isArray(videoPaths) || !videoPaths.length) return;
     // 按目录分组成片路径：日志文件与成片同目录（脚本把日志写在复刻输出目录）
@@ -4894,14 +4615,11 @@ class Api {
 
   // 删除失败任务在磁盘上遗留的产物（无任务标记时的清理）：
   // 1) 任务日志中「✅ 成片完成：」明确列出的成片文件 —— 精确清单，始终执行；
-  // 2) 批量输出目录内的残留 mp4 与拼接日志 —— 仅在能确认该目录确属本任务时执行
-  //    （目录内确有日志列出的成片文件）。推算目录在同日同名任务间会撞车，
-  //    无归属证据时一律不动：找不到就是找不到，不猜。
+  // 2) 批量输出目录内的残留 mp4 与拼接日志 —— 仅当目录内确有日志列出的成片文件（确属本任务）时执行；推算目录会撞车，无证据不动。
   _removeTaskArtifacts(task) {
     // 产物即将被移除 → 让成片存在性结论立即失效（内存 + verify_cache；否则界面仍按旧结论显示）
     this._invalidateHasOutput(task && task.id);
-    // 快照是「任务专属 TXT 副本」，只在任务启动前用于还原配置。
-    // 产物既已移除、任务记录即将消失，快照即成孤儿 → 直接删除（无用户价值，不必进回收站）。
+    // 快照是「任务专属 TXT 副本」，只在任务启动前用于还原配置。产物既已移除、任务记录即将消失，快照即成孤儿 → 直接删除（无用户价值，不必进回收站）。
     try { fs.unlinkSync(this._txtSnapPath(task && task.id)); } catch (e2) { /* 无快照或已清都无妨 */ }
     // 一律移入回收站（可还原），不做永久删除
     const rm = (p) => { try { if (p && fs.existsSync(p)) this._recycleFile(p); } catch (e2) {} };
@@ -4936,8 +4654,7 @@ class Api {
     }
   }
 
-  // 任务在磁盘上的真实输出目录：取日志中脚本明确创建的目录（权威记录）。
-  // 推算目录（提交时刻+配置名）在同日同名任务之间会撞车，不能作为删除依据。
+  // 任务在磁盘上的真实输出目录：取日志中脚本明确创建的目录（权威记录）。推算目录（提交时刻+配置名）在同日同名任务之间会撞车，不能作为删除依据。
   _taskOutDirFromLog(task) {
     for (const ln of (task.log || [])) {
       const m = /✅ 创建输出目录：(.+)$/.exec(ln);
@@ -4950,9 +4667,8 @@ class Api {
   }
 
   // 校验某目录确属该任务：目录内存在任务产出清单（标记/日志解析）中的文件。
-  // ⚠ 只适用于**有清单**的任务（复刻/遮罩：完成行带路径）。批量任务的清单恒为空
-  // （batch 完成行不携带路径）→ 传本函数必得 false；批量的目录归属请用「引擎记录的
-  // batchOutDir + 运行时间窗」判定（见 clearDoneTasks 的 batch 分支）。
+  // ⚠ 只适用于**有清单**的任务（复刻/遮罩：完成行带路径）。批量任务的清单恒为空（完成行不携带路径），
+  // 传本函数必得 false；批量的目录归属请用「引擎记录的 batchOutDir + 运行时间窗」判定（见 clearDoneTasks 的 batch 分支）。
   _dirOwnsVideos(dir, videos) {
     if (!dir || !Array.isArray(videos) || !videos.length) return false;
     const target = path.resolve(dir);
@@ -5072,8 +4788,7 @@ class Api {
         if (t.type === 'batch') {
           // 目录归属（**只用权威来源，不做推算**）：任务标记记录的真实输出目录（引擎
           // 「✅ 创建输出目录：」行写入的 batchOutDir）→ 任务日志中的同一行 → 任务对象上的 outDir。
-          // ⚠ 绝不可用「按提交时间推算目录名」（_batchTaskOutDetail）作为删除依据：
-          //   同分钟同配置的多个任务会推出同一个目录，那是重跑/续跑的常态，据此整删会误伤他人产物。
+          // ⚠ 绝不可用「按提交时间推算目录名」（_batchTaskOutDetail）作为删除依据：同分钟同配置的多个任务会推出同一目录，据删会误伤他人产物。
           const cand = (marker && marker.batchOutDir ? path.resolve(String(marker.batchOutDir)) : '')
             || this._taskOutDirFromLog(t)
             || (t.outDir ? path.resolve(t.outDir) : '');
@@ -5089,12 +4804,6 @@ class Api {
           // 目录内产物归属判定（**保守优先：确认不了就不动**）。三类内容各有归属依据：
           //  · mp4（正式产物）：优先任务标记的精确清单；缺失时（batch 常态）以**任务运行时间窗**界定 ——
           //    引擎先写临时名、编码成功才原子改名，故正式名成片的 mtime 必然落在 [startedAt, endedAt] 内。
-          //  · `<随机>.tmp`（引擎临时产物）：只有唯一的硬依据 —— 名字里的 base36 时间戳/patch mtime，
-          //    同样按时间窗界定；**时间窗外的一律视为他人产物**。
-          //  · 拼接日志：命名即含「<时间戳>-<配置名>」，与成片目录同源，不会混入他人日志。
-          // 容差仅取 ±2 秒（时钟/边界抖动），**不可放大** —— 容差一大，相邻同目录任务的时间窗就会重叠，
-          // 「删 17:50 不误删后续任务」的保证随之失效。
-          // 同目录串行执行由引擎的执行权控制保证：任一时刻只有一个任务在产出，故时间窗天然互斥。
           let names = [];
           try { names = fs.readdirSync(abs); }
           catch (e) { errors.push('读取成片目录失败：' + abs); continue; }
@@ -5115,7 +4824,7 @@ class Api {
               if (inWindow(fp)) owned.add(path.resolve(fp));
             }
           }
-          // 归属确认不了就不动 —— 但必须把原因说清楚（旧实现静默 continue，用户以为软件没反应）
+          // 归属确认不了就不动，但必须把原因说清楚（不得静默跳过）
           if (owned.size === 0 && mp4s.length) {
             const why = (winFrom > 0 && winTo > 0)
               ? `目录内 ${mp4s.length} 个成片均不在该任务运行时间窗内`
@@ -5125,8 +4834,7 @@ class Api {
           }
           // 残渣 = 时间窗内的临时产物（半成品）。日志天然归本任务，不参与时间窗筛选。
           const ownedTemps = tempFiles.filter((f) => inWindow(path.join(abs, f)));
-          // 目录里有没有"既不认识、也不属于本任务"的文件？有 → 不判独占，绝不整目录删。
-          // 待回迁的正本 txt 不算未知（它只是还没搬回去），会在下面被回迁。
+          // 目录里有没有"既不认识、也不属于本任务"的文件？有 → 不判独占，绝不整目录删。待回迁的正本 txt 不算未知（它只是还没搬回去），会在下面被回迁。
           const unknown = names.filter((f) => {
             if (mp4s.indexOf(f) >= 0) return false;
             if (LOG_NAME_RE.test(f)) return false;
@@ -5134,11 +4842,8 @@ class Api {
             if (/\.txt$/i.test(f) && !BACKUP_NAME_RE.test(f)) return false;
             try { return fs.statSync(path.join(abs, f)).isFile(); } catch (e) { return true; }
           });
-          // 独占 = 目录内一切都能确认属于本任务：
-          //   mp4 全在清单内 + 临时产物全在时间窗内 + 没有未知文件。
-          // ★ 与旧实现的关键差别：**不再要求目录里有 mp4** ——
-          //   紧急停止/失败的任务目录常常只有 `.tmp` + 0 字节日志 + 被移入的正本，
-          //   旧判定下 exclusive 恒为 false，用户点「清除产物·全部」也永远清不掉（空壳残留的病根）。
+          // 独占 = 目录内一切都能确认属于本任务：mp4 全在清单内 + 临时产物全在时间窗内 + 没有未知文件。
+          // ★ **不要求目录里有 mp4**：紧急停止/失败的任务目录常只有 `.tmp` + 0 字节日志 + 被移入的正本。
           const exclusive = (mp4s.length + tempFiles.length + logFiles.length) > 0
             && mp4s.every((f) => owned.has(path.resolve(path.join(abs, f))))
             && ownedTemps.length === tempFiles.length
@@ -5167,9 +4872,7 @@ class Api {
             await trashOwned();
           } else if (scope === 'all') {
             if (path.basename(abs).endsWith('成片') && exclusive) {
-              // ★ 整目录进回收站之前，先把配置正本**移回原处**（成片目录的父目录）——
-              //   正本是被引擎搬进来的"用户原件的唯一一份"，跟着目录一起进回收站，
-              //   用户的配置就凭空消失了（源位置已空）；虽然回收站可还原，但那不是用户能预期的操作。
+              // ★ 整目录进回收站之前，先把配置正本**移回原处**（成片目录的父目录）：正本是用户原件的唯一一份，跟着目录进回收站会让配置凭空消失（源位置已空）。
               const rescued = this._rescueConfigFromOutDir(abs);
               if (rescued.restored.length) {
                 this._lg('CFG', 'task.artifacts.clear.restore',
@@ -5190,8 +4893,7 @@ class Api {
           }
           continue;
         }
-        // 复刻等非批量任务：只精确删除该任务自己的成片与日志块——
-        // outDir 可能指向源日志目录（复刻历史日志时产物在提交日目录），按目录整删会误伤原始日志旁的产物
+        // 复刻等非批量任务：只精确删除该任务自己的成片与日志块——outDir 可能指向源日志目录（复刻历史日志时产物在提交日目录），按目录整删会误伤原始日志旁的产物
         if (!exactVideos.length) continue;
         const rootRes = path.resolve(this.root || process.cwd());
         const uniq = [...new Set(exactVideos)];
@@ -5206,8 +4908,7 @@ class Api {
         for (const p of uniq) {
           try { if (p && fs.existsSync(p)) await trash(p); }
           catch (e) { errors.push('清除成片失败：' + p); }
-          // 成片删除后，所在输出目录若已空则逐级向上清理（到工作根为界）——不留「复刻成片文件夹空壳」；
-          // 任一目录非空即停止（重建/并行任务产物、日志文件等都会让它保留）
+          // 成片删除后，所在输出目录若已空则逐级向上清理（到工作根为界）——不留「复刻成片文件夹空壳」；任一目录非空即停止（重建/并行任务产物、日志文件等都会让它保留）
           if (p) {
             let cur = path.dirname(path.resolve(p));
             while (cur.length > rootRes.length && cur !== rootRes) {
@@ -5324,8 +5025,7 @@ class Api {
     return { ok: true, total, regrouped: renamed.length, errors };
   }
 
-  // 实际备份根目录：与「备份落盘 / 过期清理 / 目录迁移」使用的一致
-  //（自定义目录时备份落在其下的「Video Lab 备份」层，未设置时用数据目录下的 backup）
+  // 实际备份根目录：与「备份落盘 / 过期清理 / 目录迁移」使用的一致（自定义目录时备份落在其下的「Video Lab 备份」层，未设置时用数据目录下的 backup）
   getBackupRoot() {
     const c = String(this.config.backup_dir || '').trim();
     return c ? path.join(c, 'Video Lab 备份') : path.join(this.storageDir || process.cwd(), 'backup');
@@ -5342,9 +5042,7 @@ class Api {
   }
 
   /**
-   * 关于页 · 运行环境与组件信息（版本号 / 来源 / 目录 / 校验结果）。
-   * 为什么要这一块：组件是**自动下载**的，用户无从得知实际跑的是哪一份、什么版本、从哪来；
-   * 出问题时（如旧版 6.1.1 的进度行缺 elapsed）也只能靠翻日志。这里把它显式摆出来，
+   * 关于页 · 运行环境与组件信息（版本号 / 来源 / 目录 / 校验结果），
    * 同时给出「复制信息」所需的原始字段。
    */
   async getAboutInfo() {
@@ -5432,8 +5130,7 @@ class Api {
     t.status = 'paused';
     t.paused = true;
     if (i >= 0) this._taskQueue.splice(i, 1);
-    // 冻结显示顺位：记录该任务在当前「待运行显示序列」（排队+暂停按计划序号排序）中的位置，
-    // 即它前方还有几个待运行任务。继续时据此插队，保证「暂停时几号，继续后还是几号」。
+    // 冻结显示顺位：记录该任务在当前「待运行显示序列」（排队+暂停按计划序号排序）中的位置，即它前方还有几个待运行任务。继续时据此插队，保证「暂停时几号，继续后还是几号」。
     const waiting = [];
     this.tasks.forEach((t2) => { if (t2.status === 'queued' || t2.status === 'paused') waiting.push(t2); });
     waiting.sort((x, y) => (x.planPos || 1e9) - (y.planPos || 1e9));
@@ -5449,17 +5146,15 @@ class Api {
     if (!t) return { ok: false, error: '任务不存在' };
     if (t.status !== 'paused') return { ok: false, error: '任务未处于暂停状态' };
     // ★ 软暂停恢复按类型分流（参数/分组/去重/计数必须原样保留）：
-    //   batch / replica → 走 continueReplica 的「补缺片」构造（已完成片从任务标记反推，
-    //     以 ONLY_NAMES 只补剩余，env 全量复用 —— 分组/提交时刻/命名与首次一致）；
-    //   mask → 直接重新入队（引擎对已存在成片有 skip 幂等检测，天然续跑）；
+    //   batch / replica → 走 continueReplica 的「补缺片」构造（已完成片从任务标记反推，以 ONLY_NAMES 只补剩余，
+    //     env 全量复用 —— 分组/提交时刻/命名与首次一致）；mask → 直接重新入队（引擎对已存在成片有 skip 幂等检测）。
     //   恢复后必须清软暂停标志，否则下一个成片完成时会被再次终止（暂停死循环）。
     if (t._softPaused && (t.type === 'batch' || t.type === 'replica')) {
       return this.continueReplica(id, opts);
     }
     delete t._softPause;
     delete t._softPaused;
-    // 按暂停时的显示顺位插队（0-based）：前方任务数 + 1 位置；
-    // 队列已不足（前方任务陆续完成后缩短）时排在队尾，即成为下一个执行任务
+    // 按暂停时的显示顺位插队（0-based）：前方任务数 + 1 位置；队列已不足（前方任务陆续完成后缩短）时排在队尾，即成为下一个执行任务
     const idx = typeof t.resumeIdx === 'number' ? t.resumeIdx : Math.max(0, (t.planPos || 1) - 1);
     const pos = Math.min(idx, this._taskQueue.length);
     t.status = 'queued';
@@ -5509,7 +5204,6 @@ class Api {
         // ★ 任务开始即失效配置树缓存（含持久化），并排后台重建 ——
         //   批量任务会把配置 TXT **移进成片目录**作为正本，原路径随即失效，界面若继续吃缓存
         //   就会显示已失效的旧配置（点进去还是空的），而"等后台自愈"要受 30 分钟频率控制约束 → 不及时。
-        //   这里必须连**持久化**一起清：只清内存的话，下一次读取又会从库里读回同一份旧数据。
         try { this._invalidateCaches(true); } catch (e) {}
         this._notifyTreeChanged();     // 立即通知前端重拉（缓存已失效 → 读到真值）
         this._enqueueScanRebuild();
@@ -5535,16 +5229,14 @@ class Api {
           }
           if (task.status !== 'running') return;
     // ★ 引擎把配置 TXT 移入成片文件夹作为正本 → 配置的**归属位置**变了，必须立刻失效缓存并广播。
-    //   这件事只发生在引擎进程内（后端 spawn 时文件还在原处），所以由引擎输出协议行、后端在此接收；
-    //   否则「开始任务后列表仍显示旧的 0927*、点进去却是空的」会一直存在到低频轮询或手动刷新。
+    //   变更只发生在引擎进程内，故由引擎输出协议行、后端在此接收；否则列表会显示旧的版本分支直到下次轮询/手动刷新。
     if (s.indexOf('配置正本就位：') === 0) {
       try { this._invalidateCaches(true); } catch (e) {}
       this._notifyTreeChanged();
       this._enqueueScanRebuild();
       return;
     }
-          // 单成片实时进度：目标时长（分母）+ ffmpeg time（分子）。
-          // 必须放在进度行拦截前，否则 ffmpeg 进度行被折叠后 clip/clipTarget 不再更新（进度条失效）
+          // 单成片实时进度：目标时长（分母）+ ffmpeg time（分子）。必须放在进度行拦截前，否则 ffmpeg 进度行被折叠后 clip/clipTarget 不会更新（进度条失效）
           const durM = s.match(/(?:成片预计时长|当前文件时长):\s*([\d.]+)\s*秒/);
           if (durM) {
             const d = parseFloat(durM[1]);
@@ -5596,8 +5288,7 @@ class Api {
             task._lastFrameLine = null;
             task.progress.liveLine = null; // 清除实时行，避免与固化行重复显示
           }
-          // 新旧文案都要认：历史任务的日志里写的是旧句（「互斥锁」），去掉旧分支会让「重开旧任务」
-          // 的状态显示失效。引擎现行文案见 engines/base/logger.js 的三行协议。
+          // 新旧文案都要认：历史任务的日志里写的是旧句（「互斥锁」），去掉旧分支会让「重开旧任务」的状态显示失效。引擎现行文案见 engines/base/logger.js 的三行协议。
           if (/等待前面的任务完成|等待获取互斥锁/.test(s)) task.lockState = 'waiting';
           else if (/开始处理本任务|已获取互斥锁/.test(s)) task.lockState = 'locked';
           else if (/本任务处理结束|互斥锁已释放|任务完成/.test(s)) { task.lockState = 'released'; task.progress.liveLine = null; }
@@ -5623,8 +5314,7 @@ class Api {
               '软暂停生效 · 当前成片已完成，终止引擎让位下一个任务',
               { id: task.id });
           }
-          // 用户指引：引擎错误块里的「如何解决 / 问题归属」—— 供任务窗口直接展示
-          // （前端保持简洁，但要让用户知道怎么修、以及是不是程序的问题）
+          // 用户指引：引擎错误块里的「如何解决 / 问题归属」—— 供任务窗口直接展示（前端保持简洁，但要让用户知道怎么修、以及是不是程序的问题）
           const howM = s.match(/^如何解决[:：]\s*(.+)$/);
           if (howM) task.solution = howM[1].trim().slice(0, 300);
           const whoM = s.match(/^问题归属[:：]\s*(.+)$/);
@@ -5662,17 +5352,15 @@ class Api {
         attach(child.stderr, err);
         // ⚠ 回调必须是 async：下面 _settleTaskLeftovers 要走回收站（shell.trashItem 是异步 API），
         //   而收尾**必须在该回调内、且在缓存失效与前端广播之前完成**（见下方注释），
-        //   所以只能在这里 await —— 不能把它挪到回调外做成"稍后处理"，否则界面会先渲染出
-        //   "配置还锁在成片目录里"的中间态。
+        //   所以只能在这里 await —— 挪到回调外做成"稍后处理"会让界面先渲染出"配置还锁在成片目录里"的中间态。
         child.on('close', async (code) => {
           if (out.data.length) pushLine(out.data);
           if (err.data.length) pushLine(err.data);
           task.endedAt = Date.now();
           this._engineMark(task.id, '任务结束 code=' + code);
           // 结算对账（复刻）：脚本内单条失败会 continue 并置 HasError → 退出码 1；
-          // 若 exit 0 但存在失败记录（异常场景），也归为 error 并提示续跑，避免误判为全部成功
-          // 软暂停：当前成片已完成、引擎被主动终止 —— 状态归为 paused（非停止/失败），
-          // 恢复顺位提到 1 号（resumeIdx=1），用户点「继续任务」即从剩余部分接续
+          // 若 exit 0 但存在失败记录（异常场景），也归为 error 并提示续跑，避免误判为全部成功。
+          // 软暂停：当前成片已完成、引擎被主动终止 —— 状态归为 paused（非停止/失败），恢复顺位提到 1 号（resumeIdx=1）。
           let status = task._softPaused ? 'paused' : (task._stopRequested ? 'stopped' : (code === 0 ? 'done' : 'error'));
           if (task._softPaused) {
             task.endedAt = null;
@@ -5680,9 +5368,7 @@ class Api {
             task.resumeIdx = 1;
             this._taskLog(task, '[软暂停生效] 当前成片已完成并保留，任务转入暂停队列第 1 位；点击「继续任务」接续]');
           }
-          // 续跑补做成功：摘掉继承来的失败记录（引擎本次新报的失败保留）——
-          // 那些记录的是上一次的缺口，本次已补回；留着会让任务被判成 error 并提示「继续制作」，
-          // 把用户引向无意义的反复续跑
+          // 续跑补做成功：摘掉继承来的失败记录（引擎本次新报的失败保留）——那些记录的是上一次的缺口，本次已补回；留着会让任务被判成 error 并提示「继续制作」，把用户引向无意义的反复续跑
           if (code === 0 && task._inheritedFailVideos > 0) {
             task.failedVideos = (task.failedVideos || []).slice(task._inheritedFailVideos);
             task.failedIndices = (task.failedIndices || []).slice(task._inheritedFailIndices || 0);
@@ -5703,7 +5389,7 @@ class Api {
             try { fs.unlinkSync(this._txtSnapPath(task.id)); } catch (e) { /* 无快照或已清都无妨 */ }
           }
           // 终态进度补满（仅成功）：进度条在「clip / clipTarget」分支显示的是**最后一个成片的编码进度**，
-          // 而编码收尾帧的 time 几乎必然略小于时长（实测停在 89% / 95%）——任务已全部完成，
+          // 而编码收尾帧的 time 几乎必然略小于时长（通常停在 90% 左右）——任务已全部完成，
           // 这个半截进度只会让人误会"没做完"。error / stopped / paused 保留真实进度（供续跑判断）。
           if (status === 'done' && task.progress && task.progress.clipTarget > 0 && task.progress.clip < task.progress.clipTarget) {
             task.progress.clip = task.progress.clipTarget;
@@ -5712,12 +5398,8 @@ class Api {
           // ★ 未正常结束的任务先做收尾（回迁配置正本 + 清 0 字节日志与半截临时产物）——
           //   必须排在下面所有「缓存失效 / 前端广播」**之前**：收尾本身改变了磁盘结构，
           //   界面要按收尾后的真相重整，否则会先渲染出一个"配置还锁在成片目录里"的中间态。
-          //   场景：用户跑到一半发现配置名写错，紧急停止后要改名 —— 但正本躺在成片目录里
-          //   （源位置已空）+ 同目录有个 0 字节拼接日志（hasLog 判定为真）→ 改名会被两层拦住。
-          //   收尾后配置回到原位、空日志消失，用户点「清除已完成任务」即可顺利改名。
           await this._settleTaskLeftovers(task, status);
-          // 任务结束 → 成片存在性结论失效：本次可能刚产出成片（旧结论是"无"），
-          // 精确失效后由下次启动/空闲校验重新判定，避免界面显示"成片已删除"却其实还在
+          // 任务结束 → 成片存在性结论失效：本次可能刚产出成片（旧结论是"无"），精确失效后由下次启动/空闲校验重新判定，避免界面显示"成片已删除"却其实还在
           try { this._invalidateHasOutput(task.id); } catch (e) {}
           // ★ 任务结束同样失效配置树缓存 + 排重建：出片会把配置正本搬进成片文件夹、并新增成片目录，
           //   目录结构与配置归属都变了，界面必须立刻按真实情况重整（不能等 30 分钟频率控制的空闲自愈）。
@@ -5734,8 +5416,7 @@ class Api {
               failed: (task.failedVideos || []).slice(0, 20).map((f) => f && f.name) });
           // ★ 失败诊断留痕：引擎输出（task.log）与 stderr 尾部一并落盘 ——
           //   任务窗口的日志会随任务记录被清除，运行日志是事后唯一凭据。
-          //   引擎自己会打印「错误信息 / 出错步骤 / 错误详情」块，这里原样带上，
-          //   排查时只看 error-YYYY-MM-DD.log 即可定位，不必反推代码。
+          //   引擎自己会打印「错误信息 / 出错步骤 / 错误详情」块，这里原样带上，排查时只看 error-YYYY-MM-DD.log 即可定位。
           if (status === 'error') {
             try {
               const tailLog = (task.log || []).slice(-40);
@@ -5762,8 +5443,7 @@ class Api {
                   solution: task.solution || '', blame: task.blame || '',
                   stderrTail: stderrTail, engineTail: tailLog,
                   env: this._envBrief(task.env) });
-              // 过程诊断（引擎 diag 通道）：完整记录每次尝试/候选/排除/档位，
-              // 单独一条落盘（量大，只在失败时写）—— 回答「怎么走到这个结论」
+              // 过程诊断（引擎 diag 通道）：完整记录每次尝试/候选/排除/档位，单独一条落盘（量大，只在失败时写）—— 回答「怎么走到这个结论」
               if (Array.isArray(task._diag) && task._diag.length) {
                 this._lg('DIAG', 'task.diag',
                   '任务过程诊断 · ' + task.type + ' · ' + task._diag.length + ' 条（每次尝试 / 候选 / 排除原因 / 参数档位）',
@@ -5778,8 +5458,7 @@ class Api {
           this._startNextQueued();
           // ★ 系统通知：任务失败 → 走 2.5 秒合并窗口（批量全失败时不会连响十几次）；
           //   队列彻底空闲时再发一条**汇总**（成功/失败/暂停待续各有计数）并冲掉待发窗口。
-          // 本轮成败计数：逐个任务结束时累加，发完汇总清零 —— 不靠时间窗口反推，
-          //   那种做法在"中途又有新任务入队"时会算错。
+          // 本轮成败计数：逐个任务结束时累加，发完汇总清零 —— 不靠时间窗口反推（中途又有新任务入队时会算错）。
           const rs = this._roundStat || (this._roundStat = { done: 0, error: 0 });
           if (status === 'done') rs.done++;
           else if (status === 'error') rs.error++;
@@ -5807,7 +5486,7 @@ class Api {
               title: rs.error ? '本轮完成（有失败）' : '本轮完成',
               lines: lines,
               attribution: this._noticeStamp(null),
-              // 失败已经用 Critical 报过了，这里不再叠加刺耳音；有暂停待续用柔和的 SMS 提醒
+              // 失败已经用 Critical 报过了，这里不叠加刺耳音；有暂停待续用柔和的 SMS 提醒
               sound: pendingPaused && !rs.error ? 'SMS' : 'Default',
               duration: 'short',
             });
@@ -5859,9 +5538,8 @@ class Api {
   }
 
   // 校验 批量/复刻 配置参数是否已设置：数字须>0，字符串须非空（txt_prefix 允许空）。返回缺失项标签，空数组=齐全
-  // ⚠ 复刻**不再校验** max_duration / speed_limit —— 这两项与批量拼接共用同一套（见 runReplica 内注释与
-  //    BATCH_MAX_DURATION 等取值来源都是 config.batch），复刻配置里根本没有这两个字段；
-  //   若仍按复刻必填校验，前端一保存就会把空值写进 replica 并导致所有复刻任务启动被拒。
+  // ⚠ 复刻**不校验** max_duration / speed_limit —— 这两项与批量拼接共用同一套（取值来源都是 config.batch，
+  //    复刻配置里没有这两个字段）；若按复刻必填校验，前端一保存就会把空值写进 replica 并导致复刻任务启动被拒。
   _settingsError(group) {
     const cfg = this.config[group] || {};
     const nums = group === 'batch'
@@ -5885,16 +5563,14 @@ class Api {
     if (cfg.batch && typeof cfg.batch === 'object') this.config.batch = Object.assign({}, this.config.batch, cfg.batch);
     if (cfg.replica && typeof cfg.replica === 'object') this.config.replica = Object.assign({}, this.config.replica, cfg.replica);
     if (cfg.mask && typeof cfg.mask === 'object') this.config.mask = Object.assign({}, this.config.mask, cfg.mask);
-    // 应用级设置（通知开关 / 备份项等）：backend 侧 _notify 等直接读 this.config，
-    // 运行时改动必须同步，否则「关了通知仍在弹」直到下次重启。
+    // 应用级设置（通知开关 / 备份项等）：backend 侧 _notify 等直接读 this.config，运行时改动必须同步，否则「关了通知仍在弹」直到下次重启。
     for (const k of Api.APP_SETTING_KEYS) {
       if (cfg[k] !== undefined) this.config[k] = cfg[k];
     }
     if (cfg.ffmpeg_dir !== undefined) this.config.ffmpeg_dir = cfg.ffmpeg_dir;
   }
 
-  // 水印归属校验：以本项目「主流水印」为基准做一致性判定；仅在用户启用判定时参与判断。
-// 未启用判定的项目一律放行（默认不启用，勾选后才判定）。只返回布尔值（不暴露真实路径/文件名）。
+  // 水印归属校验：以本项目「主流水印」为基准做一致性判定；仅在用户启用判定时参与判断。未启用判定的项目一律放行（默认不启用，勾选后才判定）。只返回布尔值（不暴露真实路径/文件名）。
   checkWatermarkProject(project, watermarkPath) {
     const wm = String(watermarkPath || '').trim();
     try {
@@ -6086,8 +5762,7 @@ class Api {
     } catch (e) { return { hits: [] }; }
   }
 
-  // 统计本项目主流水印：所有配置使用频次最高的水印
-  // 计数用大小写不敏感 key（Windows 路径不区分大小写），但返回保留原始大小写的路径（供前端显示与落盘）
+  // 统计本项目主流水印：所有配置使用频次最高的水印；计数用大小写不敏感 key（Windows 路径不区分大小写），但返回保留原始大小写的路径（供前端显示与落盘）
   _computeMajorityWatermark(pdir) {
     const counts = new Map(); // key(lower) -> { n, first 原始路径 }
     for (const t of this._collectAllTxt()) {
@@ -6149,7 +5824,7 @@ class Api {
       for (const kind of ['watermarks', 'enabled', 'groupCounts', 'groupEnabled']) {
         const src = all[kind];
         if (!src || typeof src !== 'object' || Array.isArray(src)) continue;
-        // 只加载当前工作目录下的条目：换 root 后旧条目不再参与，保存时自然被清理
+        // 只加载当前工作目录下的条目：换 root 后旧条目不参与，保存时自然被清理
         for (const k in src) {
           if (!Object.prototype.hasOwnProperty.call(src, k) || !k.startsWith(prefix)) continue;
           if (kind === 'groupCounts') want[kind][k] = parseInt(src[k], 10) || 0;
@@ -6162,8 +5837,7 @@ class Api {
 
   _saveWatermarkCache() {
     if (!this._useSettings()) return;
-    // 合并保存：保留其它工作目录（root）的条目，仅覆盖当前 root 的条目，
-    // 避免切换工作目录后旧 root 的设置被覆盖丢失
+    // 合并保存：保留其它工作目录（root）的条目，仅覆盖当前 root 的条目，避免切换工作目录后旧 root 的设置被覆盖丢失
     const prefix = this.root + '\u0000';
     const mine = {
       watermarks: this._wmCache || {}, enabled: this._wmEnabled || {},
@@ -6191,8 +5865,7 @@ class Api {
   // ══════════════════════════════════════════════════════════════════════
   // 项目增删改（软件侧新建 / 改名）
   // ══════════════════════════════════════════════════════════════════════
-  // 项目名合法性：Windows 文件名约束。前端 validateProjectName 用同一套规则先校验一次，
-  // 这里再做一次 —— 接口也可能被 HTTP 侧直接调用，不能只靠前端把关。
+  // 项目名合法性：Windows 文件名约束；前端 validateProjectName 先校验，这里再校验一次（HTTP 侧可能直接调用）。
   _validProjectName(name) {
     const n = String(name == null ? '' : name).trim();
     if (!n) return '名称不能为空';
@@ -6315,14 +5988,6 @@ class Api {
   // ══════════════════════════════════════════════════════════════════════
   // 视频处理工具（第 4 个模块）
   //
-  // 与三个成片模块同构：建任务 → 入同一队列 → 引擎子进程（module=tool）
-  // 参数经 TOOL_SPEC（JSON）传入；步骤清单与参数 schema 由引擎侧注册表提供，
-  // 前端据此**自动渲染表单**（加能力 = 加一个步骤文件，前端不用改）
-  // ══════════════════════════════════════════════════════════════════════
-  // ── 画布合成（竖转横）：单帧预览 / 背景候选 / 参数预设 ────────────────────────
-  // 预览与批量执行共用 engines/tools/canvas-plan.js 的 buildCanvasPlan()：参数同源、表达式同源，
-  // 「预览所见即所得」由结构保证。预览帧输出 PNG（软件编码），不占用编码硬件的会话，
-  // 因此不会与正在运行的批量任务互斥；产物落 <数据目录>\preview\（扫描阶段已排除该目录）。
   _toolSteps() {
     try { return require(path.join(this.enginesDir, 'tools', 'index.js')); } catch (e) { return null; }
   }
@@ -6370,7 +6035,7 @@ class Api {
   }
 
   /**
-   * 背景候选枚举：扫描目录（两层内）。**不再限制背景尺寸** —— 适配方式（填充 / 适应 / 拉伸）能处理任意尺寸，
+   * 背景候选枚举：扫描目录（两层内）。**不限制背景尺寸** —— 适配方式（填充 / 适应 / 拉伸）能处理任意尺寸，
    * 尺寸只用于界面展示与「小于画布会被放大」的提醒（既然尺寸可调，背景就不该锁尺寸）。
    * 返回稳定排序（按路径）的清单，保证「同索引 = 同背景」，前端上一个/下一个切换才有确定性。
    */
@@ -6425,7 +6090,6 @@ class Api {
    * 预览样本清单：文件夹输入时枚举待处理视频，供预览挑一个样本。
    * 复用引擎的 scanVideos —— 与正式处理**同一套扫描规则**（递归开关、跳过应用自管目录），
    * 否则会出现「预览看到的清单 ≠ 真正会被处理的文件」（如把输出/备份目录里的成片也当样本）。
-   * 只返回路径与文件名；尺寸/时长由 canvasPreviewFrame 探测并缓存，此处不做探测（避免为预览全量起进程）。
    */
   canvasListSources(root, recursive) {
     const envG = this._envGuard('canvas_src_list');
@@ -6603,8 +6267,6 @@ class Api {
       // 三张 PNG 是「生成 base64 的中间产物」，不是需要留存的缓存 ——
       // 前端拿 base64 渲染（tool.js 用它赋 img.src），从不读文件路径（原 files 字段前端零使用）；
       // 唯一的“缓存”是下方内存 Map（重启即空、存的是 base64 而非路径）。
-      // 故**读完即删**（finally 统一清理，成功与失败路径都不留残留），目录永不增长。
-      // 同参数再次请求会命中内存缓存、不重跑 ffmpeg；缓存被淘汰则重跑并再次即删。
       previewFiles = [outC, outB, outR];
       const result = {
         composed: toData(outC),
@@ -6625,8 +6287,7 @@ class Api {
         const first = this._canvasPreviewCache.keys().next();
         if (!first.done) this._canvasPreviewCache.delete(first.value);
       }
-      // 磁盘兜底：新产物已即删，此目录**不应有任何文件**，故上限取 0 ——
-      // 既清掉旧版本遗留的 canvas-*.png（本机曾达 150 个 / 74 MB），清空后也无需再管（开销可忽略）。
+      // 磁盘兜底：新产物已即删，此目录**不应有任何文件**，故上限取 0 ——既清掉旧版本遗留的 canvas-*.png，清空后也无需再管（开销可忽略）。
       this._canvasPreviewTrimAsync(outDir, 0);
       // ⚠ verb 用 RUN（info）：VERB_LVL 把 UI 映射为 error 级，而预览是**正常**操作 ——
       //   用 UI 会让每次预览都进 error 日志与 30 天 error 索引
@@ -6703,8 +6364,7 @@ class Api {
         modes: [{ v: 'overwrite', t: '覆盖原视频' }, { v: 'directory', t: '输出到指定目录' }],
         nameModes: [{ v: 'keep', t: '原名' }, { v: 'suffix', t: '原名 + 后缀' }],
         conflicts: [{ v: 'index', t: '追加序号' }, { v: 'overwrite', t: '覆盖' }, { v: 'skip', t: '跳过' }],
-        // 实际默认备份地址：设置里的默认备份目录 > 数据目录下 backup。
-        // 返回前确保存在（应用自己管理的目录，可直接创建）—— 浏览器端「打开/选择」才能直接定位
+        // 实际默认备份地址：设置里的默认备份目录 > 数据目录下 backup。返回前确保存在（应用自己管理的目录，可直接创建）—— 浏览器端「打开/选择」才能直接定位
         defaultBackupDir: (() => {
           const customRoot = String(this.config.backup_dir || '').trim();
           const root = customRoot ? path.join(customRoot, 'Video Lab 备份')
@@ -6720,7 +6380,6 @@ class Api {
    * 浏览器端的目录浏览：列出某目录下的子目录与文件名。
    * 供工具窗口的 Web 路径选择器使用 —— 浏览器侧没有本机文件对话框，
    * 系统对话框又依赖本体窗口的前台状态（焦点在浏览器时会被压在后面）。
-   * 只读目录名与文件名，不读文件内容。
    */
   listDir(dir) {
     const target = String(dir || '').trim() ? path.resolve(String(dir).trim()) : path.resolve(this.root || '');
@@ -6754,9 +6413,6 @@ class Api {
    *   · steps（默认）—— 后处理：步骤链，参数 `params[stepId]`
    *   · canvas       —— 画布合成（竖转横批量）：独立执行器，参数 `params.canvas`
    * 两者共享任务队列（type:'tool' 串行不抢 GPU）与输出策略实现，但**互不读取对方的参数**。
-   * @param {{mode?:'steps'|'canvas', root?:string, recursive?:boolean, files?:string[], stepIds?:string[],
-   *   params?:Object, output?:Object}} spec
-   * @returns {{ok:boolean, taskId?:string, error?:string}}
    */
   runTool(spec) {
     const envG = this._envGuard('run_tool');
@@ -6820,12 +6476,9 @@ class Api {
       }
       : { stepIds, params: s.params || {}, root, recursive: s.recursive !== false, files, output, toolName };
 
-    // ★ 画布合成的「每个背景各出一批」：**在引擎内**按 内容 × 背景 逐条出片（一个任务）。
-    //   为什么不在这里拆成 N 个任务：那会让 N 个背景污染出 N 条任务记录，而用户要的是
-    //   「一件事一个任务」、进度按产物数走。引擎本来就支持一个任务出多条产物
-    //   （遮罩叠加就是 N 原片 × M 遮罩 在一个任务里跑完），画布没理由例外。
-    //   ⚠ 清单长度 >1 时才置 eachBackground 并保留清单（引擎靠它枚举背景）；
-    //     其余情况剔掉 bgList —— 它是前端的预览候选，几百条路径塞进 TOOL_SPEC 没意义。
+    // ★ 画布合成的「每个背景各出一批」：**在引擎内**按 内容 × 背景 逐条出片（一个任务），
+    //   不在这里拆成 N 个任务（否则一个背景一条任务记录）；进度按产物数走。
+    //   ⚠ 清单长度 >1 时才置 eachBackground 并保留 bgList（引擎靠它枚举背景），其余情况剔掉。
     const cvParams = (toolSpec.params && toolSpec.params.canvas) || {};
     const bgList = (isCanvas && Array.isArray(cvParams.bgList))
       ? cvParams.bgList.map(String).filter((p) => {
@@ -6846,8 +6499,7 @@ class Api {
     // 进度总量按**产物数**：批量时是 内容 × 背景，否则按内容数
     task.progress.total = (bgList.length > 1) ? (files.length * bgList.length) : (files.length || 0);
     this._enqueueTask(task);
-    // ★ 完整技术快照 → 既有 app-<date>.log（不另开文件种类）：env 会随任务记录一起被清除，
-    //   而任务要「按同样参数重跑 / 复现」时，这份快照是唯一凭据。
+    // ★ 完整技术快照 → 既有 app-<date>.log（不另开文件种类）：env 会随任务记录一起被清除，而任务要「按同样参数重跑 / 还原」时，这份快照是唯一凭据。
     try { this._lg('RUN', 'tool.spec', '任务参数快照 · ' + title, { spec: this._taskSpecText(task, title, toolSpec, isCanvas ? s : null) }); } catch (e3) {}
     this._lg('RUN', 'tool.start', toolName + '任务 · ' + title,
       { id: task.id, mode: isCanvas ? 'canvas' : 'steps', stepIds, files: files.length, output, 背景数: bgList.length });
@@ -6857,21 +6509,12 @@ class Api {
 
       /**
    * 组装「可完全还原」的任务参数快照文本（作为字段写入 app-<date>.log）。
-   *
-   * 为什么要求这么细：任务记录会被清除、成片会被删，只有这份快照能回答
-   * 「当时到底用了什么参数、喂了哪些文件、结果写到哪」。
-   * 所以刻意做到三条：
-   *   ① 输入逐个列出路径 + 规格（分辨率/时长/是否带音轨），不写「N 个文件」这种省略；
-   *   ② 参数逐项列数值，并标注来源（界面改过 / 预设 / 默认值）——
-   *      否则复现时无从判断哪些是特意调的、哪些只是没碰过；
-   *   ③ 输出策略（目录/命名/冲突/备份）全列，否则无法解释文件为什么落在那儿。
+   * 须逐项列出输入路径与规格、参数数值与来源、输出策略，确保事后能完整还原当时参数。
    */
   /**
    * 结果快照 —— 任务终态时追加进同一份 app-<date>.log。
    *
-   * 为什么必须有：提交时那份快照只回答「**打算**做什么」；而"当时到底发生了什么"——
-   * 跑成功了几条、失败的是哪几条、为什么失败、耗时多久 —— 只有终态时才知道。
-   * 只给 log 文件夹的排查场景里，"为什么失败"几乎总是第一个要回答的问题。
+   * 提交侧快照只记录「打算做什么」，这份补上实际发生了什么：成败条数、失败明细、耗时。
    */
   _taskResultText(task, status) {
     const L = [];
@@ -6897,7 +6540,7 @@ class Api {
     if (P.groupCount) push('分组数', P.groupCount);
     if (P.clip) push('成片时长', Math.round(Number(P.clip) * 100) / 100 + ' 秒');
     if (t.failReason) { L.push(''); L.push('【失败原因】'); L.push('  ' + String(t.failReason)); }
-    // 失败清单：逐条列出 —— 复现/续跑全靠它（只给 log 时必须能知道是哪几条出了问题）
+    // 失败清单：逐条列出 —— 还原/续跑全靠它（只给 log 时必须能知道是哪几条出了问题）
     const fv = Array.isArray(t.failedVideos) ? t.failedVideos : [];
     const fi = Array.isArray(t.failedIndices) ? t.failedIndices : [];
     if (fv.length || fi.length) {
@@ -6916,12 +6559,8 @@ class Api {
   /**
    * 快照的「任务头」—— 四类任务共用。
    *
-   * 抽出来是为了**避免两条快照路径（spec 型 / env 型）各自维护一份而漂移**：
-   * 这三类信息是"只给 log 也能排查"的底座 ——
-   *   · 程序版本：用户报问题若不说版本，排查第一步就卡住；
-   *   · FFmpeg 路径：大量问题出在组件缺失/版本过旧/不支持 NVENC；
-   *   · 系统环境：判断"是不是他这台机器的问题"（NVENC 依赖显卡与驱动）。
-   * ⚠ 时间必须用**本地时区**：toISOString 是 UTC，会让复盘时间线与用户描述差 8 小时。
+   * 三条信息（程序版本 / FFmpeg 路径 / 系统环境）是「只给 log 也能排查」的底座；
+   * 抽出来是为了避免两条快照路径（spec 型 / env 型）各自维护一份而漂移。
    */
   _taskSpecHead(push, task, title) {
     const now = new Date();
@@ -6933,11 +6572,9 @@ class Api {
     push('标题', title);
     push('提交时间', localTime + '（本地时区）');
     push('工作路径', this.root || '');
-    // 批量展开的任务（画布"每个背景各出一批"）：标明它是这一批里的第几个、用的是哪个背景 ——
-    // 否则 log 里只有 N 份看起来雷同的快照，无从判断哪个任务是哪一批、对应哪张背景图。
+    // 批量展开的任务（画布"每个背景各出一批"）：标明它是这一批里的第几个、用的是哪个背景 ——否则 log 里只有 N 份看起来雷同的快照，无从判断哪个任务是哪一批、对应哪张背景图。
     if (task && task.bgBatch) {
       push('同批展开', '共 ' + task.bgBatch.total + ' 个任务，本任务固定使用背景「' + task.bgBatch.bg + '」');
-      // 产物落点决策也要留痕：否则事后看到 N 个任务写进同一目录，无法判断是设计使然还是重名事故
       if (task.bgBatch.outNote) push('输出落点', task.bgBatch.outNote);
     }
     try {
@@ -6959,7 +6596,7 @@ class Api {
    * 完整技术快照（env 型任务：批量拼接 / 遮罩叠加 / 复刻）。
    *
    * 与人话摘要的分工：这份是"给机器与深度排查"的 —— 逐项列出 env 的**全部**业务字段
-   * 与原始 JSON，不做归纳、不省略。用户只打包 log 文件夹时，这份必须能独立还原现场。
+   * 与原始 JSON，不做归纳、不省略；用户只打包 log 文件夹时，这份必须能独立还原现场。
    */
   _taskSpecTextEnv(task, title, env) {
     const L = [];
@@ -7049,9 +6686,7 @@ class Api {
     this._taskSpecHead(push, task, title);
     // 输入清单：逐个列规格。
     // ⚠ 用**同步** ffprobe 而不是引擎的 probeDetail —— 后者是 Promise，而快照必须在建任务的
-    //   同一拍写定（异步补写会与任务记录的生命周期错位）。8 个文件约 0.8 秒，提交时可接受。
-    // ⚠ 探测失败/无时长**如实记录**，不静默跳过：图片本来就没有 duration，把「静态图」
-    //   明确写出来，才解释得清「为什么这次跑出来的时长是遮罩的时长而不是素材的」。
+    //   同一拍写定：异步补写会与任务记录的生命周期错位。
     const probe = (p) => {
       try {
         const bin = this._resolveFfmpegBin();
@@ -7082,18 +6717,11 @@ class Api {
     L.push('');
     L.push('【参数】');
     const cv = (spec && spec.params && spec.params.canvas) || {};
-    // 参数来源：与**引擎的 DEFAULTS 逐项比对自动判定**。
-    // ⚠ 刻意不用前端上报的 touched：前端漏传或版本不匹配时，会把用户改过的值标成
-    //   「默认值」—— 那是**假信息**，比不标更误导航查（本快照第一版就踩了这个坑：
-    //   实测传了 scale=0.8 却全标"默认值"）。比对默认值不依赖任何外部输入，永远准。
+    // 参数来源按引擎 DEFAULTS 逐项比对判定，不用前端上报的 touched（漏传/版本不匹配会把改过的值标成默认值，比不标更误导航查）。
     let CV_DEFAULTS = {};
     try { CV_DEFAULTS = require(path.join(this.enginesDir, 'tools', 'canvas-plan.js')).DEFAULTS || {}; } catch (e) { CV_DEFAULTS = {}; }
     const presetName = rawSpec && rawSpec.params && rawSpec.params.presetName;
-    // 参数来源判定 + **当时生效的默认值**一并留档。
-    // ⚠ 为什么要写「当时默认」而不是只写「默认值」三个字：默认值会随版本变
-    //   （例如某版把 scale 的默认从 0.74 调成 0.8）。若快照只标「默认值」，
-    //   以后拿新版本的默认值去比对旧快照，就会把「当时用了默认值」误判成
-    //   「用户改过」—— 排查时直接把人带偏。写死当时的数值，这条信息就与后续版本解耦。
+    // 参数来源判定 + **当时生效的默认值**一并留档：默认值会随版本变化，写死当时数值，新旧版本比对才不失真。
     const srcOf = (k, v) => {
       if (!(k in CV_DEFAULTS)) return '界面设置（该键无引擎默认值）';
       const dft = CV_DEFAULTS[k];
@@ -7105,9 +6733,7 @@ class Api {
       if (skip && skip.indexOf(k) >= 0) return;
       L.push('  ' + k.padEnd(16) + String(obj[k]) + '   ← ' + srcOf(k, obj[k]));
     });
-    // ⚠ 以引擎 DEFAULTS 为基准**补全**：cv 里没出现的键也照样列出来（值即引擎默认）。
-    //   否则「用户没动过这一项」在快照里是**空白** —— 而"当时这项就是默认值"本身是事实，
-    //   缺了它便答不出「这个参数当时到底是多少」，也没法解释成片为什么长这样。
+    // ⚠ 以引擎 DEFAULTS 为基准**补全**：cv 里没出现的键也照样列出（值即引擎默认），否则「没动过这一项」在快照里是空白，答不出参数当时到底是多少、无法解释成片。
     const cvMerged = Object.assign({}, CV_DEFAULTS, cv);
     if (spec && spec.mode === 'canvas') { L.push('  （画布合成参数）'); fmt(cvMerged, ['touched', 'presetName']); }
     else if (spec && Array.isArray(spec.stepIds) && spec.stepIds.length) { L.push('  处理步骤  ' + spec.stepIds.join(' → ')); }
@@ -7192,7 +6818,7 @@ class Api {
     const notSet = this._settingsError('replica');
     if (notSet.length) return { ok: false, error: '视频复刻参数未设置：' + notSet.join('、') + '，请到 设置-视频复刻 中配置后再启动' };
     const r = this.config.replica || {};
-    // 全局参数（成片时长上限 / 加速阈值 / 每档轮数）与批量拼接共用同一套 —— 复刻不再单独设置
+    // 全局参数（成片时长上限 / 加速阈值 / 每档轮数）与批量拼接共用同一套 —— 复刻不单独设置
     const b = this.config.batch || {};
     const o = opts || {};
     const num = (v, dft) => { const n = parseFloat(v); return Number.isFinite(n) && n > 0 ? n : dft; };
@@ -7205,8 +6831,7 @@ class Api {
       BATCH_MAX_DURATION: String(b.max_duration),
       BATCH_SPEED_LIMIT: String(b.speed_limit),
       BATCH_MAX_RETRY: String(b.max_retry),
-      // 重复度区间：本次任务弹窗传入优先，未传则用设置里的默认值与默认启用状态
-      // （下限=至少替换到的占比；上限=尽量避免超过，超过会被平台判为全新视频）
+      // 重复度区间：本次任务弹窗传入优先，未传则用设置里的默认值与默认启用状态（下限=至少替换到的占比；上限=尽量避免超过，超过会被平台判为全新视频）
       REPLICA_DEDUP_RATIO: String(num(o.dedupRatio, r.dedup_ratio)),
       REPLICA_DEDUP_MIN: String(num(o.dedupRatio, r.dedup_ratio)),
       REPLICA_DEDUP_MAX: String(num(o.dedupRatioMax, r.dedup_ratio_max)),
@@ -7283,7 +6908,7 @@ class Api {
           } catch (e) {}
         }
         // 路由 B（批量）：源 TXT 是素材配置而非成片名清单，路由 A 必然一无所获。
-        // 改为「应有 total 片 − 已产出序号」反推缺失序号，再用已产出成片名作模板构造名字 ——
+        // 按「应有 total 片 − 已产出序号」反推缺失序号，再用已产出成片名作模板构造名字 ——
         // 引擎只从名字里反解序号（parseOnlyNameIndex），不比对完整名，故模板 + 目标序号即足够。
         if (!failNames.size && t.type === 'batch') {
           const plannedTotal = (t.progress && t.progress.total) || 0;
@@ -7300,8 +6925,7 @@ class Api {
           }
           if (plannedTotal > 0 && doneIdx.size > 0) {
             const sample = path.basename(String(doneVideos[0]));
-            // 捕获组顺序：$1 后缀标识 / $2 原序号 / $3 组后缀 —— 替换串只能用 $1 与 $3，
-            // 用 $2 会把「原序号」当成组后缀拼进去（...-21.mp4）
+            // 捕获组顺序：$1 后缀标识 / $2 原序号 / $3 组后缀 —— 替换串只能用 $1 与 $3，用 $2 会把「原序号」当成组后缀拼进去（...-21.mp4）
             const mkName = (i) => sample.replace(/-([^-\d]*)(\d+)([A-Z]?)\.mp4$/i, '-$1' + i + '$3.mp4');
             for (let i = 1; i <= plannedTotal; i++) if (!doneIdx.has(i)) failNames.add(mkName(i));
           }
@@ -7310,12 +6934,8 @@ class Api {
     }
     // ③ 兜底：从**磁盘实际产物**反推待补序号。
     //   中断/停止的任务本来就没有失败记录；失败序号也可能因引擎异常未落盘
-    //   （引擎在 thrStep 作用域崩溃 → failIndex 未执行 → 任务标为 error、失败记录为空
-    //    → 续跑报「没有发现需要续跑的成片」，只能整批重做）。
-    //   与路由 B 的区别：这里不依赖任务标记（marker），而是按提交时刻直接算出输出目录，
-    //   标记缺失/不完整时仍能得出「还缺哪些」——成片名携带序号，这是客观事实。
-    //   ⚠ 此处不得引用 `src`：它在本函数后面才声明（TDZ），会抛
-    //   「Cannot access 'src' before initialization」，导致点「继续制作」直接失败。
+    //   （引擎在 thrStep 作用域崩溃 → failIndex 未执行 → 任务标为 error、失败记录为空 → 续跑只能整批重做）。
+    //   ⚠ 此处不得引用 `src`：它在本函数后面才声明（TDZ），会抛 "Cannot access 'src' before initialization"。
     if (!failNames.size && t.type === 'batch') {
       // 先清理**不可播放**的产物：半截文件留在磁盘上会被当作"已完成"，导致该序号被永久跳过。
       try { await this._pruneBrokenOutputs(t); } catch (e) {}
@@ -7344,8 +6964,7 @@ class Api {
     if (!src) return { ok: false, error: '原任务缺少 TXT 配置，无法继续制作' };
     // ⚠ 演练模式（opts.dryRun）：只算出「会补做哪些」，**不删原任务、不建任务、不入队**。
     //   验证/诊断脚本一律用它 —— 本方法默认行为会真正启动引擎与 ffmpeg
-    //   （验证脚本直接调用曾真的编码了 30 个成片，落在真实输出目录、消耗大量 GPU 时间；
-    //    只读核对必须走 dryRun）。
+    //   （只读核对必须走 dryRun）。
     if (opts && opts.dryRun) {
       const idxDry = Array.isArray(t.failedIndices) ? t.failedIndices.filter((n) => Number.isInteger(n) && n > 0) : [];
       const missDry = (!failNames.size && t.type === 'batch') ? this._batchMissingIndices(t, '') : [];
@@ -7364,14 +6983,12 @@ class Api {
     this._removeMarker(t);
     let task;
     if (t.type === 'batch') {
-      // 配置 TXT 在首次运行时已被移入成片目录作为正本（引擎与 PS1 同语义），
-      // 续跑必须按成片目录重定位，否则旧路径已失效 → 引擎报「配置文件不可用（可能已被移动、重命名或删除）」
+      // 配置 TXT 在首次运行时已被移入成片目录作为正本（引擎与 PS1 同语义），续跑必须按成片目录重定位，否则旧路径已失效 → 引擎报「配置文件不可用（可能已被移动、重命名或删除）」
       const relocated = this._locateBatchConfig(src, t);
       if (relocated) { src = relocated; env.REPLICA_TXT = relocated; }
       // batch：只重做失败成片对应的「序号」，其余逻辑（命名/分组）仍按原始 BATCH_COUNT/BATCH_GROUP 计算；
-      // 提交时刻刻意不刷新 → 成片命名前缀、输出目录、拼接日志均与首次一致（续跑即补做同一批的缺片）
-      // 命名前的失败只能按序号补做：优先用 failedIndices（BATCH_ONLY_INDEX），
-      // 没有序号时才退回按成片名过滤（BATCH_ONLY_NAMES）
+      // 提交时刻刻意不刷新 → 成片命名前缀、输出目录、拼接日志均与首次一致（续跑即补做同一批的缺片）。
+      // 命名前的失败只能按序号补做：优先用 failedIndices（BATCH_ONLY_INDEX），没有序号时才退回按成片名过滤（BATCH_ONLY_NAMES）。
       const idxArr = Array.isArray(t.failedIndices) ? t.failedIndices.filter((n) => Number.isInteger(n) && n > 0) : [];
       if (idxArr.length) {
         env.BATCH_ONLY_INDEX = idxArr.join(';');
@@ -7393,8 +7010,7 @@ class Api {
         onlyVar: t.type === 'batch' ? (env.BATCH_ONLY_INDEX ? 'BATCH_ONLY_INDEX' : 'BATCH_ONLY_NAMES') : 'REPLICA_ONLY_NAMES',
         only: namesArr.slice(0, 40),
         env: this._envBrief(env) });
-    // 返回"实际补做片数"：batch 走序号补做时以序号数为准（按名收集可能多算一项，
-    // 例如标记推断与产物反推同时命中同一条），否则按名字数。
+    // 返回"实际补做片数"：batch 走序号补做时以序号数为准（按名收集可能多算一项，例如标记推断与产物反推同时命中同一条），否则按名字数。
     const realCount = (t.type === 'batch' && env.BATCH_ONLY_INDEX)
       ? String(env.BATCH_ONLY_INDEX).split(';').filter(Boolean).length
       : namesArr.length;
@@ -7403,12 +7019,8 @@ class Api {
 
   // 批量任务续跑的配置重定位。
   // 背景：配置正本在首次运行时被移入成片目录归档（引擎与 PS1 同语义），续跑沿用旧路径必然失效。
-  // 关键约束：成片名里含「配置所在目录名」（引擎以 baseDir 名作命名基准），若直接改用归档路径，
-  // 续跑产物名会多出一段目录名而与首次不一致 → 必须先复制回原路径，再以原路径运行。
-  // 复制是幂等的：引擎读到该副本后会再次把它移回归档位置（覆盖同名）。
-  // 从成片目录的实际产物反推「还缺哪些序号」（续跑兜底，见 resumeTask ③ 段）。
-  // 反解规则与引擎 parseOnlyNameIndex 完全一致：末段 = 可选后缀标识 + 序号 + 可选组后缀
-  // （如 `...-示例A-10C.mp4` → 10）。目录定位复用 _batchTaskOutDetail（含凌晨迁移回退）。
+  // 关键约束：成片名里含「配置所在目录名」，若直接改用归档路径，续跑产物名会多出一段目录名；
+  //   故必须先复制回原路径再以原路径运行（复制幂等，引擎读到后会再次移回归档位置）。
   _batchMissingIndices(t, src) {
     try {
       const total = Number((t.env || {}).BATCH_COUNT) || 0;
@@ -7423,8 +7035,7 @@ class Api {
       try { names = fs.readdirSync(dir); } catch (e) { return []; }
       const done = new Set();
       for (const f of names) {
-        // 临时产物不算完成（引擎先写 `*.mp4.tmp`、成功后原子改名，见 batch/index.js）：
-        // 否则编码中途留下的半截文件会被当成"已完成"，该序号被永久跳过。
+        // 临时产物不算完成（引擎先写 `*.mp4.tmp`、成功后原子改名，见 batch/index.js）：否则编码中途留下的半截文件会被当成"已完成"，该序号被永久跳过。
         if (/\.tmp\.mp4$|\.mp4\.tmp$/i.test(f) || /\.bak$/i.test(f)) continue;
         if (!VIDEO_EXTS.has(path.extname(f).toLowerCase())) continue;
         const m = /-([^-\d]*)(\d+)([A-Z]?)$/.exec(path.basename(f, path.extname(f)));
@@ -7444,18 +7055,11 @@ class Api {
     } catch (e) { return []; }
   }
 
-  // 续跑前的产物校验与清理：
-  // 「需要清除可能存在的失败成片，即损坏的无法正常播放的成片（例如编码到一半意外停止）」
-  // 为什么必须先做：反推「还缺哪些序号」依据的是"文件在不在"，而**半截文件也在**——
-  // 不清理就会把损坏成片当成已完成、永久跳过该序号（用户拿不到片子，且不会报错）。
-  // ⚠ 安全原则（务必保守）：**只在能明确判定损坏时才动文件**。
-  //   · `*.mp4.tmp`（引擎临时产物）→ 直接删（100% 安全：正式名才是交付物）；
-  //   · ffprobe **明确报出损坏特征**（moov atom not found / Invalid data 等）→ 改名留证；
-  //   · ffprobe 超时 / 启动失败 / 权限错误 → **一律不动**（工具自身不可信时，不能替用户下结论）。
-  //   教训：清理比不清理更糟的情形真实存在 —— 误判会把好成片改名，等于让用户丢片子。
-  // ⚠ 演练模式（opts.dryRun）：只**报告**会怎么处理，绝不改文件。
-  //   验证/诊断脚本一律用它 —— 真实素材目录只应被"用户点继续制作"这一条路径写入
-  //   （验证脚本曾直接对真实目录调用本方法：虽未造成改动，但那是本不该有的写权限）。
+  // 续跑前的产物校验与清理（清理可能存在的失败成片，如编码到一半损坏的）：
+  // 反推「还缺哪些序号」看的是文件在不在，而**半截文件也在** —— 不清理会把损坏成片当成已完成、永久跳过该序号。
+  // ⚠ 只在能明确判定损坏时才动文件：`*.mp4.tmp` 直接删；ffprobe 明确报损坏 → 改名留证；超时/启动失败/权限错误 → 一律不动。
+  // ⚠ opts.dryRun：只报告会怎么处理，绝不改文件（验证/诊断脚本一律用它）。
+
   async _pruneBrokenOutputs(task, opts) {
     const dryRun = !!(opts && opts.dryRun);
     const out = { dir: '', checked: 0, broken: [], temps: [], skipped: 0 };
@@ -7512,8 +7116,7 @@ class Api {
         if (r.state === 'unknown') { out.skipped++; continue; }   // 无法判定 → 绝不替用户下结论
         // 明确损坏：**移出成片目录**，该序号回到未完成。
         // 优先移入回收站（项目红线：删除一律可还原）；回收站不可用时才退化为改名 ——
-        // 但绝不把 .bak 留在正式产出目录里（留在目录里等于没清，
-        // 而且会被误当成本批产物）。
+        // 但绝不把 .bak 留在正式产出目录里（留在目录里等于没清，而且会被误当成本批产物）。
         let recycled = false;
         if (dryRun) {
           out.broken.push({ name: f, size, recycled: false, dryRun: true });
@@ -7560,13 +7163,9 @@ class Api {
 
   // 归档配置查找（按优先级叠加多个查找源，任一命中即返回）：
   //   ① 任务自身记录的目录（done 任务经 _verifyBatchOutDirs 重算过，最可靠）；
-  //   ② 运行时写入标记的权威输出目录 marker.batchOutDir —— 软暂停/停止/中断等非 done 任务
-  //      也一定有（引擎启动即上报输出目录），但此时 t.outDir 尚未被重算，必须用标记兜底；
-  //   ③ 按「提交时刻 + 配置名」确定性推算目录（覆盖标记缺失/被清理的极端情形）；
-  //   ④ 原 TXT 所在目录（配置未被移走的常规路径）。
-  // ⚠ 四个来源都要查：只查 ①④ 时，非 done 任务 t.outDir 缺失 → 找不到被引擎移入输出目录的
-  //   TXT 正本 → 软暂停「继续」续跑会报「配置文件不可用（可能已被移动、重命名或删除）」，
-  //   而「先停止再续跑」却正常（停止态能命中 ④ 或恰好还留有 t.outDir）。补齐后两条路径行为一致。
+  //   ② 运行时写入标记的权威输出目录 marker.batchOutDir —— 软暂停/停止/中断等非 done 任务也一定有（引擎启动即上报）；
+  //   ③ 按「提交时刻 + 配置名」确定性推算目录（覆盖标记缺失/被清理的极端情形）；④ 原 TXT 所在目录。
+  // ⚠ 四个来源都要查：只查 ①④ 时，软暂停「继续」续跑会报「配置文件不可用」，而「先停止再续跑」却正常。
   _findArchivedConfig(oldPath, t) {
     const cur = String(oldPath || '');
     const base = cur ? path.basename(cur) : '';
@@ -7669,25 +7268,20 @@ class Api {
     return { ok: true, taskId: task.id };
   }
 
-  // 前端异常上报：界面报错若不落盘，事后无从回溯 —— 统一落进错误日志（与引擎失败同一份）。
-  // payload: { kind, msg, stack, where, href }
+  // 前端异常上报：界面报错若不落盘，事后无从回溯 —— 统一落进错误日志（与引擎失败同一份）。payload: { kind, msg, stack, where, href }
   reportUiError(p) {
     try {
       const o = (p && typeof p === 'object') ? p : {};
       const kind = String(o.kind || 'exception');
-      // 不截断：stack 全文入 data，超长由 briefData 分片多行承载；
-      // 摘要取首行（formatLine 会折叠换行，此处显式取首行保扫读）
+      // 不截断：stack 全文入 data，超长由 briefData 分片多行承载；摘要取首行（formatLine 会折叠换行，此处显式取首行保扫读）
       const msg = String(o.msg || o.message || '');
       const stack = String(o.stack || '');
       const where = String(o.where || '').slice(0, 80);
       const href = String(o.href || '').slice(0, 240);
       // 前端可带当前任务 id（logbootstrap 的 vlSetTaskId）：排查时前端异常能与任务日志串起来
       const taskId = String(o.taskId || '').slice(0, 80);
-      // ── 「用户做了什么 / 看到了什么」也必须落日志 ──
-      //   目标：**用户报问题时不必再复述过程，日志本身就能还原他做过什么、看到过什么**。
-      //   之前只有异常进日志，于是「界面上弹过的提示」「切过的配置」全都不留痕 ——
-      //   用户说"刚才提示过什么"时，日志里什么都查不到，只能靠他口述。
-      //   kind=action：界面动作/提示（非异常）；level=error 的额外记一条，便于按错误筛选。
+      // ── 用户操作与界面提示也落日志 ──
+      //   界面动作/提示（非异常）记 kind=action；level=error 的额外记一条，便于按错误筛选。
       if (kind === 'action') {
         const action = String(o.action || 'ui.action').slice(0, 60);
         const level = String(o.level || 'info').toLowerCase();
@@ -7701,8 +7295,6 @@ class Api {
         // ⚠ 级别必须体现在 **verb** 上：runlog.logEvent 只按 verb 查级别表，data.level 形同虚设。
         //   UIA = 普通操作（info，进 app 日志）· ERR = 需要排查（error，进 error 日志）。
         //   分开是为了不冲淡 error 文件 —— 它保留 30 天，且是排查时第一个要看的东西。
-        // ⚠ src 标记来源：report_ui_error 自身也会被通用 IPC 访问日志记一条
-        //   （所有通道都如此，是既有机制，不为此改它）。带上 src，排查时能一眼过滤掉那条噪音。
         info.src = 'ui-action';
         this._lg(level === 'error' ? 'ERR' : 'UIA', action, text, info);
         return { ok: true };
@@ -7772,7 +7364,6 @@ class Api {
   // 诊断包路径打码（外发前用）：只保留**文件名**，盘符与各级目录一律折叠 ——
   // 目录名、盘符、任务名都可能含业务信息，而排查只需知道"是哪个文件"。
   // 例：`E:\项目名\9月\0927\配置.txt` → `<路径>\配置.txt`。
-  // 兼容 JSON 里的反斜杠转义（`E:\\a\\b.txt`）—— 故按「一个或多个反斜杠」切分。
   _maskDiagPaths(text) {
     const s = String(text == null ? '' : text);
     return s
@@ -7788,9 +7379,7 @@ class Api {
       });
   }
 
-  /** 全局现场包：没有可用任务时的诊断导出。
-   *  普通用户不知道任务 id，且不少问题（提示看不懂、点了没反应）根本没有失败任务 ——
-   *  此时若只能报错，最需要日志的场景反而导不出来。 */
+  /** 全局现场包：没有可用任务时的诊断导出。 */
   _exportGlobalDiagPack(opts) {
     try {
       const since = Date.now() - 24 * 60 * 60 * 1000;
@@ -7856,8 +7445,7 @@ class Api {
           if (!t || (t2.endedAt || 0) > (t.endedAt || 0)) t = t2;
         }
       }
-      // 没有可用任务时导出「全局现场包」：普通用户并不知道任务 id，而"点了没反应""提示看不懂"
-      // 这类问题往往根本没有失败任务；若此时只能报错，就等于把最需要日志的场景挡在门外。
+      // 无可用任务时导出全局现场包；指定了 id 但任务不存在则按原样报错
       if (id && !t) return { ok: false, error: '任务不存在' };
       if (!t) return this._exportGlobalDiagPack(opts);
       id = t.id;
@@ -7887,13 +7475,10 @@ class Api {
         parts.push(r.lines && r.lines.length ? r.lines.join('\n') : '(无匹配行)');
         parts.push('');
       }
-      // ── 用户操作时间线（含**不带 taskId** 的界面动作）──
-      // 为什么必须单独加：上面三段都按 taskId grep，而"用户界面上点了什么/看到过什么"大多发生在
-      // 任务窗口之外、不带 taskId（实测本地 141 条 ui.* 里 78 条无 taskId）—— 那些恰恰是还原现场最缺的。
-      // 这里按**任务时间窗**再收一遍：带不带 taskId 都收，落在窗口内即算相关。
-      // 目标：用户不做任何说明，只看这个包就能顺着时间线还原他做过什么、看到过什么。
+      // ── 用户操作时间线（含不带 taskId 的界面动作）──
+      // 按任务时间窗收录界面动作，带不带 taskId 都算相关。
       try {
-        const since = Number(t.startedAt || t.createdAt || 0) - 30 * 60 * 1000;   // 前置 30 分钟：覆盖"操作前的准备"
+        const since = Number(t.startedAt || t.createdAt || 0) - 30 * 60 * 1000;   // 前置 30 分钟：覆盖操作前的准备
         const until = Number(t.endedAt || Date.now()) + 30 * 60 * 1000;
         const all = this._ensureRunLog().readLog({ file: 'app', tail: 60000, maxBytes: 32 * 1024 * 1024 });
         const toTs = (ln) => {
@@ -7973,8 +7558,7 @@ class Api {
     const out = [];
     let entries = [];
     try { entries = fs.readdirSync(root, { withFileTypes: true }); } catch (e) { return []; }
-    // 一级目录名集合（含空目录）—— 供核验项目登记表：遮罩列表本来就遍历了目录，
-    // 所以「登记项是否还存在」的核验在这里是零额外 IO 的（外部删除 → 下次即摘除）
+    // 一级目录名集合（含空目录）—— 供核验项目登记表：遮罩列表会遍历目录，所以「登记项是否还存在」的核验在这里是零额外 IO 的（外部删除 → 下次即摘除）
     const dirNames = new Set();
     for (const en of entries) if (en.isDirectory()) dirNames.add(en.name);
     // 遮罩侧的项目登记表：软件内新建、暂无素材的项目（详见 _projRegKey 上方说明）
@@ -8013,8 +7597,7 @@ class Api {
       };
       walkMasks(pdir);
       themeCount = seenPrefix.size;
-      // 纳入条件：项目内有遮罩主题子文件夹，或任意位置（含根目录）存在 .mov 主题素材；
-      // 或者它是软件内新建并登记过的空项目（保证「添加新项目」后立刻可见）
+      // 纳入条件：项目内有遮罩主题子文件夹，或任意位置（含根目录）存在 .mov 主题素材；或者它是软件内新建并登记过的空项目（保证「添加新项目」后立刻可见）
       const isEmptyProject = !themes.length && themeCount === 0;
       if (!isEmptyProject || regSet.has(en.name)) out.push({ name: en.name, path: pdir, themes, themeCount, isEmptyProject });
     }
@@ -8152,8 +7735,7 @@ class Api {
   // 遮罩叠加日志目录约定：项目\遮罩日志
   _maskLogDir(projectPath) { return path.join(projectPath, '遮罩日志'); }
 
-  // 按成片名从视频缓存反查实际文件（用户手动迁移后仍可定位；日志 @out 缺失时兜底）。
-  // 查全部作用域：待查成片可能来自任意模式，此处不做来源过滤。
+  // 按成片名从视频缓存反查实际文件（用户手动迁移后仍可定位；日志 @out 缺失时兜底）。查全部作用域：待查成片可能来自任意模式，此处不做来源过滤。
   _findMaskOut(videoName) {
     const target = String(videoName == null ? '' : videoName).toLowerCase();
     if (!target) return '';
@@ -8178,15 +7760,13 @@ class Api {
     return '';
   }
 
-  // 从遮罩日志读取成片块中的 @out 路径行（返回候选路径，不要求文件仍存在；
-  // 前端据此打开文件夹，并用 check_exists 判定「打开成片」是否可点）
+  // 从遮罩日志读取成片块中的 @out 路径行（返回候选路径，不要求文件仍存在；前端据此打开文件夹，并用 check_exists 判定「打开成片」是否可点）
   _maskOutFromLog(logPath, videoName) {
     const text = readText(logPath);
     const lines = text.split(/\r?\n/).map((l) => l.trim());
     for (let i = 0; i < lines.length; i++) {
       if (lines[i] !== videoName) continue;
-      // 成片名行向下 8 行内找 @out（块内顺序：成片名/使用片段列表：/素材/@out），
-      // 遇 === 分隔线即止；不能因紧邻的「使用片段列表：」提前退出，否则 @out 永远读不到
+      // 成片名行向下 8 行内找 @out（块内顺序：成片名/使用片段列表：/素材/@out），遇 === 分隔线即止；不能因紧邻的「使用片段列表：」提前退出，否则 @out 永远读不到
       for (let j = i + 1; j < Math.min(i + 8, lines.length); j++) {
         const m = /^@out:\s*(.+)$/.exec(lines[j]);
         if (m) { const p = String(m[1]).trim().replace(/^"|"$/g, ''); return p ? p : ''; }
@@ -8197,8 +7777,7 @@ class Api {
     return '';
   }
 
-  // 列出项目的遮罩叠加日志：每个日志文件只读一次，同步解析成片块与 @out 实际路径；
-  // 按日志目录内文件 名称+mtime 签名缓存，未变化直接复用（切换项目/进出日志视图不再重复解析）
+  // 列出项目的遮罩叠加日志：每个日志文件只读一次，同步解析成片块与 @out 实际路径；按日志目录内文件 名称+mtime 签名缓存，未变化直接复用（切换项目/进出日志视图不重复解析）
   listMaskLogs(projectPath) {
     const pdir = String(projectPath || '').trim();
     const logDir = this._maskLogDir(pdir);
@@ -8233,8 +7812,7 @@ class Api {
     return JSON.parse(JSON.stringify(logs));
   }
 
-  // 删除与指定素材（原片/遮罩路径）相关的所有遮罩叠加成片：按日志块片段精确匹配，
-  // 删除成片文件并同步从日志移除对应块；返回删除列表
+  // 删除与指定素材（原片/遮罩路径）相关的所有遮罩叠加成片：按日志块片段精确匹配，删除成片文件并同步从日志移除对应块；返回删除列表
 
   // 原片/遮罩会话状态（缓存，非设置）：存于 cache_kv（键 mask_session:<项目名>）
   // 不手动清除/移除就会一直在列表里；重建缓存菜单项清空后回退自动扫描
@@ -8287,8 +7865,7 @@ class Api {
     } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
   }
 
-  // —— 项目默认输出目录（项目级设置，独立于会话缓存；供底栏输出目录占位符与选择初始路径）——
-  // 存于设置库 scope='mask'，键为项目名
+  // —— 项目默认输出目录（项目级设置，独立于会话缓存；供底栏输出目录占位符与选择初始路径）——存于设置库 scope='mask'，键为项目名
   getMaskDefaultDir(projectName) {
     if (!this._useSettings()) return '';
     try { return String(this._settingsStore.get('mask', String(projectName || ''), '') || '').trim(); } catch (e) { return ''; }
@@ -8491,8 +8068,7 @@ class Api {
     return { ok: false, error: '未找到成片：' + vn };
   }
 
-  // 删除二次拼接产物：扫描项目下所有拼接日志/复刻日志，找出片段引用遮罩叠加成片的成片块，
-  // 删除对应二次成片文件并同步从日志移除块（成片与日志同目录）
+  // 删除二次拼接产物：扫描项目下所有拼接日志/复刻日志，找出片段引用遮罩叠加成片的成片块，删除对应二次成片文件并同步从日志移除块（成片与日志同目录）
   deleteSecondaryProducts(projectPath, maskOutPaths) {
     const pdir = String(projectPath || '').trim();
     const refs = new Set((Array.isArray(maskOutPaths) ? maskOutPaths : []).map((p) => path.basename(String(p)).toLowerCase()));
@@ -8573,14 +8149,9 @@ class Api {
     return { ok: true, deleted, videos: removedVideos };
   }
 
-  // 检测应用运行所需的外部环境是否可用（ffmpeg / ffprobe / 内置引擎）
-  // 项目实际依赖的滤镜清单（三模块 + 视频处理工具的 -filter_complex 全量收集）
-  // 精简版/第三方便携构建常缺 colorchannelmixer、signalstats 等 —— 只查存在性拦不住
-  // 内置组件目录：打包形态 = `<程序目录>\resources\ffmpeg`。
-  // 由打包配置的 extraResources 随包落入 —— 放 resources 而非 asar，因为引擎要 spawn 真实文件
-  //（与 `resources\Engines` 同一套路）。
-  // ⚠ 未打包（开发形态）时返回空：`process.resourcesPath` 指向的是 Electron 自己的 resources，
-  //   不是本应用，照用会解析到一份不相干的目录。开发形态继续走「数据目录\ffmpeg」。
+  // 检测应用运行所需的外部环境是否可用（ffmpeg / ffprobe / 内置引擎）；滤镜需实际运行探测，只查存在性拦不住。
+  // 内置组件目录：打包形态 = <程序目录>\resources\ffmpeg（extraResources 随包落入；引擎需 spawn 真实文件，故不放 asar）。
+  // ⚠ 未打包（开发形态）返回空：`process.resourcesPath` 指向 Electron 自身，开发形态继续走「数据目录\ffmpeg」。
   _ffmpegBuiltinDir() {
     try {
       const el = require('electron');
@@ -8589,7 +8160,7 @@ class Api {
       return rp ? path.join(rp, 'ffmpeg') : '';
     } catch (e) { return ''; }
   }
-  /** 内置组件是否就位（两个 exe 都在）—— 供启动探测据此**不再自动下载/升级** */
+  /** 内置组件是否就位（两个 exe 都在）—— 供启动探测据此**不自动下载/升级** */
   ffmpegBuiltinReady() {
     const d = this._ffmpegBuiltinDir();
     if (!d) return false;
@@ -8597,13 +8168,9 @@ class Api {
   }
   // 解析 ffmpeg / ffprobe 实际路径。**优先级**：
   //   ① 内置 `resources\ffmpeg\`（随程序发布，首启离线可用）
-  //   ② 配置字段 `ffmpeg_dir`（⚠ 配置文件字段，**设置页没有对应 UI**：平时由自动下载/自愈回写，
-  //      供手工改 config.json 指定自备的完整版）
-  //   ③ 数据目录\ffmpeg（历史下载遗留 —— 仅为兼容旧装机保留，不再是默认）
-  // 逐级取**实际存在两个 exe** 的目录，取到即用；这一处即全部真相（环境校验 / 引擎注入 / 产物校验都读它）。
-  // ⚠ 仍不得回退系统 PATH：PATH 依赖会造成「主进程判定正常而引擎实际跑不起来」「PATH 项指向不存在的目录」
-  //   「机内多份 ffmpeg 副本导致行为不可预期」等一连串意外。
-  // 纯同步、极快（几次 existsSync），可安全用于启动路径。
+  //   ② 配置字段 `ffmpeg_dir`（配置文件字段，设置页无 UI：平时由自动下载/自愈回写，供手工改 config.json 指定自备完整版）
+  //   ③ 数据目录\ffmpeg（历史下载遗留，仅为兼容旧装机保留）
+  // 逐级取**实际存在两个 exe** 的目录，取到即用；⚠ 不得回退系统 PATH，且纯同步、极快，可用于启动路径。
   _resolveFfmpegBin() {
     const cands = [];
     const bi = this._ffmpegBuiltinDir();
@@ -8618,15 +8185,13 @@ class Api {
       try { ok = fs.existsSync(f) && fs.existsSync(p); } catch (e) { ok = false; }
       if (ok) return { cfgDir: d, ffmpegPath: f, ffprobePath: p };
     }
-    // 一处都没有：保持旧语义 —— cfgDir 指向「数据目录\ffmpeg」（历史自愈位置），
-    // 路径留空由调用方走「组件缺失」提示与（已就位的）自动下载兜底。
+    // 一处都没有：保持旧语义 —— cfgDir 指向「数据目录\ffmpeg」（历史自愈位置），路径留空由调用方走「组件缺失」提示与（已就位的）自动下载兜底。
     return { cfgDir: legacy || (cands[0] || ''), ffmpegPath: '', ffprobePath: '' };
   }
 
   // ── 使用前的轻量环境校验（毫秒级：只做 existsSync + where，不启动 ffmpeg 进程）──
-  // 启动时的完整探测（checkEnvAsync）只代表「启动那一刻」；环境在运行期间失效
-  // （PATH 被改动、组件被移走、安全软件清理入口）时不会重查，只能在使用时兜住 ——
-  // 否则要到素材探测失败才暴露，且错误文案会把「探测失败」说成「分辨率/时长不符」。
+  // 启动时的完整探测（checkEnvAsync）只代表「启动那一刻」；环境在运行期间失效（PATH 被改动、组件被移走、
+  // 安全软件清理入口）时不会重查，只能在使用时兜住，否则要到素材探测失败才暴露。
   quickEnvCheck() {
     const r = this._resolveFfmpegBin();
     return {
@@ -8661,13 +8226,7 @@ class Api {
   }
 
   // 环境检测（**唯一入口**）：滤镜/编码器探测走异步 execFile，不阻塞主进程事件循环。
-  // ⚠ 不得改回同步实现 —— 冷启动首次加载 ffmpeg（安全软件扫描未签名二进制）会阻塞
-  //   十几秒到数十秒，把窗口显示推迟到分钟级。
-  //
-  // ⚠ 「探测失败」必须与「确实缺滤镜」分开表达：
-  //   探测失败（冷态超时、被杀软拦下、spawn 失败）只说明**这次没探到**，不代表环境不合格。
-  //   两者混在一起会这样：超时 → 输出为空 → 把所有必需滤镜都记成 missing → downloadNeeded=true
-  //   → 冷启动**必然**误报「FFmpeg 组件不完整」，而热态重跑却一切正常。
+  // ⚠ 不得改回同步实现 —— 冷启动首次加载 ffmpeg（安全软件扫描未签名二进制）会长时间阻塞主线程，窗口显示要等很久。
   checkEnvAsync() {
     const { cfgDir, ffmpegPath, ffprobePath } = this._resolveFfmpegBin();
     const finish = (missing, missingEncoders, probeFailed, probeReason) => {
@@ -8694,7 +8253,7 @@ class Api {
       return Promise.resolve(finish(c.missing.slice(), c.missingEncoders.slice(), false, ''));
     }
     // 持久化命中（verify_cache 的 env:ffmpeg，按 ffmpeg 路径 + size/mtime 指纹）：
-    // 启动期直接复用上次结论 —— **不再起 ffmpeg 进程**（实测省 347ms，且彻底消除冷态超时误报）。
+    // 启动期直接复用上次结论 —— **不启动 ffmpeg 进程**（省一次进程启动，且消除冷态超时误报）。
     if (fp && this._useDbCache() && this._cacheStore && typeof this._cacheStore.verifyGetMany === 'function') {
       try {
         const row = this._cacheStore.verifyGetMany('env:ffmpeg').get('env:ffmpeg');
@@ -8736,13 +8295,11 @@ class Api {
       if (re.ok) for (const e3 of FFMPEG_REQUIRED_ENCODERS) if (!re.out.includes(' ' + e3 + ' ')) missingEncoders.push(e3);
       const probeFailed = !rf.ok || !re.ok;
       const probeReason = !rf.ok ? rf.reason : (!re.ok ? re.reason : '');
-      // 失败结果**不写缓存**：下次调用（前端 check_env / 启动期延迟重试）会再探一次 ——
-      // 冷态超时通常几秒后就转热，缓存失败结论等于把误判钉死到进程重启。
+      // 失败结果**不写缓存**：下次调用（前端 check_env / 启动期延迟重试）会再探一次 ——冷态超时通常几秒后就转热，缓存失败结论等于把误判钉死到进程重启。
       this._envProbeCache = probeFailed
         ? null
         : { fp, missing: missing.slice(), missingEncoders: missingEncoders.slice(), at: Date.now() };
-      // 成功结论**持久化**（按 ffmpeg 路径 + size/mtime 指纹）：下次启动直接复用，不再起 ffmpeg 进程。
-      // 失败仍不写（见上），避免把冷态误判钉死。
+      // 成功结论**持久化**（按 ffmpeg 路径 + size/mtime 指纹）：下次启动直接复用，不启动 ffmpeg 进程。失败仍不写（见上），避免把冷态误判钉死。
       if (!probeFailed && fp && this._useDbCache() && this._cacheStore && typeof this._cacheStore.verifyPut === 'function') {
         try {
           this._cacheStore.verifyPut('env:ffmpeg', fp, JSON.stringify({ missing: missing.slice(), missingEncoders: missingEncoders.slice() }), 0, Date.now());
@@ -8756,8 +8313,7 @@ class Api {
     return this._envProbeInflight;
   }
 
-  // 环境探测留痕：冷启动是否超时、超时多久、路径是什么 —— 事后唯一可回溯的证据
-  // （进程重启后内存缓存即失效，只靠"弹窗出现过"无法判断是缺组件还是冷态没探到）
+  // 环境探测留痕：冷启动是否超时、超时多久、路径是什么 —— 事后唯一可回溯的证据（进程重启后内存缓存即失效，只靠"弹窗出现过"无法判断是缺组件还是冷态没探到）
   _logEnvProbe(r, ms) {
     try {
       this._lg(r.probeFailed ? 'ERR' : 'SYS', 'env.probe',
@@ -8773,8 +8329,7 @@ class Api {
 
   // 注：环境检测唯一入口 = checkEnvAsync()；不要引入同步实现 —— 同步 spawn 会阻塞启动关键路径。
 
-  // 备份自动清理：删除超过保留天数的处理前备份（走回收站，可还原）；
-  // 目录取设置里的「默认备份目录」，未设置时用数据目录下的 backup
+  // 备份自动清理：删除超过保留天数的处理前备份（走回收站，可还原）；目录取设置里的「默认备份目录」，未设置时用数据目录下的 backup
   _cleanupBackups() {
     try {
       if (this.config.backup_auto_clean !== true) return;
@@ -8782,8 +8337,7 @@ class Api {
       // 与实际备份根一致：用户自选目录时同样落在其下的「Video Lab 备份」层（清理才清得到）
       const root = this.getBackupRoot();
       if (!fs.existsSync(root)) return;
-      // ⚠ 必须在此取 shell：本文件没有模块级引入 electron，直接用 `shell` 会得到 undefined，
-      //   条件恒假 → 只计数不删除（实测：保留 3 天，6 天前的备份一个都没清掉）。
+      // ⚠ 必须在此取 shell：本文件没有模块级引入 electron，直接用 `shell` 会得到 undefined，条件恒假 → 只计数不删除。
       const { shell } = require('electron');
       const expire = Date.now() - days * 24 * 60 * 60 * 1000;
       let n = 0;
@@ -8804,11 +8358,7 @@ class Api {
     } catch (e) {}
   }
 
-  // 备份自动清理（异步版）：供**启动后台**调用。
-  // 为什么需要：同步版只在「视频处理任务结束后」触发（见 _cleanupBackups 调用点）——
-  //   若用户此后不再跑视频处理任务，过期备份永远不会被清理（实测：设为保留 3 天，
-  //   6 天前的备份仍原样留在目录里）。启动路径也不能同步遍历（备份目录可能在机械盘），
-  //   故用 fs.promises 后台跑，与成片存在性预热同一模式。
+  // 备份自动清理（异步版，供启动后台调用）：启动路径不能同步遍历（备份目录可能在机械盘），故用 fs.promises 后台跑，与成片存在性预热同一模式。
   async _cleanupBackupsAsync() {
     try {
       if (this.config.backup_auto_clean !== true) return 0;
@@ -8841,11 +8391,8 @@ class Api {
   }
 
   // 启动后台：把「数据目录 backup\ 里的存量备份」迁到用户当前设置的备份根。
-  // 为什么需要单独这一步：`migrateBackups` 只在**保存设置时值发生变化**才触发，
-  //   而用户早就设好了自定义根 —— 于是老版本写进数据目录的那批备份（画布合成路径当年不读设置，
-  //   一律落数据目录）在升级后**永远不会被搬走**，一直占着数据目录，用户也看不出该去哪找。
-  // 条件：仅在用户设了自定义根时迁移（没设时数据目录就是正确位置，动它反而错）。
-  // 幂等：源目录不存在时 migrateBackups 直接返回 0；迁移后只删已空目录。
+  // migrateBackups 只在**保存设置时值发生变化**才触发，旧版写进数据目录的那批备份否则永远不会被搬走；
+  // 仅在用户设了自定义根时迁移（没设时数据目录就是正确位置），源目录不存在直接返回 0。
   async migrateLegacyBackupsAsync() {
     try {
       const custom = String(this.config.backup_dir || '').trim();
@@ -8864,7 +8411,6 @@ class Api {
   // 备份目录变更时迁移旧备份：把旧备份根下的内容搬到新根（改了路径，里面的备份一起迁移）。
   // 逐文件移动（rename 优先，跨盘失败退回「复制 + 删源」）；同名文件保留新目录已有内容（不覆盖）。
   // ⚠ 迁移完成后只删除**已空**的旧目录（绝不 rm -rf 有内容的目录），避免中途失败时丢备份。
-  // 异步执行（备份可能很多且跨盘），调用方不等待、不阻塞保存设置。
   async migrateBackups(oldDir, newDir) {
     try {
       const rootOf = (d) => {
@@ -8921,22 +8467,10 @@ class Api {
     } catch (e) { return 0; }
   }
 
-  // 过期锁清理：进程被强杀（崩溃 / 任务管理器结束）时 finally 不执行，锁文件会残留下来；
-  // 而 .locks 目录只建不删 —— 残留会一直累积，用户也无从清理。
-  // 判定与 acquireLock 的过期规则一致：pid 不存活 或 写入时间超过 60 秒
-  // 旧版遗留的**自动**兜底清理（手动清单之外的另一路）：只清「确定无价值且无争议」的两类 ——
-  //   · preview\ 下的预览图（png/jpg）：本版已改为生成后即删，留着即无用途
-  //   · txt-snap\ 里**任务记录已不存在**的快照：任务没了，续跑/还原都不可能再用到
-  // 为什么必须自动（而不是只留在手动清单里）：
-  //   preview 那一份只有"用户再次打开画布预览"才会被 trim(0) 顺带清掉 —— 从不打开预览的用户
-  //   那份残留就永远躺着；txt-snap 的孤儿若只写在手动扫描项里，任务列表被清空后就
-  //   再没有人删它。
-  // ⚠ 刻意不做的（避免"自动"越界）：
-  //   · **不按时间清理快照** —— 失败/停止的任务常驻列表，用户可能很久以后才续跑，
-  //     按时间删等于让"以后想跑"变成无法还原配置。快照寿命完全跟随任务记录。
-  //   · 不动 ffmpeg\（那份可能是用户唯一的可用组件，交给 cleanupLegacyFfmpeg 的严格判据）
-  //   · 不动 log\ / backup\（属用户证据，各按保留期自清理）
-  // 删除一律走回收站（项目硬约束），并跨"当前 + 历史"数据根。
+  // 自动兜底清理（手动清单之外的另一路，启动后经空闲队列执行）：
+  //   ① preview\ 下的预览图（png/jpg）：生成后即删，留下的无用途；
+  //   ② txt-snap\ 里**任务记录已不存在或已完成**的快照：续跑与还原都用不到。
+  // ⚠ 刻意不按时间清理快照（失败/停止任务可能很久后才续跑）；删除一律走回收站，并跨「当前 + 历史」数据根。
   async _sweepLegacyAuto() {
     try {
       const roots = [String(this.storageDir || '')].concat(this._legacyDirs || []);
@@ -8957,10 +8491,6 @@ class Api {
             try { if (fs.readdirSync(pv).length === 0) fs.rmdirSync(pv); } catch (e) {}
           }
         } catch (e) {}
-        // ② 孤儿任务快照：只有「任务记录已不存在」或「任务已完成」才删。
-        //   ⚠ 不按时间清理 —— 失败 / 停止 / 中断的任务会常驻在任务列表里，
-        //     用户可能很久以后才想起要续跑；那时快照若已被按时间删掉，配置就还原不出来了。
-        //     跨根同理：历史数据根里的快照，其任务必然不在当前任务表内，会落到这里。
         try {
           const sd = path.join(r, 'txt-snap');
           if (fs.existsSync(sd) && fs.statSync(sd).isDirectory()) {
@@ -8983,11 +8513,10 @@ class Api {
   }
 
   // 清掉某个目录里的过期锁（进程已死 或 mtime 超 60s）。返回清掉的个数。
-  // 为什么要把"清理一个目录"抽出来共用：引擎有**三处**写锁，落点各不相同 ——
-  //   batch  → <数据根>\.locks\.video-lab-batch.lock   （engines/modules/batch/index.js:894）
-  //   mask   → <成片输出目录>\.video-lab-mask.lock    （engines/modules/mask/index.js:229）
-  //   replica→ <成片输出根>\.video-lab-replica.lock   （engines/modules/replica/index.js:878）
-  // 只看 <数据根>\.locks\ 一处的话，后两处被 taskkill 硬杀后留下的锁不在清理范围内。
+  // 引擎有**三处**写锁，落点各不相同，只清 <数据根>\.locks\ 会漏掉后两处：
+  //   batch  → <数据根>\.locks\.video-lab-batch.lock
+  //   mask   → <成片输出目录>\.video-lab-mask.lock
+  //   replica→ <成片输出根>\.video-lab-replica.lock
   _cleanupLocksIn(dir) {
     let n = 0;
     try {
@@ -9016,8 +8545,7 @@ class Api {
       const base = String(this.storageDir || process.cwd());
       const dir = path.join(base, '.locks');
       this._cleanupLocksIn(dir);
-      // 空壳顺手收回：锁是"只建不删"型目录，清完还留着空文件夹会让用户以为没清干净。
-      // ⚠ 只在**真的空了**时收；还有未过期锁（任务在跑）时保持原样。
+      // 空壳顺手收回：锁目录只建不删；⚠ 只在**真的空了**时收，还有未过期锁（任务在跑）时保持原样。
       try {
         if (fs.existsSync(dir) && fs.statSync(dir).isDirectory() && fs.readdirSync(dir).length === 0) fs.rmdirSync(dir);
       } catch (e) {}
@@ -9027,9 +8555,6 @@ class Api {
   // ── 应用级设置（settings.db scope='app'）──
   // 设置项能进 settings 就进 settings —— config.json 只留「定位数据目录」的锚点，
   // 其余业务键一律存 settings.db，读取只认 settings、**不回退读 config.json**。
-  // ⚠ 不要引入「回退读 config」：config 一旦被裁掉某键，回退路径就取到 undefined，
-  // 表现为设置莫名丢失或软件报错；保持单一真相源，未来简化 config 也不会波及设置项。
-  // 白名单仅供 main 端 get_settings 组装默认值时参考；读写本身不限键（任意键均可存取）。
   static APP_SETTING_KEYS = ['notify_task_end',
     'backup_dir', 'backup_auto_clean', 'backup_keep_days', 'cache_keep_days'];
 
@@ -9081,18 +8606,8 @@ class Api {
   }
 
   // ── Windows 系统通知（任务失败 / 本轮跑完）──
-  // 走主进程 Notification（app.setAppUserModelId 已在 main 设置，通知才能正常显示）。
-  // 通知不可用时静默 —— 提示失败绝不能影响任务流本身
-  //
-  // 实现要点（Electron 44 / Windows Toast 的能力边界）：
-  //   · **toastXml 独占** —— 一旦给出它，title/body/icon 三个属性就被忽略，只能四选一。
-  //     这里是刻意的：只有 toastXml 才能控制声音（audio）、停留时长（duration）与署名行。
-  //   · **纯文字 ToastGeneric** —— 不加图标也不用 emoji：通知区域已经显示 exe 的图标，
-  //     内容区再塞图只会显杂乱。
-  //   · **声音用系统音**（ms-winsoundevent:*）—— WinRT 不接受自定义音频，但这三个的
-  //     区分度足够：Critical 最刺耳（失败）、Default 轻（成功）、SMS 柔和（有暂停待续）。
-  //   · **文字分三层**：标题只说「什么任务出了什么事」，正文给原因与定位信息，
-  //     署名行给时间与队列 —— 标题里塞 50 字任务名会让真正有用的原因被挤到折叠区。
+  // 走主进程 Notification（app.setAppUserModelId 已在 main 设置，通知才能正常显示）；不可用时静默，提示失败绝不能影响任务流本身。
+  // ⚠ 用 toastXml 独占模式（才能控制声音/停留时长/署名行，此时 title/body/icon 被忽略）；声音走系统音（ms-winsoundevent:*）。
   _notify(opts) {
     try {
       // 开关：设置的 notify_task_end —— **默认开启**（设置页「通用设置」里可关）
@@ -9119,8 +8634,7 @@ class Api {
       .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
-  // 组装 Windows Toast XML
-  // ⚠ 开头必须有 XML 声明 —— WinRT 的 ToastNotificationManager 不接受无声明的片段
+  // 组装 Windows Toast XML；⚠ 开头必须有 XML 声明 —— WinRT 的 ToastNotificationManager 不接受无声明的片段
   _toastXml(title, lines, attribution, sound, duration) {
     const texts = ['<text>' + this._xmlEsc(title) + '</text>'];
     for (const l of [].concat(lines || [])) { if (l) texts.push('<text>' + this._xmlEsc(l) + '</text>'); }
@@ -9139,9 +8653,7 @@ class Api {
     } catch (e) {}
   }
 
-  // 任务类型 → 通知标题用的中文名。
-  // ⚠ 遮罩叠加的任务 type 也是 'batch'（引擎相同），只能靠 env 里的遮罩专有字段区分 ——
-  //   直接看 type 会把遮罩失败报成「批量拼接失败」，用户点进去才发现不是那一类任务。
+  // 任务类型 → 通知标题用的中文名。⚠ 遮罩叠加的任务 type 也是 'batch'，只能靠 env 里的遮罩专有字段区分，否则会把遮罩失败报成「批量拼接失败」。
   _noticeKind(task) {
     const t = task || {};
     if (t.type === 'tool') return '视频处理';
@@ -9151,20 +8663,13 @@ class Api {
     return '批量拼接';
   }
 
-  // 失败原因 → 归类短语。
-  // 为什么归类：_deriveFailReason 产出的句子动辄 20 字（如「没有可用素材（只认竖版
-  //   1080×1920 且有时长的视频）」），Windows 横幅一行放不下会被截断，而用户在通知里
-  //   真正需要的只是「哪一类问题」—— 完整原因在任务详情里已经能看到。
-  // 顺序：特异 → 通用（先判时长，再判环境、配置、素材，最后兜底）。
+  // 失败原因 → 归类短语：完整原因在任务详情里已有，通知横幅只需「哪一类问题」。顺序：特异 → 通用（先判时长，再判环境、配置、素材，最后兜底）。
   _noticeFailCategory(reason) {
     const s = String(reason || '');
     if (!s) return '未知原因，可在任务详情中查看';
     // 顺序有讲究：
     //   ① 「有失败成片可续跑」必须最先判 —— 它是最常见的失败，却不含任何特征词，
     //     放到后面会被下面的宽松规则（如「时长」）误伤。
-    //   ② 「没有可用素材」必须排在「时长」之前 —— 它的完整文案是
-    //     「没有可用素材（只认竖版 1080×1920 且有时长的视频）」，句中带「时长」，
-    //     若先判时长会被误归成时长问题，把用户引向错误方向。
     if (/可点击「继续制作」续跑|存在失败成片/.test(s)) return '有失败成片 · 可点「继续制作」续跑';
     if (/没有可用素材|无任何合规视频|里没有可用素材/.test(s)) return '素材问题 · 没有可用素材';
     if (/时长要求|找不到符合时长|时长组合|时长超标/.test(s)) return '时长不足 · 拼不出符合要求的组合';
@@ -9174,10 +8679,8 @@ class Api {
     return '运行异常 · 可在任务详情中查看';
   }
 
-  // 失败通知的**节流合并**。
-  // 为什么需要：批量跑 10 个、10 个都失败时，逐条发会连响 10 次、通知区域刷屏。
-  // 做法：首次失败起一个 2.5 秒的静默窗口，窗口内的失败只累加不发送；窗口结束
-  //   发**一条**「批量拼接失败（N 项）」。单任务时就是 2.5 秒后收到一条，延迟可接受。
+  // 失败通知的**节流合并**：首次失败起 2.5 秒静默窗口，窗口内失败只累加不发送；
+  // 窗口结束发**一条**「批量拼接失败（N 项）」。
   // ⚠ 用定时器而非「先发后合并」：toast 一旦 show 就无法修改内容，合并必然残留两条。
   _notifyFailSoon(task) {
     const kind = this._noticeKind(task);
@@ -9255,10 +8758,9 @@ class Api {
     if (!force && !env0.downloadNeeded) return { ok: true, skipped: true, env: env0 };
     this._ffmpegBusy = true;
     const emit = (p) => { try { if (typeof this.onFfmpegProgress === 'function') this.onFfmpegProgress(p); } catch (e) {} };
-    // A3'：**下载落点改为内置目录 `resources\ffmpeg`**。
-    //   内置组件是唯一权威，缺了就地修复即可 —— 不该在数据目录再养一份副本（那正是刚被清掉的 310MB 的来源）。
+    // A3'：**下载落点 = 内置目录 `resources\ffmpeg`**。
+    //   内置组件是唯一权威，缺了就地修复即可，不在数据目录再养一份副本。
     //   仅当内置目录**不可写**（装到受保护位置 / 盘只读）才退回数据目录。
-    // 可写性必须实测：`existsSync` 判不出"目录只读"，要真写一个探测文件再删。
     const biDir = this._ffmpegBuiltinDir();
     let dir = this._ffmpegTargetDir();
     let toBuiltin = false;
@@ -9274,15 +8776,12 @@ class Api {
     const prevDir = String(this.config.ffmpeg_dir || '');
     try {
       fs.mkdirSync(dir, { recursive: true });
-      // 落内置目录时**不写** ffmpeg_dir：解析本来就优先内置（见 _resolveFfmpegBin），
-      // 写了反而留下一条指向"数据目录那份"的旧配置；只有退回数据目录时才需要写。
+      // 落内置目录时**不写** ffmpeg_dir：解析优先内置（见 _resolveFfmpegBin），写了反而留下一条指向"数据目录那份"的旧配置；只有退回数据目录时才需要写。
       if (!toBuiltin) this.config.ffmpeg_dir = dir;
       emit({ phase: 'check' });
       // ── 主源：npmmirror 的 FFmpeg-Builds 镜像（BtbN 构建，国内可直连，版本可达 8.x）──
-      // 旧的 ffmpeg-static 镜像**最高只有 6.1.1**，而 6.1.1 的进度行**不含 elapsed（实际耗时）**，
-      // 界面那一行「已用时」会永远为空 → 故换此源。
-      // 组件仍然**自带**在数据目录 ffmpeg\，**不依赖系统 PATH**（系统 PATH 可能中途异常/被清除，
-      // 这正是当初做自动下载的原因 —— 不要改成"优先用系统上的那份"）。
+      // 该源进度行含 elapsed（实际耗时）；ffmpeg-static 最高只到 6.1.1 且进度行缺 elapsed，
+      // 用旧源会让界面「已用时」那一行永远为空。
       let ver = '';
       let src = 'npmmirror:ffmpeg-static';   // 实际使用的源，写入 _meta.json 供事后核对
       try {
@@ -9322,8 +8821,7 @@ class Api {
       }
       const env1 = await this.checkEnvAsync();
       if (env1.downloadNeeded) throw new Error('下载完成但校验未通过：' + (env1.missing || []).join('、'));
-      // 落地元信息（_meta.json）：事后可核对「两个版本用的是不是同一份组件 / 何时下载的 / 版本号」，
-      // 双版本共用数据目录时，这份记录是「用的是不是同一份组件」的唯一凭据
+      // 落地元信息（_meta.json）：事后可核对「两个版本用的是不是同一份组件 / 何时下载的 / 版本号」，双版本共用数据目录时，这份记录是「用的是不是同一份组件」的唯一凭据
       try {
         const meta = { version: ver, downloadedAt: new Date().toISOString(), source: src, files: {} };
         for (const n of ['ffmpeg.exe', 'ffprobe.exe']) {

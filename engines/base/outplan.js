@@ -3,17 +3,13 @@
 // 三条硬规则：
 //   1. 覆盖原文件 → 临时文件写完后替换（见 caller；本模块只给路径）
 //   2. 输出到指定目录 → **空目录直接输出**；**已有文件则新建子文件夹**
-//   3. 落点必须在**开始处理前判定一次并记住** —— 处理中反复判定会导致
-//      第一个文件落盘后目录变非空，后续文件被判进另一个子目录（同一批输出被拆散）
-//
-// 另：备份目录默认落在 storageDir 下（**源目录之外**）—— 若落在扫描根内，
-// 下次运行会把备份当素材再处理，逐次增生。
+//   3. 落点必须在**开始处理前判定一次并记住** —— 处理中反复判定会导致第一个文件落盘后目录变非空，
+//      后续文件被判进另一个子目录（同一批输出被拆散）
 'use strict';
 
 const path = require('node:path');
 const fs = require('node:fs');
-// 临时产物名统一由 paths.tempNameFor 生成（batch / replica / mask 早已用它）。
-// 本模块曾自造 `原名.mp4.vl-tmp.mp4` 形态，与那套规矩相悖，带来两个真实后果：
+// 临时产物名统一由 paths.tempNameFor 生成（batch / replica / mask 共用）。
 //   ① 保留视频扩展名 → 「覆盖原视频」模式下临时文件落在源目录，下次扫描会把它当视频素材；
 //   ② 形态不匹配 backend 的残留清理规则（只认 ^[0-9a-z]{6,}\.tmp$）→ 中断残留清不掉、永久占盘。
 const paths = require('./paths');
@@ -53,8 +49,7 @@ function uniqueSubdir(parent, base) {
 function resolveRunDir(targetDir, stamp, opts) {
   const dir = String(targetDir || '').trim();
   if (!dir) return { dir: '', created: false, reason: '未指定目标目录' };
-  // ★ 目录**不存在**必须先创建（真实数据实测踩到：不存在被当"空目录"放行，
-  //   ffmpeg 写盘直接失败退出码 -2）—— 创建失败才回退错误
+  // ★ 目录不存在必须先创建 —— 否则「不存在」会被当「空目录」放行，ffmpeg 写盘直接失败（退出码 -2）；创建失败才回退错误。
   if (!fs.existsSync(dir)) {
     try {
       fs.mkdirSync(dir, { recursive: true });
@@ -65,10 +60,8 @@ function resolveRunDir(targetDir, stamp, opts) {
   }
   if (isEmptyDir(dir)) return { dir, created: false, reason: '目标目录为空，直接输出到该目录' };
   // ★ noSubdir：**同批任务共享一个输出目录**（批量展开时由提交侧指定）。
-  //   为什么必须显式指定：默认逻辑是"目标目录非空就新建「输出-MMDD-HHMM」子目录"，
-  //   于是同一次提交展开出的 N 个任务各自建一个目录 —— 产物散在 N 处，
-  //   用户拿到的是 N 个同名文件分放 N 个文件夹，根本对不上哪个是哪个。
-  //   指定后它们都写进同一个目录，靠**文件名**区分（提交侧已把区分信息并入后缀）。
+  //   默认逻辑是"目标目录非空就新建「输出-MMDD-HHMM」子目录"，同一次提交展开出的 N 个任务会各自建
+  //   一个目录、产物散在 N 处；指定后它们写进同一个目录，靠**文件名**区分（提交侧已把区分信息并入后缀）。
   if (opts && opts.noSubdir) return { dir, created: false, reason: '同批任务共享输出目录（不建子目录）' };
   const sub = uniqueSubdir(dir, OUT_SUBDIR_PREFIX + String(stamp || ''));
   try {
@@ -90,8 +83,7 @@ function backupDirFor(backupRoot, toolName, dateStr) {
  * 计算单个文件的输出路径。
  * @param {string} outDir   已判定的输出根目录
  * @param {string} srcPath  源文件全路径
- * @param {{nameMode?:string, suffix?:string, onConflict?:string}} opts
- *        nameMode: 'keep' | 'suffix'      onConflict: 'index' | 'overwrite' | 'skip'
+ * @param {{nameMode?:'keep'|'suffix', suffix?:string, onConflict?:'index'|'overwrite'|'skip'}} opts
  */
 function targetPath(outDir, srcPath, opts) {
   const o = opts || {};
@@ -129,20 +121,9 @@ function tempPathFor(finalPath) {
 
 /**
  * 把编码完成的临时产物**原子地**放到最终位置 —— 画布与后处理的唯一落盘入口。
- *
- * 同目录：直接原子改名（同分区内必原子），并套 renameWithRetry 抗 Windows 上
- *   杀软 / 索引服务对「刚写完的大文件」的瞬时占用 —— 单次失败会把**已编码成功**的
- *   成片误判为失败，那是白跑一遍编码。
- * 跨目录（可能跨盘，rename 会 EXDEV 失败）：先复制到**目标目录内的临时名**，再原子改名过去。
- *
- * ⚠ 为什么不直接 copy 到正式名：copy 大文件耗时可观，中途中断或失败会在目标位置留下
- *   一个顶着**正式名**、看起来像成品的半截文件 —— 下游按扩展名解码必然出错，
- *   而且它不会被「临时产物清理」识别（形态是正式名，不是 .tmp）。
- *   经目标目录内的临时名中转后，目标位置要么不存在、要么就是完整文件。
- *
- * @param {string} tmp  编码产出的临时文件（tempPathFor 生成）
- * @param {string} dest 最终路径
- * @returns {Promise<Error|null>} null 表示成功
+ * 同目录：直接原子改名（同分区内必原子），并套 renameWithRetry 抗 Windows 上杀软 / 索引服务对
+ * 「刚写完的大文件」的瞬时占用 —— 单次失败会把**已编码成功**的成片误判为失败。
+  * 跨目录（可能跨盘，rename 会 EXDEV 失败）：先复制到**目标目录内的临时名**，再原子改名到目标位置。
  */
 async function placeFile(tmp, dest) {
   const sameDir = path.dirname(String(tmp)) === path.dirname(String(dest));

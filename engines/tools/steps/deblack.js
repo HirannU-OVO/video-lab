@@ -1,11 +1,7 @@
 // 步骤 · 去黑屏
 //
-// 原脚本做法（既有工具口径）：
-//   用 `signalstats,metadata=print:key=lavfi.signalstats.YAVG` **逐帧**输出平均亮度，
-//   从结尾向前找连续暗帧（Y < PixTh），确定裁剪点后重编码。
-//   ★ 刻意不用 blackdetect —— 原脚本注释说明：blackdetect 对"结尾黑屏"不可靠
-//   （黑段结束需要后续非黑帧才判定，单帧黑屏也检不出）。
-//
+// 用 `signalstats,metadata=print:key=lavfi.signalstats.YAVG` 逐帧输出平均亮度，从结尾向前找连续暗帧
+// （Y < PixTh），确定裁剪点后重编码；刻意不用 blackdetect（黑段结束需后续非黑帧，单帧黑屏检不出）。
 // 本步骤只负责「分析 + 产出待删区间」，裁剪由 pipeline 统一归约。
 'use strict';
 
@@ -42,8 +38,6 @@ function parseLuma(text) {
  * 从结尾向前找连续暗帧（Y < PixTh）→ 返回裁剪点（秒）。
  * 无结尾黑屏返回 null。
  *
- * 裁剪点回退 0.3 帧（与原脚本一致）：保留区间用 `between(t,a,b)` 是闭区间，
- * 若裁剪点正好等于黑屏首帧的 pts，该帧会被包含进来 —— 回退 0.3 帧可避开。
  */
 function findTrailingBlack(series, pixTh, minBlackSec, duration, secPerFrame) {
   if (!series.length) return null;
@@ -93,7 +87,6 @@ module.exports = {
     ];
     const r = await runFfmpeg(args, { signal: ctx && ctx.signal, captureStdout: true });
 
-    // metadata=print 的落点随 ffmpeg 版本而异（实测本机在 stderr），两路都扫
     const series = parseLuma(String(r.stderr || '') + '\n' + String(r.stdout || ''));
     if (!series.length) return { cuts: [], note: '未取到亮度序列' };
 

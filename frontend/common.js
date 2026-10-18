@@ -3,13 +3,6 @@
  * 跨窗口公共函数（任务状态文案 / 转义 / 格式化）。
  *
  * 为什么挂在 window.VL 下：五个窗口（index / task / tool / settings / guide）都引入了
- * txapi.js，而本文件紧跟其后加载，任何窗口都能直接拿到 —— 不需要为每个 HTML 再加一行
- * <script>。挂在全局命名空间下而不是各自 window.VL.xxx，是为了让各窗口看到的**是同一份**
- * （而不是各窗口各存一份副本，那正是本次要消除的问题）。
- *
- * ⚠ 这里的函数都是**纯函数**（无 DOM 依赖），因此渲染进程之外也能安全加载。
- *   依赖 DOM 的 UI 基建（toast / setStatus / showDialog 等）刻意**不**放进来：
- *   各窗口的 DOM 结构不同（有的没有底部状态栏），共用的前提不存在。
  */
 (function (root) {
   'use strict';
@@ -71,11 +64,6 @@
   // ── 画幅尺寸：比例判定 / 标准档位 / 锁链状态机 ──
   //
   // 为什么抽成底座：画布输出尺寸 与 后处理转分辨率 在界面上是同一套控件
-  // （比例下拉 + 锁链 + 宽 + 高），行为也必须一致。两份独立实现迟早对同一问题
-  // 给出不同答案，改一处另一处不跟进 —— 那不是疏漏，是重复代码的必然结果。
-  //
-  // 这里只放**纯逻辑与状态**，不碰 DOM：画布是静态节点、后处理每次重渲染参数区，
-  // 两者的绑定方式本就不同，硬塞一个"帮你绑事件"的函数反而会把差异藏起来。
   var RATIO_PRESETS = {
     '16:9': [1920, 1080],   // 横屏
     '9:16': [1080, 1920],   // 竖屏
@@ -86,7 +74,6 @@
   // 比例**识别**表：只要宽高比落在这里，下拉就显示它的名字（如 2520×1080 → 21:9）。
   // 与 RATIO_PRESETS（下拉里的可选项 + 标准档位）是两件事 ——
   // 识别要多（用户手输的尺寸是五花八门的），可选要少（选项太多反而挑不过来）。
-  // 不在 PRESETS 里的比例会显示在下拉的「自定义」项上，仍能一眼看出是几比几。
   var RATIO_RATIOS = {
     '16:9': [16, 9],        // 横屏标准
     '9:16': [9, 16],        // 竖屏标准
@@ -140,10 +127,6 @@
    * 锁链状态机：**用户的选择**与"当前选了哪个比例"是两件事。
    *
    * 解绑后先挑一个常用画幅当起点、再自由微调宽高，是很自然的用法 ——
-   * 若把"选了常用比例"当成"要锁定"，这个用法会被一直锁住（改宽自动改高）。
-   *
-   * @returns {{isLinked:function(string):boolean, isUserLocked:function():boolean,
-   *            setUserLocked:function(boolean):void, toggle:function():boolean}}
    */
   function createSizeLink(initiallyLocked) {
     var userLocked = initiallyLocked !== false;
@@ -158,13 +141,7 @@
 
   // ── 界面动作与提示的日志上报 ──
   //
-  // 存在理由：用户报问题时**不应该需要复述他做过什么**。之前只有异常进日志，
-  // 于是「界面上弹过的提示」「切过的配置」「搜了什么都搜不到」全都不留痕 ——
-  // 排查只能靠用户口述 + 反复试，而口述经常和真实操作顺序对不上。
-  //
-  // 为什么要有节流：toast 在正常操作里出现得很频繁（每切一次配置都可能弹一条），
-  // 逐条发 IPC 会把日志文件灌满、拖慢界面。
-  // 策略：**error / warn 级一条不落**（这些正是要排查的）；info 级按「同文案间隔」合并。
+  // 记录用户操作与界面提示，用于还原现场
   var _actLogAt = Object.create(null);
   var _actSentAt = 0;
 
@@ -173,7 +150,6 @@
     try {
       if (root.vlReportError) { root.vlReportError(p); return true; }
       // logbootstrap 尚未加载时自行择一 —— ⚠ 必须覆盖 window.txapi：
-      //   浏览器端走的就是 txapi，只试 call/api 会整条链路静默失败（本轮踩过）。
       var api = root.txapi;
       if (api && api.report_ui_error) { api.report_ui_error(p); return true; }
       if (typeof root.call === 'function') { root.call('report_ui_error', p); return true; }
@@ -203,11 +179,9 @@
                   taskId: (root.vlGetTaskId ? root.vlGetTaskId() : ''), ctx: o.ctx || null });
   }
 
-  // ── 自动捕获用户操作（一次覆盖全部窗口的交互）──
-  // 为什么用"委托捕获"而不是逐处埋点：各窗口合计 300+ 个事件绑定，逐个人工埋既不可能维护，
-  // 新增控件也必然漏；而"用户到底点过什么、改过什么"恰恰是排查时最缺的信息。
-  // 语义优先级：data-log > aria-label > 可见文本 > id > class —— 让日志行直接可读，不必再对照代码。
-  // 噪声控制：只认可交互元素；文本输入 500ms 去抖只记最终值；密码类不记内容；复用 vlLogAction 的节流。
+  // ── 自动捕获用户操作 ──
+  // 委托监听 click / change / input / contextmenu / keydown。
+  // 语义优先级：data-log > aria-label > 可见文本 > id > class。
   var _capInstalled = false;
   var _capTimers = {};
   var _CAP_SEL = 'button,a,label,input,select,textarea,[data-log],[role="button"],[onclick]';
@@ -280,7 +254,7 @@
         _capTimers[key] = setTimeout(function () { _capTimers[key] = null; _capLog('ui.input', el); }, 500);
       } catch (e) {}
     }, true);
-    // 右键菜单：成片/配置/路径的右键操作（打开、定位、删除…）在排查里同样是"用户做了什么"
+    // 右键菜单：记录带菜单语义元素上的右键操作
     document.addEventListener('contextmenu', function (ev) {
       try {
         var el = ev.target && ev.target.closest ? ev.target.closest(_CAP_SEL + ',[data-ctx],[data-menu]') : null;
@@ -316,7 +290,6 @@
   // ── UI 提示门面 ──
   // toast / setStatus / showDialog 的日志统一在此记录，各窗口只注册自己的渲染函数；
   // 业务代码里的 toast(...) / setStatus(...) 调用保持不变。
-  // 新增窗口需调 VL.ui.registerToast / registerStatus / registerDialog。
   var _toastRender = null;
   var _statusRender = null;
   var _statusDoneRender = null;
@@ -326,9 +299,7 @@
     try { vlLogAction(action, String(msg == null ? '' : msg), { level: level || 'info' }); } catch (e) {}
   }
 
-  // 未注册渲染器时的告警：新增窗口忘记调 registerXxx 是最典型的漏接。
-  // 每个 kind 只报一次（不刷屏），但**同时写一条 error 级日志** —— 既不会静默丢现场，
-  // 也能在用户日志里被直接看见，不必等到有人发现"提示没弹出来"。
+  // 未注册渲染器时告警一次，并写一条 error 级日志
   var _uiWarned = {};
   function _uiWarn(kind, msg) {
     if (_uiWarned[kind]) return;

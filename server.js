@@ -1,7 +1,6 @@
 // -*- coding: utf-8 -*-
 // Video Lab — 内嵌 HTTP 服务器
 // 在 Electron 主进程内启动，对外暴露与本体等价的功能，浏览器访问 http://localhost:<port>
-// 同一份 config.json、同一个 Api 单例、同一批任务队列，本体和浏览器共享数据
 'use strict';
 
 const http = require('http');
@@ -13,21 +12,16 @@ const { dialog, shell, BrowserWindow } = require('electron');
 
 const FRONTEND_DIR = path.join(__dirname, 'frontend');
 const ICON_DIR = path.join(__dirname, 'icon');
-// 前端资源版本指纹：每次进程启动都会变化 —— 注入到 HTML 里的 JS/CSS 引用 URL（?v=），
-// 让 URL 变化后浏览器必然重新拉取，彻底绕开"服务端已 no-cache、但浏览器仍持有历史强缓存"导致的旧文件不更新。
+// 前端资源版本指纹：每次进程启动都会变化 —— 注入 HTML 里 JS/CSS 引用 URL（?v=），URL 变化后浏览器必然重新拉取、避免强缓存。
 const FRONTEND_VER = Date.now().toString(36);
 
-// 前台打开目录：本体点击时 Electron 窗口在前台，explorer 继承前台权限直接弹出；
-// 浏览器请求到达的是后台主进程（焦点在浏览器侧），shell.openPath 会使 explorer 新窗口被
-// Windows 前台锁压制、后台冒出。改为 cmd /c start（ShellExecute 方式）让 explorer 获得前台激活权
+// 前台打开目录：浏览器请求到达的是后台主进程（焦点在浏览器侧），shell.openPath 会使 explorer 新窗口
+// 被 Windows 前台锁压制、后台冒出；改用 cmd /c start（ShellExecute）让 explorer 获得前台激活权。
 function openDirForeground(target) {
   return new Promise((resolve) => {
     // cmd /c start "" "path"：start 首个参数为窗口标题（空），第二个为目标目录。
-    // ⚠ 不能用 execFile 等退出：start 拉起的 explorer 会继承 cmd 的管道句柄，Node 的
-    // 回调要等到「管道 EOF」= explorer 窗口关闭才触发 → 浏览器端 open_path 表现为挂起/
-    // 无响应（还叠加 cmd 在前台锁压制时静默失败、弹 Windows 错误音）。改 spawn + detached
-    // + 忽略 stdio + unref：cmd 一退出即返回，explorer 由它自己的进程承载。
-    // start 是否真的拉起 explorer 无法可靠探知，超 150ms 即视为成功（目标存在性调用方已校验）。
+    // ⚠ 不能用 execFile 等退出：start 拉起的 explorer 会继承 cmd 的管道句柄，Node 回调要等到「管道 EOF」
+    //   = explorer 窗口关闭才触发 → 浏览器端 open_path 表现为挂起 / 无响应。
     try {
       const cp = spawn('cmd.exe', ['/c', 'start', '""', '"' + target + '"'], { windowsHide: true, detached: true, stdio: 'ignore' });
       cp.unref();
@@ -137,8 +131,7 @@ function startHttpServer(opts) {
   const httpPort = opts.httpPort || 9527;
   // 广播函数：由 main.js 注入，同时推 webContents.send 和 SSE
   const broadcast = opts.broadcast || (function () {});
-  // 固定 token：main.js 注入（config.http_token，首次启动生成后持久化，此后长期复用）；
-  // 未注入（如独立测试）时才临时随机生成
+  // 固定 token：main.js 注入（config.http_token，首次启动生成后持久化，此后长期复用）；未注入（如独立测试）时才临时随机生成。
   const httpToken = (typeof opts.httpToken === 'string' && opts.httpToken) || crypto.randomBytes(16).toString('hex');
   // 运行日志：main.js 注入；浏览器端的写操作也要留痕（IPC 包装只覆盖 Electron 侧）
   const runLog = opts.runLog || null;
@@ -159,9 +152,8 @@ function startHttpServer(opts) {
 
   // dialog/shell 类路由（浏览器侧后端代劳）
   //
-  // ★ 浏览器侧的对话框**不挂本体窗口**：用户此刻的焦点在浏览器，
-  //   挂到本体窗口会让对话框被压在本体后面（看起来像"点了没反应"）。
-  //   不传 parent 时 Electron 弹出独立对话框，正常显示到前台。
+  // ★ 浏览器侧的对话框**不挂本体窗口**：用户焦点在浏览器，挂到本体窗口会让对话框被压到后面
+        //   （看起来像操作未生效）；不传 parent 时 Electron 弹出独立对话框，正常显示到前台。
   //   桌面端不受影响 —— 那边走 IPC，父窗口就是发起操作的那个窗口。
   const dialogRoutes = {
     choose_mask_file: async (args) => {
@@ -322,8 +314,7 @@ function startHttpServer(opts) {
     return null;
   }
 
-  // 可用通道清单：**由各路由表自动生成**（零维护成本）——
-  // 新增通道只需加到某张表里，list_tools/get_api_index 自动可见，不必手工登记。
+  // 可用通道清单：**由各路由表自动生成**（零维护成本）—— 新增通道只需加到某张表里，list_tools/get_api_index 自动可见。
   function channelIndex() {
     const rows = [];
     const push = (kind, table) => Object.keys(table || {}).forEach((name) => rows.push({ name, kind }));
@@ -379,8 +370,7 @@ function startHttpServer(opts) {
     fs.readFile(filePath, (err, data) => {
       if (err) { res.writeHead(404); res.end('Not Found'); return; }
       const ext = path.extname(filePath).toLowerCase();
-      // HTML 内的 JS/CSS 引用统一加 ?v=<版本指纹>：每次启动版本变化 → 资源 URL 变化 → 浏览器必然重拉。
-      // （仅改 HTML，不动 CSS 内 url()；正则排除已带 ? 的引用避免重复注入）
+      // HTML 内的 JS/CSS 引用统一加 ?v=<版本指纹>：每次启动版本变化 → 资源 URL 变化 → 浏览器必然重拉（仅改 HTML，不动 CSS 内 url()）。
       if (ext === '.html') {
         data = Buffer.from(data.toString('utf8').replace(/(\b(?:src|href)=")([^"?]+\.(?:js|css))(")/g, '$1$2?v=' + FRONTEND_VER + '$3'));
       }
@@ -492,7 +482,6 @@ function startHttpServer(opts) {
     // HTML/CSS/JS 相对路径兜底：HTML 引用「styles.css / skins/white_blue.css / icons.js /
     // app.js / txapi.js」等相对路径（与 Electron file: 协议下 HTML 位于 frontend/ 目录一致），
     // 以及 CSS 内 url() 相对资源（assets/...、skins/assets/...），统一按 frontend/ 根解析。
-    // 仅当文件实际存在时服务，避免把未知请求误判为 404 之外的资源
     {
       const rel = pathname.replace(/^\/+/, '').replace(/\.\.\//g, '');
       const fp = path.join(FRONTEND_DIR, rel);

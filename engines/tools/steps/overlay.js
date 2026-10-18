@@ -1,21 +1,9 @@
 // 步骤 · 叠加图片
 //
-// 原脚本做法（既有工具口径）：
-//   把 PNG 作为**额外输入**，用 `[outv]overlay=0:0[wateredv]` 贴在画面左上角。
-//   （它本质上只是"额外叠加一张图片"，无需用 txt 选片）
-//
-// ★ **分辨率双向对齐**（默认开启）：
-//   叠加前先把图片 `scale=<视频宽>:<视频高>` 缩放到与视频同宽高，宽高双向对齐 ——
-//   图片尺寸与视频不一致时不再只盖住一角或被裁掉。
-//
-// ★ **透明通道保留**：
-//   · 缩放链显式 `format=rgba`，防止格式协商丢掉 PNG 的 alpha
-//   · 不透明度用 `colorchannelmixer=aa=<alpha>`（与遮罩模块同一手法）
-//   · 主视频链末尾的 `format=yuv420p` 兜底只作用于视频流；图片流在 overlay 内混合，
-//     半透明效果不受影响
-//
-// ★ 单张图片作为输入即可：overlay 默认 repeatlast=1，会把最后（唯一）一帧持续贴上，
-//   不需要 `-loop 1`（后者会引入无界帧流，反而要配 -shortest）。
+// 把 PNG 作为**额外输入**，用 `[outv]overlay=0:0[wateredv]` 贴在画面左上角（无需用 txt 选片）。
+// ★ 分辨率双向对齐（默认开启）：先把图片 `scale=<视频宽>:<视频高>` 缩放对齐，避免只盖住一角或被裁掉。
+// ★ 透明通道保留：缩放链显式 `format=rgba`，不透明度用 `colorchannelmixer=aa=<alpha>`。
+// ★ 单张图片作为输入即可：overlay 默认 repeatlast=1 会持续贴上，不需要 `-loop 1`（后者引入无界帧流，还要配 -shortest）。
 'use strict';
 
 const fs = require('node:fs');

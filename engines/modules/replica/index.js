@@ -1,7 +1,7 @@
-// engines/modules/replica/index.js —— 日志复刻（迁移自旧版脚本，行为等价优先）
+// engines/modules/replica/index.js —— 日志复刻（行为等价优先）
 // 模式1=原片复刻 / 模式2=去重复刻（尾部替换 + 渐进压时长）
 // 硬约束：片段以「文件名」为身份（同名即同一片段，成片内不得重复）；缺失片段三路修复，
-//         任一缺失且修复失败 → 该成片不生成；成片内重复最终校验；GPU 编码 h264_nvenc。
+// 任一缺失且修复失败 → 该成片不生成；成片内重复最终校验；GPU 编码 h264_nvenc。
 'use strict';
 
 const fs = require('node:fs');
@@ -14,8 +14,7 @@ const dedupe = require('../../base/dedupe');
 // 「加速换档重试」策略（与批量拼接共用同一套，见 engines/base/ladder.js）
 const ladder = require('../../base/ladder');
 
-// 缓存作用域位掩码（与 engines/base/cache.js 的 SCOPES 同源）。
-// 惰性取用：持久层不可用时不影响复刻执行，故不在模块顶层 require。
+// 缓存作用域位掩码（与 engines/base/cache.js 的 SCOPES 同源）；惰性取用，持久层不可用时不影响复刻执行，故不在模块顶层 require。
 const SCOPES_FALLBACK = { batch: 1, replica: 2, mask: 4 };
 function scopes() {
   try { return require('../../base/cache').SCOPES || SCOPES_FALLBACK; } catch (e) { return SCOPES_FALLBACK; }
@@ -87,8 +86,7 @@ function loadVideoCache() {
     const CacheStore = require('../../base/cache');
     const store = new CacheStore(dbPath, { root: '' });
     store.open({ readOnly: true }); // 只读用途：不建表、不写 meta（replica 仅消费缓存）
-    // 显式声明读取范围（批量 + 复刻）：不显式放宽时看不到遮罩素材条目 ——
-    // 复刻修复依赖「同名即同一片段」，混入其它模式的素材会把修复指向错误的文件
+    // 显式声明读取范围（批量 + 复刻）：不显式放宽时看不到遮罩素材条目，而复刻修复依赖「同名即同一片段」，混入其它模式的素材会把修复指向错误的文件。
     const map = store.loadVideoMap({ scopesMask: scopes().batch | scopes().replica });
     store.close();
     return map || {};
@@ -153,9 +151,8 @@ function parseJobs(allLines) {
 // ───────────────────────── 候选与替换（Select-ReplacementVideo） ─────────────────────────
 /**
  * 配置排除项（`-` 前缀）命中判定 —— 与批量引擎同语义：路径（小写）含任一排除词即拒用。
- * ⚠ 这是**全流程硬约束**，不只是"配置素材池"自己的过滤：用户把素材刻意挪走或删除，
- *   往往正是靠配置里的排除项表达"这个不要用"；替换候选若不看排除项，就会把这些素材
- *   又换回来（甚至是正被排除的那一个），等于把排除白做。
+ * ⚠ 这是**全流程硬约束**，不只是"配置素材池"自己的过滤：配置里的排除项正是"这个不要用"的表达，
+ *   替换候选若不看排除项，就会把这些素材换回来（甚至换回正被排除的那一个）。
  */
 function deniedByConfig(p, deny) {
   if (!deny || !deny.length) return false;
@@ -174,8 +171,8 @@ function normDeny(list) {
 function sameDirCandidates(videoPath) {
   // 候选目录：优先原目录；**原目录不存在时退回上一级** ——
   // 素材常被「改名 + 上移」（如 260723-示例A-xxx 整理成 260924-示例B-xxx 后直接放在父目录下），
-  // 若仍只在原目录内枚举，候选恒为空 → 缺失修复与去重替换会整体失效（任务直接失败）。
-  // 退回父目录后，同后缀匹配仍可能命中；命中不了也还有"其它候选"可换，至少不连累整个任务。
+  // 若仍只在原目录内枚举，候选恒为空 → 缺失修复与去重替换会整体失效（任务直接失败）；
+  // 退回父目录后同后缀匹配仍可能命中，命中不了也还有其它候选可换，至少不连累整个任务。
   let dir = path.dirname(videoPath);
   const isDir = (d) => { try { return fs.statSync(d).isDirectory(); } catch (e) { return false; } };
   if (!isDir(dir)) {
@@ -213,17 +210,9 @@ function directVideos(dir) {
   return out;
 }
 
-/**
- * 读取「原配置」的素材池 —— 复刻的替换候选应当来自**配置里声明的素材目录**，
- * 而不是"缺失片段所在的那一层子目录"。理由：只换同目录编号 ≈ 换汤不换药，
- * 「换了不如用原配置重跑一遍批量」；只有从配置素材池里挑新片段才是真正的换新内容。
- * 配置正本位于拼接日志同目录（引擎会把配置移入成片文件夹作为正本）。
- * 语法与批量引擎完全一致：普通行 = 素材目录（递归）、`=` 前缀 = 不轮询子目录、`-` 前缀 = 排除、
- * 末行为水印（此处忽略）。
- */
+/** 读取「原配置」的素材池：复刻的替换候选取自配置里声明的素材目录，而非"缺失片段所在的那一层子目录"。 */
 function loadConfigPool(logTxtPath, logger, opts) {
-  // skipScan：只要排除项时跳过素材目录扫描 —— 递归扫描几十个大目录很重，
-  // 而排除项是**全流程硬约束**（原片复刻模式也要用），必须能在建池之前单独廉价拿到。
+  // skipScan：只要排除项时跳过素材目录扫描 —— 递归扫描几十个大目录很重，而排除项是**全流程硬约束**（原片复刻模式也要用），必须能在建池前单独廉价拿到。
   const skipScan = !!(opts && opts.skipScan);
   const empty = { pools: [], exclude: [], src: '' };
   const dir = path.dirname(logTxtPath);
@@ -303,8 +292,7 @@ function buildReplicaPools({ txtPath, jobs, logger }) {
   const logPools = poolsFromJobs(jobs);
   const seen = new Set(cfgp.pools.map((p) => String(p.dir).toLowerCase()));
   const denyList = normDeny(cfgp.exclude);
-  // 日志补充池（配置未声明的目录）同样要过排除项：它们来自"原成片用过的片段所在目录"，
-  // 其中可能就含已被排除的素材 —— 不能因为"日志里出现过"就放行。
+  // 日志补充池（配置未声明的目录）同样要过排除项：它们来自"原成片用过的片段所在目录"，其中可能就含已被排除的素材。
   const extra = logPools
     .filter((p) => !seen.has(String(p.dir).toLowerCase()))
     .map((p) => ({ dir: p.dir, recursive: p.recursive, videos: (p.videos || []).filter((v) => !deniedByConfig(v, denyList)) }))
@@ -369,8 +357,6 @@ async function sortByValidThenDuration(list, info) {
  * 选替换候选：返回 { path, equivalent } 或 { path: null }
  * - exclude     完整路径排除（triedSubs / 成片内其它位置）
  * - excludeNames 文件名排除（同名即同一片段，成片内不得重复）
- * - deny        配置排除项（`-` 前缀，小写）；命中即拒用，**对所有候选来源都生效**
- * - shorterThan >0 时只接受严格更短的候选（无更短 → 返回空，由调用方标记该段耗尽）
  */
 async function selectReplacementVideo({ originalPath, exclude = [], preferShort = false, shorterThan = 0, excludeNames = [], info, targetDurMax = 0, pool = null, noSameSuffix = false, stillNeed = false, deny = [] }) {
   const excludeSet = new Set(exclude);
@@ -379,7 +365,7 @@ async function selectReplacementVideo({ originalPath, exclude = [], preferShort 
   // 候选来源：优先「原配置素材池」（配置声明的目录，递归），池不可用时退回同目录 + 父目录兜底
   // 候选必须排除「原片段自身」：配置池（递归）可能只包含它自己，若选中自己就是"表面替换成功"
   //（生成时计入占比 → 占比虚高 → 提前停止替换），而最终校验发现片段没变 → 不达标不出片。
-  // 配置排除项在**这里**统一兜一道：池本身已过滤，但同目录兜底路径（sameDirCandidates）没有。
+  // 配置排除项在**这里**统一兜一道：池本身已过滤，但同目录兜底路径没有。
   let cands = (Array.isArray(pool) && pool.length ? pool.slice() : sameDirCandidates(originalPath))
     .filter((p) => !excludeSet.has(p) && !nameSet.has(path.basename(p)) && p !== originalPath
       && !deniedByConfig(p, denyList));
@@ -391,23 +377,19 @@ async function selectReplacementVideo({ originalPath, exclude = [], preferShort 
   if (targetDurMax > 0) {
     const keep = [];
     for (const c of cands) { const i = await info(c); if ((i.duration || 0) <= targetDurMax) keep.push(c); }
-    // 预算装不下任何候选时**不放弃替换**：仍保留候选池（后续会选最短的那个），最终由「成片加速」把
-    // 总时长压回设定值 —— 加速的定位是拼接完成后的兜底，不是用来放宽这里的替换预算。
+    // 预算装不下任何候选时**不放弃替换**：仍保留候选池（后续会选最短的那个），最终由「成片加速」把总时长压回设定值。
     if (keep.length) cands = keep;
   }
   if (!cands.length) return { path: null, equivalent: false };
 
   const origSuffix = getNumberSuffix(originalPath);
+  // noSameSuffix（主动替换/去重）：不走"同后缀优先" —— 配置素材池（递归）里几乎总能找到同编号片段，
   //  而"同后缀 = 内容等效"对去重没有意义（换了等于没换，占比仍为 0）。
   //  同后缀优先只用于**缺失修复**（找回与原片段等效的版本）。
-  // noSameSuffix（主动替换/去重）：不走"同后缀优先" —— 配置素材池（递归）里几乎总能找到同编号片段，
-  // 而"同后缀 = 内容等效"对去重没有意义（换了等于没换，最终占比仍为 0）。
-  // 同后缀优先只保留给**缺失修复**（找回与原片段等效的版本）。
   const sameSuffix = (origSuffix && !noSameSuffix) ? cands.filter((c) => getNumberSuffix(c) === origSuffix) : [];
   const others = cands.filter((c) => !sameSuffix.includes(c));
 
-  // 时长预算模式（targetDurMax>0）：在上限内选「最长」候选（并列随机）——
-  // 去重复刻目标是换入尽量多的新内容，预算充裕时换更长的片段更容易达到不一致占比
+  // 时长预算模式（targetDurMax>0）：在上限内选「最长」候选（并列随机）—— 去重复刻目标是换入尽量多的新内容。
   if (targetDurMax > 0) {
     const pickLongestTie = async (list) => {
       const s = await sortByValidThenDuration(list, info);
@@ -423,7 +405,7 @@ async function selectReplacementVideo({ originalPath, exclude = [], preferShort 
       return tie[Math.floor(Math.random() * tie.length)];
     };
     // 尚未达到占比下限时，改选「预算内最短」的候选：占比是按**被替换原段的时长**计的，换更短的新片段
-    // 并不会拉低占比，却能把 179s 时长预算省下来，让后面更多段也换得动（用户策略：不达标就依次往前再释放一段）。
+    // 并不会拉低占比，却能把时长预算省下来，让后面更多段也换得动（策略：不达标就依次往前再释放一段）。
     // 达标后再回到「预算内选最长」，最大化新内容量。
     const pickShortest = async (list) => {
       const s = await sortByValidThenDuration(list, info);
@@ -444,8 +426,7 @@ async function selectReplacementVideo({ originalPath, exclude = [], preferShort 
   }
 
   if (preferShort) {
-    // 排序后从「与首位并列」的候选组（valid/时长相同）里随机取一个：
-    // 否则同一成片连续多次去重会每次选中同一片段，产出字节级相同的成片
+    // 排序后从「与首位并列」的候选组（valid/时长相同）里随机取一个，否则同一成片连续多次去重会每次选中同一片段。
     const pickTie = async (list) => {
       const s = await sortByValidThenDuration(list, info);
       if (!s.length) return null;
@@ -542,9 +523,6 @@ function resolveFromVideoCache(oldPath, { exclude = [], excludeNames = [], index
  * 不一致时长占比 —— **唯一真相**，选位预估与最终校验共用本函数。
  * 分母 = 修复+替换后**实际播放列表**的时长和（观众看到的成片）；
  * 分子 = 「与原版不同且非等效修复」位的实际播放时长。
- * ⚠ 不得改回「对 origVideos 逐位 probe」的旧口径：原文件可能已不存在（info 返回 duration=0），
- *   缺失位时长会从分母蒸发（实测：190.83s → 101.53s），造成「选位账 37.2% / 校验账 33.2%」
- *   两套账打架、「下限设得高能过、设得低反而失败」的悖论。
  */
 async function calcDedupRatio(videos, origVideos, equivalentIndices, info) {
   const eqSet = new Set(equivalentIndices || []);
@@ -607,8 +585,7 @@ async function selectVariancePaths({
     for (let k = 0; k < newPaths.length; k++) if (k !== i && newPaths[k]) usedNames.push(path.basename(newPaths[k]));
     const excludeAll = excludeSubs.concat(newPaths.filter((p) => p && p !== originalPaths[i]));
 
-    // 时长预算：其余位置（已替换用新时长）之后本位置还可容纳的最大片段时长，
-    // 用于「预算内选最长」；预算无余量则不传，维持原 preferShort 压时长语义
+    // 时长预算：其余位置（已替换用新时长）之后本位置还可容纳的最大片段时长，用于「预算内选最长」；预算无余量则不传。
     let budget = 0;
     if (durationCap > 0) {
       let othersNewDur = 0;
@@ -685,8 +662,7 @@ async function run(ctx, env = process.env) {
   const fail = (msg, step) => { logger.diag('fail', { step: String(step || ''), msg: String(msg || '').slice(0, 300) }); logger.error(step, msg); return 1; };
 
   // ── 输入 TXT ──
-  // ⚠ 失败文案面向**普通用户**：只讲「怎么了 + 怎么办」，禁止出现「环境变量 / 脚本 / 手动输入」等
-  //   技术措辞（用户不会用命令行，写出来只会让人以为是自己操作错了）。
+  // ⚠ 失败文案面向**普通用户**：只讲「怎么了 + 怎么办」，禁止出现「环境变量 / 脚本 / 手动输入」等技术措辞。
   if (!cfg.txt) return fail('未选择复刻日志：请在主窗口选择日志 TXT 后重新开始制作', '日志TXT输入');
   let txtPath = stripQuotes(cfg.txt);
   if (!exists(txtPath)) return fail(`复刻日志不可用：${txtPath}（可能已被移动、重命名或删除，请在主窗口重新选择日志后开始制作）`, '日志TXT输入');
@@ -748,18 +724,15 @@ async function run(ctx, env = process.env) {
   const cacheByName = buildCacheByNameIndex(cache);
   const info = makeVideoInfo(cache);
 
-  // ── 模式与候选池 ──
-  // ⚠ 必须在「缺失片段修复」之前构建：缺失片段同样应当从**原配置声明的素材目录**里换新片段。
-  //   曾经的写法把这段放在缺失修复之后，导致缺失修复只能退回"缺失片段的同目录"—— 而素材被
-  //   整理（文件移入子目录/改名）后那一层往往是空的，于是明明配置里的素材目录还有大量可用片段，
-  //   却直接判定"无法自动修复"把整条成片跳过（实测：16 个成片因 1 个片段被判死）。
+    // ── 模式与候选池 ──
+    // ⚠ 必须在「缺失片段修复」之前构建：缺失片段同样应当从**原配置声明的素材目录**里换新片段。
+    //   整理（文件移入子目录/改名）后那一层往往是空的，只在同目录找会直接判定「无法自动修复」把整条成片跳过。
   let mode = 0;
   if (cfg.mode === '1') mode = 1;
   else if (cfg.mode === '2') mode = 2;
   else return fail('未选择复刻模式：请在主窗口选择原片复刻或去重复刻后重新开始制作', '复刻模式');
   const modeName = mode === 1 ? '原片复刻' : '去重复刻';
-  // 去重复刻：候选池 = 原配置素材池（+ 日志中片段目录补充）。第 1 段恒定不动，其余段**原位**
-  // 换新片段（顺序不变），候选优先来自配置声明的素材目录。
+  // 去重复刻：候选池 = 原配置素材池（+ 日志中片段目录补充）；第 1 段恒定不动，其余段**原位**换新片段（顺序不变）。
   const configPool = (mode === 2)
     ? buildReplicaPools({ txtPath, jobs, logger })
     : { pools: [], exclude: [], src: '', fromConfig: 0, fromLog: 0 };
@@ -772,9 +745,8 @@ async function run(ctx, env = process.env) {
   if (deny.length) logger.info(`🚫 配置排除项 ${deny.length} 条（所有替换候选一律排除）：${deny.join('、')}`);
 
   // ── 缺失片段修复（三路） ──
-  // 先冻结「原始片段列表」：缺失修复会就地改写 job.videos，而最终的不一致占比校验必须
-  // 以**原始**为基准 —— 否则缺失修复带来的改动量会被自己抹掉（表现为：生成时按 24.7% 判定
-  // 已达下限而停止替换，校验时只认到 5.1% → 误判「重复度过高」导致出片失败）。
+  // 先冻结「原始片段列表」：缺失修复会就地改写 job.videos，而最终的不一致占比校验必须以**原始**为基准 ——
+  // 否则缺失修复带来的改动量会被自己抹掉（生成时按较高占比判定达标而停止替换，校验时只认到较低占比）。
   for (const job of jobs) job.origVideos = job.videos.slice();
   const missingAll = [];
   for (const job of jobs) {
@@ -856,8 +828,7 @@ async function run(ctx, env = process.env) {
   // ── 输出目录（mode / configPool 已在缺失修复之前构建）──
   const outRoot = path.join(cfg.outputDir || derivedRoot, modeName);
   try { fs.mkdirSync(outRoot, { recursive: true }); } catch (e) {}
-  // 源配置备份：主进程已在启动前按提交快照还原 txtPath，故此处复制到的即本次执行所用配置。
-  // 放在处理开始前，任务失败/中断也能留档（对齐批量侧「正本随任务开始时移入成片目录」）。
+  // 源配置备份：主进程已在启动前按提交快照还原 txtPath，故此处复制到的即本次执行所用配置；放在处理开始前，任务失败/中断也能留档。
   try {
     const snapDest = path.join(outRoot, '配置备份-' + path.basename(txtPath));
     fs.copyFileSync(txtPath, snapDest);
@@ -872,9 +843,8 @@ async function run(ctx, env = process.env) {
     else fs.appendFileSync(logFilePath, '='.repeat(46) + '\r\n', 'utf8');
   } catch (e) {}
 
-  // ── 执行权（旧实现用全局互斥体；现用文件锁，协议行保持一致） ──
-  // 顺序：先输出等待/开始行，再输出总数行
-  // 等待行：replica 旧实现缺此态，但 batch/mask 均有，backend 也据此显示「排队中」；按统一口径补齐
+  // ── 执行权：文件锁（与 batch/mask 同套协议行） ──
+  // 顺序：先输出等待/开始行，再输出总数行；等待行与 batch/mask 统一（backend 据此显示「排队中」）。
   logger.lockWaiting();
   // ⚠ 锁**不能**落在 outRoot（被处理的输出目录）：那会让目录变「非空」，
   //   破坏「空目录 → 直接输出」规则，也会在用户目录里留残留文件。
@@ -924,8 +894,7 @@ async function run(ctx, env = process.env) {
       const triedSubs = new Map();
       const maxDuration = cfg.maxDuration;
       const speedThreshold = cfg.speedLimit;
-      // 档位驱动器：模式1/2 共用（模式1 不换档，恒处第 0 档）。本模块不保留任何档位常量
-      // —— 语义改动只改 ladder.js，避免与批量侧再次分叉。
+      // 档位驱动器：模式1/2 共用（模式1 不换档，恒处第 0 档）；语义改动只改 ladder.js，本模块不保留档位常量。
       const L = ladder.createRunner({ maxDuration, speedThreshold, maxRetry: cfg.maxRetry, logger });
 
       if (mode === 2) {
@@ -1051,9 +1020,7 @@ async function run(ctx, env = process.env) {
 
       // ── 重复度区间校验（模式2）──
       // 占比口径统一走 calcDedupRatio（唯一真相）：分母 = 实际播放列表时长和，分子 = 非等效差异位的播放时长。
-      // 旧口径对 baseVideos 逐位 probe：原文件已不存在时 od=0，缺失位（本例 89.3s）从分母蒸发
-      // → 「下限高能过、下限低反而失败」的悖论（选位账 37.2% / 校验账 33.2%）。
-      // 下限未达标 → 先回补（宁多不少），找遍仍不达标才不出片；超上限 → 告警。
+      // ⚠ 不得改回「对 baseVideos 逐位 probe」的口径：原文件已不存在时 od=0，缺失位会从分母蒸发，造成误判。
       if (mode === 2 && job.videos.length) {
         const baseVideos = job.origVideos || job.videos;
         const eqSet = new Set(job.missingEquivalentIndices || []);
@@ -1144,8 +1111,6 @@ async function run(ctx, env = process.env) {
       // ★ 同批量模块：先写临时名，编码成功后再原子改名 ——
       //   正式名必须是「完整可播放产物」的唯一标志，否则编码中途停止会留下正式名半截文件
       //   （用户会误取、且续跑反推序号会把它当成已完成而永久跳过）。见 batch/index.js 同处说明。
-      // 临时名 = `<随机>.tmp`（tempNameFor 统一生成）：与正式名完全无关，用户一眼可辨；
-      // ffmpeg 无法从 `.tmp` 推断容器，故 encArgs 显式 `-f mp4` 强制 mp4 封装。
       const tmpOut = tempNameFor(finalOut);
 
       // ── 拼接 + 水印 + 编码（GPU 硬约束） ──

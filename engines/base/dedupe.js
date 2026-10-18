@@ -15,7 +15,7 @@ function filterUsed(mode, candidates, used) {
   return (candidates || []).filter((c) => !usedKeys.has(keyFor(mode, c)));
 }
 
-// 成片内重复检测（replica 最终校验 992b4d4）：按文件名分组，返回重复组
+// 成片内重复检测（replica 最终校验）：按文件名分组，返回重复组
 function findDuplicates(mode, items) {
   const groups = new Map();
   for (const it of items) {

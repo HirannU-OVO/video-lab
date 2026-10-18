@@ -1,4 +1,4 @@
-// 跨进程互斥锁：文件锁 + PID 存活检测 + 超时兜底（替代 PS1 的 Global\VideoBatchMutex）
+// 跨进程互斥锁：文件锁 + PID 存活检测 + 超时兜底。
 'use strict';
 
 const fs = require('node:fs');

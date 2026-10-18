@@ -1,13 +1,6 @@
 // -*- coding: utf-8 -*-
 // 前端日志引导：全部窗口共用，替代各页面自带的重复钩子。
 //
-// 职责：
-//   1. 全局兜底三件套：error / unhandledrejection / console.error —— 一律落盘（report_ui_error），
-//      弹窗提示仍保留（经 window.vlToast，由各页面把自己的 toast 挂上来，见各页面顶部一行）。
-//   2. window.logError(where, err, extra)：就地 catch 的统一入口 —— toast + 落盘一次完成。
-//      业务 catch 逐步迁到它；新增代码禁止「只 toast 不落盘」。
-//
-// 约定：本文件必须在 txapi.js 之后、页面脚本之前引入；防重入（上报过程再出错不再递归上报）。
 (function () {
   'use strict';
   if (window.__vlLogBoot) return;

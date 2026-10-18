@@ -1,13 +1,6 @@
 // 一次性布局迁移：旧布局（<configDir>\Cache\ + <configDir>\Config\ + config 同级旧设置文件）
 //               → 三库同目录（config.json / settings.db / cache.db）
 // 四段式：备份（旧物原样保留）→ 迁移 → 读回校验 → 旧物入回收站；校验失败**不动旧物**，下次启动重试。
-// 幂等：每次启动执行、逐条 upsert 合并，不因「新位置已有内容」而整段跳过 —— 用户回退旧版后再升级必须能收敛。
-// 回收不由本模块执行：校验通过后旧物只 rename 到 <configDir>\.video-lab-legacy-<ts>\，
-// 由主进程在 app ready 之后交系统回收站（启动早期调用 shell.trashItem 不可靠）。
-//
-// 调用时机：main.js 在启动早期、创建 Api 之前调用（此时库与引导文件同目录已确定）。
-// 注意：开发形态与生产实例若共用同一数据目录，迁移会移动该目录下的旧布局 ——
-//       两者需要并存时，应先为开发形态指定独立数据目录，再执行迁移。
 'use strict';
 
 const fs = require('node:fs');
@@ -66,7 +59,6 @@ function walkFiles(dir) {
 // 旧 sqlite 库 → 新库：只搬探测数据（usage 的权威在 usage_cache.json，由 A4-7 一并迁入）。
 // applyVideoDelta 的 DO UPDATE 不含 usage_count，故不会覆盖已有计数。
 // 旧 sqlite 库整体接管：必须在打开新库之前调用 —— 否则空库先被创建，rename 分支永不成立。
-// 整体接管最省事：旧库的探测数据与 usage_count 一并保留。
 function takeoverLegacyDb(oldCacheDir, newCacheDb, counts) {
   const oldDb = path.join(oldCacheDir, 'cache.db');
   if (fs.existsSync(newCacheDb) || !fs.existsSync(oldDb)) return false;
@@ -113,8 +105,7 @@ function migrateVideoAndUsage(cache, dirs, counts) {
   const r = cache.migrateFromJson({ videoCacheJson: videoJson || undefined, usageCacheJson: usageJson || undefined });
   counts.video = r.video;
   counts.usage = r.usage;
-  // 只在 usage 侧出现（video 侧没有）的条目：没有 last_write 指纹，无法参与后续的计数认领。
-  // 单独计数以便从迁移日志判断这类无指纹条目的规模。
+  // 只在 usage 侧出现（video 侧没有）的条目：没有 last_write 指纹，无法参与后续的计数认领；单独计数以便从迁移日志判断其规模。
   counts.usageOnly = r.usageOnly || 0;
 }
 
