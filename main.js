@@ -777,6 +777,37 @@ for (const _sr of _stagingRoots) {
 if (pendingTrashDirs.length) {
   app.whenReady().then(() => { for (const d of pendingTrashDirs) { try { recycleFile(d); } catch (e) {} } });
 }
+// ── 数据格式版本守卫 ──
+// 数据格式破坏性升级后，旧程序读到的是它不认识的形状 —— 最坏的结果不是报错，
+// 而是看起来正常地把数据写坏。而用户回退版本往往只是"想退回上个功能"，不会意识到
+// 数据已经不可逆地升级过，所以这里必须在他开库之前拦下。
+//
+// 判据是「**数据格式**版本」而不是「程序版本」：后者每次发版都变，拿它做守卫会把手
+// "只想退回上个功能版本"的用户也一起拦住，最终要么被绕过、要么被关掉。
+// 数据格式版本只在库结构真的变化时才 +1（见 dataver.js 的 DATA_VERSION 注释）。
+//
+// ⚠ 检查用**只读连接**：读写连接一打开，SQLite 就会自动恢复 WAL 并回写文件 ——
+//   那等于在「即将拒绝启动」的路径上把更高版本的数据改了一笔，比不检查更糟。
+(() => {
+  try {
+    const dataver = require(path.join(resolveEnginesDir(), 'base', 'dataver.js'));
+    const dvDbPath = path.join(storageDir(), 'settings.db');
+    const dv = dataver.checkDataVersion(dvDbPath);
+    if (dv.status === 'too-new') {
+      try { dialog.showErrorBox('数据版本不兼容', dataver.tooNewMessage(dv, dvDbPath)); } catch (e2) { /* 弹框失败也要拒绝 */ }
+      app.exit(1);
+      // showErrorBox 是同步的，正常不会走到下一行；显式抛出以确保后续初始化一个都不执行
+      throw new Error('DATA_VERSION_TOO_NEW');
+    }
+    // 库存在但没有版本标记（本版首次接触这份数据）⇒ 补记一次，供将来判断
+    if (dv.status === 'ok' && dv.found == null && fs.existsSync(dvDbPath)) dataver.writeDataVersion(dvDbPath);
+  } catch (e) {
+    if (e && e.message === 'DATA_VERSION_TOO_NEW') throw e;
+    // 检查本身出错（权限不足 / 库损坏 / 被独占）⇒ 放行。
+    // 守卫的职责是拦住"确定不兼容"，而不是因为查不动就把用户锁在门外。
+    console.error('[dataver] 版本检查失败，按放行处理：' + ((e && e.message) || e));
+  }
+})();
 const api = new Api(root, config, resolveEnginesDir(), storageDir());
 // 把「历史数据根」交给后端：旧版遗留的清单与清理必须能看见"当前数据根之外"的那几处
 // （搬迁后仍留在程序目录里的 ffmpeg\ / preview\ / .locks\ / txt-snap\ / backup\ / 老 log\），
