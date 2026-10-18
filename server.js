@@ -7,8 +7,8 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { execFile, spawn } = require('child_process');
-const { dialog, shell, BrowserWindow } = require('electron');
+const { spawn } = require('child_process');
+const { dialog, shell } = require('electron');
 
 const FRONTEND_DIR = path.join(__dirname, 'frontend');
 const ICON_DIR = path.join(__dirname, 'icon');
@@ -297,7 +297,6 @@ function startHttpServer(opts) {
     open_settings_window: () => { return { ok: false, error: 'browser_redirect', url: '/settings' }; },
     start_update: () => ({ ok: false, error: '请在应用本体中完成更新' }),
     apply_update: () => ({ ok: false, error: '请在应用本体中完成更新' }),
-    reveal_update_file: () => ({ ok: false, error: '请在应用本体中完成更新' }),
   };
 
   // 合并所有路由

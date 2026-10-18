@@ -468,4 +468,4 @@ function listStagingDirs(configDir) {
   return out;
 }
 
-module.exports = { migrateToFlatLayout, listStagingDirs, STAGING_PREFIX };
+module.exports = { migrateToFlatLayout, listStagingDirs };

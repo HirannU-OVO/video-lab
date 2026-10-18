@@ -69,6 +69,8 @@
     if (_embeddedModal) { _embeddedModal.remove(); _embeddedModal = null; }
   }
   // 打开内嵌模态：url 为 /settings 等相对路径，w/h 参考本体子窗口尺寸（px）
+  // ⚠ 尺寸与本体「主窗口上的设置面板」保持一致（styles.css 的 .settings-frame：840×910，
+  //   视口不足时按 100vw/100vh - 96px 收缩）。两侧取值必须同步，否则同一页面在两端尺寸不同。
   // 带两个参数：token（API 校验）+ skin（当前皮肤，iframe 页在渲染前同步应用，避免白闪）
   function openEmbeddedModal(url, w, h) {
     closeEmbeddedModal();
@@ -79,13 +81,15 @@
     var src = url + sep + params;
     var ov = document.createElement('div');
     ov.className = 'modal-overlay';
-    ov.style.zIndex = '2000';
+    // 与本体「主窗口上的内嵌面板遮罩」(.settings-dim) 同层级，避免浏览器端遮罩被
+    // 页面内其它浮层（菜单、提示条）压住。两端一致地都低于窗口标题栏（99999）。
+    ov.style.zIndex = '9998';
     var card = document.createElement('div');
     card.className = 'browser-embedded-card';
-    card.style.width = (w || 680) + 'px';
-    card.style.height = (h || 640) + 'px';
-    card.style.maxWidth = 'calc(100vw - 32px)';
-    card.style.maxHeight = 'calc(100vh - 32px)';
+    card.style.width = (w || 840) + 'px';
+    card.style.height = (h || 910) + 'px';
+    card.style.maxWidth = 'calc(100vw - 96px)';
+    card.style.maxHeight = 'calc(100vh - 96px)';
     card.innerHTML =
       '<iframe src="' + src + '" title="设置" style="width:100%;height:100%;border:0;display:block;background:var(--bg-base-default)"></iframe>';
     ov.appendChild(card);
@@ -97,6 +101,14 @@
       window.__vlEmbeddedListen = true;
       window.addEventListener('message', function (e) {
         if (e.data && (e.data.type === 'vl-close-settings' || e.data.type === 'vl-close-modal')) closeEmbeddedModal();
+      });
+    }
+    // Esc 关闭：与本体一致（本体 app.js 的 Esc 同样只挂在主文档，焦点在 iframe 内时不触发）。
+    // 绑一次即可，用标志位避免每次打开都叠加监听。
+    if (!window.__vlEmbeddedEsc) {
+      window.__vlEmbeddedEsc = true;
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && _embeddedModal) closeEmbeddedModal();
       });
     }
   }
@@ -131,8 +143,7 @@
     cache_stats: function () { return invoke('cache_stats', []); },
     clean_caches: function () { return invoke('clean_caches', []); },
     cancel_precheck: function () { return invoke('cancel_precheck', []); },
-    get_autostart: function () { return invoke('get_autostart', []); },
-    set_autostart: function (en) { return invoke('set_autostart', [!!en]); },
+
     on_reset_progress: function (cb) { return onEvent('reset_progress', cb); },
     on_scan_progress: function (cb) { return onEvent('scan_progress', cb); },
     list_logs: function (project, name, versionPath) { return invokeArgs('list_logs', project, name, versionPath); },
@@ -212,7 +223,13 @@
       if (!win) window.open('/task?token=' + encodeURIComponent(token));
       return Promise.resolve({ ok: true });
     },
-    open_settings_window: function () { openEmbeddedModal('/settings', 680, 640); return Promise.resolve({ ok: true }); },
+    open_settings_window: function () { openEmbeddedModal('/settings', 840, 910); return Promise.resolve({ ok: true }); },
+    // 关闭内嵌面板：本体由主进程按「当前打开的是设置页还是引导页」分派，
+    // 浏览器侧的内嵌面板就是同一个 modal，故两者都收起它。
+    // ⚠ preload 与 txapi 必须同时提供这两个接口：app.js 的关闭交互（点击面板外 / Esc /
+    //   引导页标题栏关闭）以 window.txapi.close_*_panel 为守卫，缺任一处该形态下按钮静默失灵。
+    close_settings_panel: function () { closeEmbeddedModal(); return Promise.resolve({ ok: true }); },
+    close_embed_panel: function () { closeEmbeddedModal(); return Promise.resolve({ ok: true }); },
     // 视频处理工具窗口：本体是独立非模态窗口，浏览器侧同样弹独立 popup（可并排、非模态）
     open_tool_window: function () {
       // 与本体同尺寸（主窗口 1360×860 的同比例缩小）
@@ -256,7 +273,6 @@
     get_app_version: function () { return invoke('get_app_version', []); },
     start_update: function () { return invoke('start_update', []); },
     apply_update: function () { return invoke('apply_update', []); },
-    reveal_update_file: function () { return invoke('reveal_update_file', []); },
     on_update_available: function (cb) { return onEvent('update_available', cb); },
     on_update_progress: function (cb) { return onEvent('update_downloading', cb); },
     on_update_status: function (cb) { return onEvent('update_status', cb); },
@@ -275,11 +291,11 @@
     pick_directory: function (title, defaultPath) { return invokeArgs('pick_directory', title, defaultPath); },
     on_settings_saved: function (cb) { return onEvent('settings_saved', cb); },
     notify_dirty: function (d) { /* 浏览器侧无需通知主进程脏标记 */ },
-    on_confirm_discard: function (cb) { return onEvent('confirm_discard_request', cb); },
-
-    on_settings_flash_close: function (cb) { return onEvent('settings_flash_close', cb); },
     on_settings_window_opened: function (cb) { return onEvent('settings_window_opened', cb); },
     on_settings_window_closed: function (cb) { return onEvent('settings_window_closed', cb); },
+    // 引导页开关事件在浏览器侧不广播，保留订阅以与 preload 的接口清单对齐
+    on_guide_window_opened: function (cb) { return onEvent('guide_window_opened', cb); },
+    on_guide_window_closed: function (cb) { return onEvent('guide_window_closed', cb); },
     on_task_update: function (cb) { return onEvent('task_update', cb); },
     on_versions_changed: function (cb) { return onEvent('versions_changed', cb); },
     on_confirm_discard_config: function (cb) { return onEvent('confirm_discard_config_request', cb); },

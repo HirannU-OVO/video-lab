@@ -33,8 +33,7 @@ contextBridge.exposeInMainWorld('txapi', {
   data_dir_scan: () => invoke('data_dir_scan'),                 // A6 数据目录清理：扫描可清项
   data_dir_clean: (keys) => invoke('data_dir_clean', keys),    // A6 数据目录清理：执行（进回收站）
   cancel_precheck: () => invoke('cancel_precheck'),
-  get_autostart: () => invoke('get_autostart'),
-  set_autostart: (en) => invoke('set_autostart', !!en),
+
   on_reset_progress: (cb) => {
     const ch = (e, s) => { try { cb(s); } catch (err) {} };
     ipcRenderer.on('reset_progress', ch);
@@ -138,7 +137,6 @@ contextBridge.exposeInMainWorld('txapi', {
   get_browser_url: () => invoke('get_browser_url'),
   start_update: () => invoke('start_update'),
   apply_update: () => invoke('apply_update'),
-  reveal_update_file: () => invoke('reveal_update_file'),
   on_update_available: (cb) => { ipcRenderer.on('update_available', (e, info) => { try { cb(info); } catch (err) {} }); },
   on_env_fix_available: (cb) => { ipcRenderer.on('env_fix_available', (e, info) => { try { cb(info); } catch (err) {} }); },
   on_env_fix_progress: (cb) => { ipcRenderer.on('env_fix_progress', (e, info) => { try { cb(info); } catch (err) {} }); },

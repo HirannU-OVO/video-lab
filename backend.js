@@ -2280,7 +2280,7 @@ class Api {
     try {
       const kv = store.listKv('');
       for (const k of Object.keys(kv)) {
-        const m = /^(txt_tree|log_index|replica_logs|scan_index):(.+)$/.exec(k);
+        const m = /^(txt_tree|log_index|replica_logs):(.+)$/.exec(k);
         // proj_reg 的键是 proj_reg:<kind>:<工作根>（kind = batch|mask），根路径要从第二个冒号后取
         const mReg = /^proj_reg:(?:batch|mask):(.+)$/.exec(k);
         if ((m && !exists(m[2])) || (mReg && !exists(mReg[1]))) removed += store.deleteKvPrefix(k);

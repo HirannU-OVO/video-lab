@@ -508,7 +508,6 @@
     logFiles: [], activeLogDate: null, activeLogPath: null, selectMode: false, selectedLogPaths: {},
     logViewMode: 'simple', // 日志预览模式：simple=简化（片段仅显示最后一段文件名）/ raw=完整原始
     focusVideo: null, _searchTimer: null, _fromConfig: false, envMissing: [],
-    isPortable: null, // 运行时形态：null=未知（按便携处理）/ true=便携 zip / false=setup 安装版
     previewCollapsed: true, // 右侧预览面板默认折叠（仅留拖拽条上的竖条按钮提示展开）
     previewLastWidth: 320, // 展开时恢复的预览宽度（记忆折叠前的宽度）
     _sideBeforeLog: false, // 进入日志模式前预览面板是否原本折叠（退出时恢复）
@@ -3895,8 +3894,7 @@
       // portableDist 决定「更新文件已就绪」时的按钮与说明（后端 apply_update 才是权威的形态分流方）
       getApi().get_runtime().then(function (r) {
         state.portableDist = !!(r && r.portable_dist);
-        state.isPortable = !!(r && r.is_portable);
-      }).catch(function () { state.portableDist = true; state.isPortable = true; });
+      }).catch(function () { state.portableDist = true; });
     }
     if (!getApi()) { $('statusLeft').textContent = '通信组件未就绪，请重启软件'; return; }
     checkEnv(); buildDateBranches(); buildCenterBottom(); buildRightPanel(); refreshData(false, '正在检测工作路径文件，请稍候…');

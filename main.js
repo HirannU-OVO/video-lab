@@ -399,8 +399,9 @@ function recycleIfEmpty(dir) {
   } catch (e) { return false; }
 }
 function defaultRoot() { return path.dirname(projectDir()); }
-// 已废弃的配置键（写入设置库前一律剔除）：scripts_dir / use_node_engine（旧脚本目录 / 引擎开关）、
-//   config_storage（数据目录选择）。数据目录**恒为 %APPDATA%\Video Lab**，该键不再参与路径决策；但旧 config.json 可能仍留着它，不剔除会随 saveConfig 永久残留。
+// 已废弃的配置键（读入内存与写入设置库前一律剔除）：scripts_dir / use_node_engine（旧脚本目录 / 引擎开关）、
+//   config_storage（数据目录选择）。数据目录**恒为 %APPDATA%\Video Lab**，该键不再参与路径决策；
+//   老版本可能已把它写进设置库/旧 config.json，不剔除会带着一起进内存并被 get_settings 带出去。
 const OBSOLETE_CONFIG_KEYS = ['scripts_dir', 'use_node_engine', 'config_storage'];
 // 主题（皮肤）白名单 —— 须与前端 app.js 的 SKINS、settings.js 的 THEMES 三处一致
 // （回归断言会核对三者同步，任一漏改即报错）。
@@ -408,10 +409,11 @@ const OBSOLETE_CONFIG_KEYS = ['scripts_dir', 'use_node_engine', 'config_storage'
 // 前端遇到无法识别的 id 会静默回落到第一个主题 —— 故非法值一律忽略、保留原值，不抛错也不改动其它键。
 const SKIN_IDS = ['white_blue', 'Black_Orange', 'Maid_Atelier'];
 const isValidSkin = (v) => typeof v === 'string' && SKIN_IDS.indexOf(v.trim()) >= 0;
-// ── 配置读取：settings.db 为唯一业务来源，config.json 不参与业务键读取 ──
-// ⚠ 业务键一律只从 settings.db 取，**不得回退读 config.json**：config 会被逐步简化，
+// ── 配置读取：settings.db 为唯一业务来源，config.json 只用于「首次引导」与开发者开关 ──
+// ⚠ 业务键一律只从 settings.db 取，**不得回退读 config.json**：config 会逐步简化，
 // 任何「config 缺失就回退读它」的路径都会变成取到 undefined 的隐患（表现为设置莫名丢失）；库里没有就用 DEFAULT_CONFIG 的默认值。
-const CONFIG_ANCHOR_KEYS = [];
+// ⚠ config.json **不参与写入**：数据版本守卫不允许回退到旧版本，维护一份历史快照无人可读，
+//   写它只会让磁盘上多一份与真实设置可能不一致的副本。
 
 // ── 批量模式的工作目录：唯一真相 = `config.batch.root` ──
 // 工作路径属于**批量模式**而非整个软件：各模式的工作目录由各模式自己承接（遮罩有自己的 `mask.root`）。
@@ -424,7 +426,6 @@ function setBatchRoot(cfg, dir) {
   if (!cfg) return;
   const v = String(dir == null ? '' : dir).trim();
   cfg.batch = Object.assign({}, cfg.batch || {}, { root: v });
-  cfg.root = v;   // 兼容镜像（仅随 config.json 落盘）
 }
 // 待落库的工作路径迁移值：loadConfig 首阶段只能做**内存**迁移（那时 api 还没构造），
 // 真正落库（写 batch.root、删旧 root）由 applySettingsFromDb 在 api 就绪后完成。
@@ -502,24 +503,13 @@ function loadConfig() {
     //    （详规见 seedSettingsFromConfig 注释）。
     const seed = seedSettingsFromConfig(disk, app);
     for (const k of Object.keys(seed)) cfg[k] = seed[k];
-    // ④ 兼容镜像：settings 里已无顶层 root，用 batch.root 回填 ——
-    //    保证 config.json 的 root 键跟随更新（旧版本回滚时读到的是**当前**工作路径）。
-    //    该镜像只在写 config.json 时使用，不会写回 settings（见 saveConfig）。
-    if (!Object.prototype.hasOwnProperty.call(app, 'root')) {
-      const br = getBatchRoot(cfg);
-      if (br) cfg.root = br;
-    }
   } else {
     // 设置库确实读不到（api 与直读两条路都失败）—— 保持默认值，不回退 config.json。
     // ⚠ 此处**不可引用 api**：顶层首调时 const api 尚在 TDZ，即使 typeof 也会抛 ReferenceError
     //   （会让整个启动崩溃）。readSettingsApp 内部已做 try 探测，走到这里就是真读不到。
     try { runLog.sys('app.config', '设置库不可用：本次按默认值运行（不回退 config.json）', {}); } catch (e) {}
   }
-  // ④ 锚点键（当前为空数组，见 CONFIG_ANCHOR_KEYS 定义）：循环保留以备将来需要
-  for (const k of CONFIG_ANCHOR_KEYS) {
-    if (disk[k] !== undefined && disk[k] !== null) cfg[k] = disk[k];
-  }
-  // ⑤ 开发者开关 show_maintenance：前端无控件，只认 config.json（编辑器直改即生效），不随 settings.db
+  // ④ 开发者开关 show_maintenance：前端无控件，只认 config.json（编辑器直改即生效），不随 settings.db
   cfg.show_maintenance = (disk && typeof disk.show_maintenance === 'boolean')
     ? disk.show_maintenance
     : DEFAULT_CONFIG.show_maintenance;
@@ -539,8 +529,8 @@ function readConfigDisk() {
 // 一次性引导：settings.db 尚未落过的键，用 config.json 的同名值补齐并落库。
 //   这是「修好断点」而非数据迁移 —— 补齐之后读路径完全只认 settings，config.json 不再被读。
 //   幂等：仅写 settings 里**不存在**的键，已落过库的值绝不覆盖；config.json 没有该键就跳过（留给 DEFAULT_CONFIG 默认值）。
-const SEED_EXCLUDE_KEYS = CONFIG_ANCHOR_KEYS.concat(OBSOLETE_CONFIG_KEYS).concat([
-  'root',   // 兼容镜像键：只写 config.json，真相是 batch.root
+const SEED_EXCLUDE_KEYS = OBSOLETE_CONFIG_KEYS.concat([
+  'root',   // 旧版的顶层工作路径镜像键：真相是 batch.root，不作为独立键落库
 ]);
 function seedSettingsFromConfig(disk, app) {
   const seed = {};
@@ -558,56 +548,27 @@ function seedSettingsFromConfig(disk, app) {
   } catch (e) {}
   return seed;
 }
-// 保存配置：以「实际变更的键」为单位落盘，避免每次保存全量重写两侧。
-//  ① settings.db（唯一读取来源）：写入本次变更的键；
-//  ② config.json（仅为回滚旧版本而留的兼容快照）：**只更新本文件原本就有的键**；
-//     代码新引入的键不写进去（旧版本不认识它们，写了只是污染）。
+// 保存配置：以「实际变更的键」为单位落盘，避免每次保存全量重写。
+// 唯一落盘目标是 settings.db（也是唯一读取来源）。
+// ⚠ config.json 不是写入目标：数据版本守卫（engines/base/dataver.js）不允许回退到旧版本，
+//   那份历史快照无人可读；写它只会让磁盘上多一份与真实设置可能不一致的副本。
 let _configBaseline = {};
 function saveConfig(config) {
   const cfg = (config && typeof config === 'object') ? config : {};
-  const keys = Object.keys(cfg).filter((k) => OBSOLETE_CONFIG_KEYS.indexOf(k) < 0);
   const changed = {};
-  for (const k of keys) {
+  for (const k of Object.keys(cfg)) {
+    if (OBSOLETE_CONFIG_KEYS.indexOf(k) >= 0) continue;
     if (!_configValueEqual(_configBaseline[k], cfg[k])) changed[k] = cfg[k];
   }
   // 基线同步（无论是否有变更：入参即当前真值，下次比对以它为准）
   _configBaseline = JSON.parse(JSON.stringify(cfg));
   if (!Object.keys(changed).length) return [];
-  // settings.db 不落顶层 root：它已被 batch.root 取代，只作 config.json 的兼容镜像存在。
+  // settings.db 不落顶层 root：它已被 batch.root 取代。
   // 若写进 settings，下次 loadConfig 会把它读回内存 → 形成两个真相
   // （用户改工作路径时可能只更新其中一个，工作目录随之错乱）。
   const forSettings = Object.assign({}, changed);
   delete forSettings.root;
   if (Object.keys(forSettings).length) writeSettingsApp(forSettings);
-  // config.json：仅合并「磁盘上已存在的键」，不新增键
-  try {
-    const p = configFilePath();
-    let disk = {};
-    try { if (fs.existsSync(p)) disk = JSON.parse(fs.readFileSync(p, 'utf-8')) || {}; } catch (e) { disk = {}; }
-    if (!disk || typeof disk !== 'object' || Array.isArray(disk)) disk = {};
-    let touched = false;
-    for (const k of Object.keys(changed)) {
-      if (!Object.prototype.hasOwnProperty.call(disk, k)) continue;   // 旧版本没有的键：不新增
-      if (_configValueEqual(disk[k], changed[k])) continue;
-      disk[k] = changed[k];
-      touched = true;
-    }
-    // ⚠ 顺手**剔除已废弃的键**：上面「不新增」保证了快照不会越长越胖，但对**已在磁盘上**的
-    //   废弃键没有出口 —— 它们会随快照一直留着（既不参与路径决策、也不进 settings.db，
-    //   却是实打实的冗余）。这里主动清掉，让快照随使用逐步收敛到当前键集。
-    for (const k of OBSOLETE_CONFIG_KEYS) {
-      if (Object.prototype.hasOwnProperty.call(disk, k)) { delete disk[k]; touched = true; }
-    }
-    if (touched) {
-      const dir = path.dirname(p);
-      fs.mkdirSync(dir, { recursive: true });
-      // 原子写：主配置写坏会丢设置与工作路径，先写临时文件再 rename 覆盖
-      fs.writeFileSync(p + '.tmp', JSON.stringify(disk, null, 2), 'utf-8');
-      fs.renameSync(p + '.tmp', p);
-    }
-  } catch (e) {
-    try { if (fs.existsSync(configFilePath() + '.tmp')) fs.unlinkSync(configFilePath() + '.tmp'); } catch (e2) {}
-  }
   return Object.keys(changed);
 }
 // 配置值等价判定（对象按键逐层比，其余直接比）：用于「只写变更键」的差异计算
@@ -1256,35 +1217,19 @@ async function checkForUpdate(opts) {
     const portableDist = isPortableDistribution();
     const setupRe = /^Video-Lab-.*-x64-Setup\.exe$/i;
     const portableRe = /^Video-Lab-.*-x64-Portable\.zip$/i;
-    const partRe = /^(Video-Lab-.*-x64-Portable\.zip)\.(\d{3,})$/i;
     let asset = portableDist
       ? (assets.find((a) => setupRe.test(String(a.name || ''))) || null)
       : (assets.find((a) => portableRe.test(String(a.name || ''))) || null);
-    let parts = [];
-    if (!asset && !portableDist) {
-      const group = new Map();
-      for (const a of assets) {
-        const m = partRe.exec(String(a.name || ''));
-        if (!m) continue;
-        const key = m[1].toLowerCase();
-        if (!group.has(key)) group.set(key, []);
-        group.get(key).push({ name: a.name, url: a.browser_download_url, size: a.size || 0, index: parseInt(m[2], 10) });
-      }
-      for (const list of group.values()) {
-        list.sort((x, y) => x.index - y.index);
-        if (list.length >= 2 && list.every((p, i) => p.index === list[0].index + i)) { parts = list; break; }
-      }
-    }
-    // release 资产的 digest 为 sha256:<hex>，作为下载完整性校验依据（分卷组一般无 digest）
+    // release 资产的 digest 为 sha256:<hex>，作为下载完整性校验依据
     const sha256 = (asset && asset.digest && String(asset.digest).replace(/^sha256:/i, '')) || '';
     const hasUpdate = cmpVersion(tag, APP_VERSION) > 0;
     // assetName：资产原名，下载落地即用它
     const assetName = asset ? String(asset.name || '') : '';
     const info = {
       ok: true, current: APP_VERSION, latest: tag || '', hasUpdate,
-      url: asset ? asset.browser_download_url : (parts.length ? parts[0].url : ''),
-      size: asset ? asset.size : parts.reduce((s, p) => s + (p.size || 0), 0),
-      parts, sha256, sha512: '', assetName, error: '',
+      url: asset ? asset.browser_download_url : '',
+      size: asset ? asset.size : 0,
+      sha256, sha512: '', assetName, error: '',
       // 回执要标明**实际用的**仓库：用户切了源没保存就点检查，界面值已被 applyUpdatePref 落盘，
       // 这里回传它就是"实际走的那个"；不带这个字段，用户无从确认，只能看到一句结论
       source: currentUpdateSource()
@@ -1308,7 +1253,7 @@ async function checkForUpdate(opts) {
     lastUpdateInfo = info;
     writeUpdateLog('检查成功：current=' + APP_VERSION + ' latest=v' + tag + ' hasUpdate=' + hasUpdate + ' (' + (Date.now() - t0) + 'ms)');
     if (hasUpdate) {
-      if (asset || parts.length) {
+      if (asset) {
         // 更新方式=自动检查并下载：发现新版本立即自动下载，不弹「发现新版本」提示条；进度直接走主窗口状态栏，下载完成后再弹「更新并重启」操作条；启动/定时/手动检查均生效
         if (loadConfig().update_mode === 'auto') {
           info.autoDownload = true;
@@ -1388,13 +1333,11 @@ function parseLatestYml(txt, wantName) {
 async function downloadUpdate(info, onProgress, onStatus) {
   const dir = projectDir();
   try { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}
-  // 落地文件名：便携分发下载的是 Setup.exe，故按资产原名落地；无 assetName（分卷场景）时按便携包名，供拼回
+  // 落地文件名：便携分发下载的是 Setup.exe，故按资产原名落地；无 assetName 时按便携包名
   const ver = String(info.latest || '').replace(/^v/i, '');
   const dlName = String(info.assetName || '') || ('Video-Lab-' + ver + '-x64-Portable.zip');
   const zipPath = path.join(dir, dlName);
-  // 分卷下载：逐卷下载到 zipPath.partXXX 后拼回完整 zip
-  if (info.parts && info.parts.length > 0) return downloadUpdateParts(info, zipPath, onProgress, onStatus);
-  const t0 = Date.now();
+    const t0 = Date.now();
   let lastErr = '';
   for (let attempt = 1; attempt <= 4; attempt++) {
     if (onStatus) {
@@ -1441,73 +1384,6 @@ async function downloadUpdate(info, onProgress, onStatus) {
     }
   }
   writeUpdateLog('下载失败：' + lastErr);
-  return { ok: false, error: lastErr };
-}
-// 分卷下载：info.parts 为同一便携 zip 的 .001/.002… 分卷（已按序号排序），
-// 逐卷经断点续传下载到 zipPath.partXXX，全部完成后按序拼回 zipPath 并校验总大小
-async function downloadUpdateParts(info, zipPath, onProgress, onStatus) {
-  const parts = info.parts;
-  const total = info.size || parts.reduce((s, p) => s + (p.size || 0), 0);
-  const partDst = (p) => zipPath + '.part' + String(p.index).padStart(3, '0');
-  const t0 = Date.now();
-  let lastErr = '';
-  for (let attempt = 1; attempt <= 4; attempt++) {
-    if (onStatus) onStatus(attempt === 1 ? '正在下载更新分卷（' + parts.length + ' 卷）…' : '分卷下载中断，正在重试（' + attempt + '/4）…');
-    try {
-      // 逐卷下载（netDownload 自带断点续传，中断保留局部继续）
-      for (let i = 0; i < parts.length; i++) {
-        const part = parts[i];
-        const dst = partDst(part);
-        let dl = null, accelErr = '';
-        for (const cand of accelUrls(part.url)) {
-          try {
-            dl = await netDownload(cand, dst, function () {
-              try {
-                const done = parts.slice(0, i).reduce((s, p) => s + (p.size || 0), 0) + fs.statSync(dst).size;
-                if (total && onProgress) onProgress(Math.min(100, Math.round((done / total) * 100)));
-              } catch (e) {}
-            }, part.size || 0);
-            accelErr = '';
-            break;
-          } catch (ep) {
-            accelErr = (ep && ep.message) || String(ep);
-            writeUpdateLog('分卷下载源不可用：' + cand + ' → ' + accelErr);
-          }
-        }
-        if (!dl) throw new Error(accelErr || ('分卷下载失败：' + part.name));
-      }
-      // 按序拼接成完整 zip
-      const ws = fs.createWriteStream(zipPath, { flags: 'w' });
-      for (const part of parts) {
-        const buf = fs.readFileSync(partDst(part));
-        await new Promise((resolve, reject) => ws.write(buf, (err) => (err ? reject(err) : resolve())));
-      }
-      await new Promise((resolve) => ws.end(resolve));
-      // 清理分卷临时文件
-      for (const part of parts) { try { fs.unlinkSync(partDst(part)); } catch (e) {} }
-      const size = (() => { try { return fs.statSync(zipPath).size; } catch (e) { return 0; } })();
-      if (total && size !== total) throw new Error('分卷合并后大小不匹配：' + size + '/' + total);
-      // 分卷场景只出现在便携包（latest.yml 不含它）→ 正常只有 sha256；此处一并兼容 sha512 以防万一
-      if (info.sha512 || info.sha256) {
-        if (onStatus) onStatus('正在校验更新包完整性…');
-        if (info.sha512) {
-          const a512 = await sha512Base64File(zipPath);
-          if (a512 !== String(info.sha512)) throw new Error('哈希校验失败：期望 ' + String(info.sha512).slice(0, 12) + '… 实际 ' + a512.slice(0, 12) + '…');
-        } else {
-          const actual = await sha256File(zipPath);
-          if (actual !== String(info.sha256).toLowerCase()) throw new Error('哈希校验失败：期望 ' + String(info.sha256).slice(0, 12) + '… 实际 ' + actual.slice(0, 12) + '…');
-        }
-      }
-      writeUpdateLog('分卷下载合并完成：' + size + ' 字节，校验通过（尝试 ' + attempt + '/4，' + (Date.now() - t0) + 'ms）');
-      return { ok: true, zipPath };
-    } catch (e) {
-      lastErr = (e && e.message) || String(e);
-      writeUpdateLog('分卷下载失败（尝试 ' + attempt + '/4）：' + lastErr);
-      if (/哈希校验失败/.test(lastErr)) { try { fs.unlinkSync(zipPath); } catch (u) {} }
-      if (attempt < 4) { if (onStatus) onStatus('分卷下载失败（' + lastErr + '），正在重试…'); await new Promise((r) => setTimeout(r, 1500)); }
-    }
-  }
-  writeUpdateLog('分卷下载失败：' + lastErr);
   return { ok: false, error: lastErr };
 }
 // 更新包下载就绪后等待用户二次确认再安装（见 applyUpdate / portableApplyUpdate）
@@ -1786,8 +1662,6 @@ function buildHttpExtraRoutes() {
         backup_root_effective: api.getBackupRoot(),   // 备份实际落盘根（自定义目录时含「Video Lab 备份」层）
       };
     },
-    // 运行日志目录（设置页「维护」区）
-    get_log_dir: () => ({ ok: true, dir: runLog.getDir() }),
     save_settings: (args) => {
       const s = args[0];
       const cfg = loadConfig();
@@ -1845,14 +1719,6 @@ function buildHttpExtraRoutes() {
     },
     get_skin: () => String(config.skin || 'white_blue'),
     set_skin: (args) => { const v = String(args[0] || '').trim(); if (isValidSkin(v)) config.skin = v; saveConfig(config); return config.skin; },
-    get_autostart: () => ({ enabled: config.autostart === true }),
-    set_autostart: (args) => {
-      const v = !!args[0]; config.autostart = v; saveConfig(config);
-      try { if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: v, args: ['--autostart'] }); } catch (e) {}
-      for (const w of BrowserWindow.getAllWindows()) w.webContents.send('settings_saved', loadConfig());
-      if (httpServerInfo && httpServerInfo.broadcastAll) httpServerInfo.broadcastAll('settings_saved', loadConfig());
-      return { ok: true, enabled: v };
-    },
     get_changelog_popup: () => {
       try {
         const cfg = loadConfig();
@@ -2207,29 +2073,12 @@ function registerIpc() {
   ipcMain.handle('apply_update_pref', (e, pref) => applyUpdatePref(pref));
   // 主窗口状态栏：当前应用版本号（左下角常驻显示）
   ipcMain.handle('get_app_version', () => APP_VERSION);
-  // 开机自启动开关（独立读写，设置页「通用设置」可用；openAtLogin + --autostart 静默托盘启动）
-  ipcMain.handle('get_autostart', () => ({ enabled: config.autostart === true }));
-  ipcMain.handle('set_autostart', (e, en) => {
-    const v = !!en;
-    config.autostart = v;
-    saveConfig(config);
-    try { if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: v, args: ['--autostart'] }); } catch (e) {}
-    for (const w of BrowserWindow.getAllWindows()) w.webContents.send('settings_saved', loadConfig());
-    if (httpServerInfo && httpServerInfo.broadcastAll) httpServerInfo.broadcastAll('settings_saved', loadConfig());
-    return { ok: true, enabled: v };
-  });
   // 手动取消进行中的后台预检测（后端 token 自增即中断旧探测）
   ipcMain.handle('cancel_precheck', () => api.cancelPrecheck());
   // 主窗口提示条：两步式第一步（仅下载，需 UPDATE_ENABLED）
   ipcMain.handle('start_update', () => startUpdate());
   // 主窗口提示条：两步式第二步（安装并重启，需 UPDATE_ENABLED，setup 版使用）
   ipcMain.handle('apply_update', () => applyUpdate());
-  // 便携版：打开资源管理器并选中已下载的更新包（用户关闭应用后自行解压）
-  ipcMain.handle('reveal_update_file', () => {
-    if (!lastDownload || !fs.existsSync(lastDownload.zipPath)) return { ok: false, error: '更新包不存在' };
-    try { shell.showItemInFolder(lastDownload.zipPath); } catch (e) { return { ok: false, error: e.message }; }
-    return { ok: true, path: lastDownload.zipPath };
-  });
   // 关闭设置面板（渲染层点击面板外 / Esc 调用）
   ipcMain.handle('close_settings_panel', () => { closeSettingsPanel(); return { ok: true }; });
   // 内嵌面板标题栏的关闭按钮（设置页 / 引导页共用）：按当前打开的面板分派
@@ -2269,8 +2118,6 @@ function registerIpc() {
   });
   ipcMain.handle('get_skin', () => String(config.skin || 'white_blue'));
   ipcMain.handle('set_skin', (e, skin) => { const v = String(skin || '').trim(); if (isValidSkin(v)) config.skin = v; saveConfig(config); return config.skin; });
-  // 运行日志目录（设置页「维护」区展示与打开）
-  ipcMain.handle('get_log_dir', () => ({ ok: true, dir: runLog.getDir() }));
   // 自愈目录落盘：`api.config` 是构造期浅拷贝（backend 构造里 Object.assign），与顶层 config **不是同一对象**
   // ⚠ ensureFfmpeg 只改 api 侧内存，不显式写库的话下载目录重启即丢，必须在这里回写。
   function persistFfmpegDir(dir) {

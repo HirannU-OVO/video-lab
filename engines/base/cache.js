@@ -1,5 +1,5 @@
 // sqlite 数据单库（<storageDir>\cache.db）：唯一持久层，承载
-// video_cache / clip_index / scan_cache / log_cache / cache_kv / tasks / task_logs / task_marks / meta。
+// video_cache / clip_index / scan_cache / cache_kv / tasks / task_logs / task_marks / meta。
 // last_write 用 TEXT 承载 .NET Ticks（0001 基准，18~19 位整数；INTEGER 列会被 node:sqlite 直接抛 RangeError），
 // 可无损往返；任务与标记主键（task_id）同样用 TEXT（19 位 ID 经 Number 转换会变成科学计数法）。
 // 由 Electron 内置 node:sqlite 提供，零原生依赖；支持旧 JSON 一次性迁移。
@@ -45,11 +45,6 @@ CREATE TABLE IF NOT EXISTS scan_cache (
   key         TEXT PRIMARY KEY,
   fingerprint TEXT NOT NULL,
   payload     TEXT NOT NULL DEFAULT ''
-);
-CREATE TABLE IF NOT EXISTS log_cache (
-  log_path TEXT PRIMARY KEY,
-  mtime    INTEGER NOT NULL,
-  entries  TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS cache_kv (
   k          TEXT PRIMARY KEY,
@@ -743,15 +738,6 @@ class CacheStore {
       try { db.exec('PRAGMA wal_checkpoint(TRUNCATE)'); } catch (e) {}
       return true;
     } catch (e) { return false; }
-  }
-
-  // ── log_cache ──
-  getLog(lp) { return this.open().prepare('SELECT * FROM log_cache WHERE log_path = ?').get(String(lp)) || null; }
-  setLog(lp, mtime, entries) {
-    const db = this.open();
-    db.prepare(`INSERT INTO log_cache (log_path, mtime, entries) VALUES (?, ?, ?)
-                ON CONFLICT(log_path) DO UPDATE SET mtime = excluded.mtime, entries = excluded.entries`)
-      .run(String(lp), Number(mtime) || 0, JSON.stringify(entries));
   }
 
   // ── clip_index ──
