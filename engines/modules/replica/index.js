@@ -6,10 +6,10 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { runFfmpeg } = require('../../base/ffmpeg');
+const { runFfmpeg, nvencArgs, aacTail } = require('../../base/ffmpeg');
 const { probe } = require('../../base/probe');
 const { acquireLock } = require('../../base/lock');
-const { stripQuotes, getNumberSuffix, exists, renameWithRetry, tempNameFor } = require('../../base/paths');
+const { stripQuotes, getNumberSuffix, exists, renameWithRetry, tempNameFor, isVideoExt } = require('../../base/paths');
 const dedupe = require('../../base/dedupe');
 // 「加速换档重试」策略（与批量拼接共用同一套，见 engines/base/ladder.js）
 const ladder = require('../../base/ladder');
@@ -21,7 +21,8 @@ function scopes() {
   try { return require('../../base/cache').SCOPES || SCOPES_FALLBACK; } catch (e) { return SCOPES_FALLBACK; }
 }
 
-const VIDEO_EXT_RE = /\.(mp4|mov|avi|mkv|m4v)$/i;
+// 视频扩展名以底座为准（保留正则 test 的调用形态，判定走 base/paths 的 isVideoExt）
+const VIDEO_EXT_RE = { test: (p) => isVideoExt(String(p)) };
 const PATH_LIKE_RE = /^[A-Za-z]:\\|^\\\\/;
 const MAX_ATTEMPT = 45;          // 渐进压时长轮数上限（与 PS1 一致）
 // 缓存写入时间用 .NET DateTime.Ticks（0001-01-01 基准），故偏移取 621355968000000000；
@@ -875,7 +876,12 @@ async function run(ctx, env = process.env) {
   // 顺序：先输出等待/开始行，再输出总数行
   // 等待行：replica 旧实现缺此态，但 batch/mask 均有，backend 也据此显示「排队中」；按统一口径补齐
   logger.lockWaiting();
-  const lock = await acquireLock(path.join(outRoot, '.video-lab-replica.lock'));
+  // ⚠ 锁**不能**落在 outRoot（被处理的输出目录）：那会让目录变「非空」，
+  //   破坏「空目录 → 直接输出」规则，也会在用户目录里留残留文件。
+  //   与 batch 同口径：放在缓存库同级（跨进程稳定），库未注入时退回系统临时目录。
+  const lockDir = path.dirname(String(process.env.VL_CACHE_DB || '').trim() || outRoot);
+  try { fs.mkdirSync(lockDir, { recursive: true }); } catch (e) {}
+  const lock = await acquireLock(path.join(lockDir, '.video-lab-replica.lock'));
   logger.lockAcquired('开始复刻任务');
 
   logger.info('');
@@ -1167,10 +1173,11 @@ async function run(ctx, env = process.env) {
       const encArgs = [
         '-filter_complex', filterComplex,
         '-map', mapV, '-map', mapA,
-        '-c:v', 'h264_nvenc', '-preset', 'p4', '-rc', 'vbr', '-cq', '26',
-        '-profile:v', 'high', '-level', '4.1',
-        '-c:a', 'aac', '-b:a', '192k',
-        '-f', 'mp4',
+        // 编码参数统一走底座：nvencArgs 给视频段（含 profile/level），aacTail 给音轨+容器。
+        // ⚠ 不要在此手写编码参数 —— 音频尾巴与 faststart 必须跟底座走，
+        //   否则同一款 mp4 在不同模块的头部结构不同（无 faststart 不能边下边播）。
+        ...nvencArgs(null, 'h264'),
+        ...aacTail('mp4'),
         '-y', tmpOut,
       ];
       const targetDur = totalDuration > maxDuration ? maxDuration : totalDuration;

@@ -456,6 +456,31 @@ class Api {
     return path.join(parent, 'engines');
   }
 
+  /**
+   * 往任务日志（任务窗口里那份）加一行 —— 全项目唯一入口。
+   *
+   * 为什么收敛：任务日志的写入点有 20 处，且都是裸的 `task.log.push(...)`，
+   * 各处写法不一（有的判空、有的判重、有的先读 restored.log 再 push）。
+   * 散落的代价是「这一行怎么来的」要在 20 个地方各自读懂，加新行时也无从参照。
+   * 统一入口后：判空 / 去重 / 行数上限三件事只在一处维护。
+   *
+   * @param {object} task 任务对象（需有 log 数组）
+   * @param {string} line 一行文本（不含换行）
+   * @param {{dedupe?:boolean, cap?:number}} [o]
+   *   dedupe —— 与最后一行相同则不写（用于「应用退出」这类可能重复触发的事件）
+   *   cap    —— 单任务日志行数上限（默认 2000；超出丢最旧的，防止长任务吃内存）
+   */
+  _taskLog(task, line, o) {
+    if (!task || !task.log) return false;
+    const opt = o || {};
+    const text = String(line == null ? '' : line);
+    if (opt.dedupe && task.log[task.log.length - 1] === text) return false;
+    const cap = opt.cap || 2000;
+    if (task.log.length >= cap) task.log.splice(0, task.log.length - cap + 1);
+    task.log.push(text);
+    return true;
+  }
+
   // 运行日志出口（懒加载；写日志永不影响主流程）
   _lg(verb, action, summary, data) {
     try { this._ensureRunLog().logEvent(verb, action, summary, data); } catch (e) {}
@@ -3644,7 +3669,7 @@ class Api {
       fs.mkdirSync(path.dirname(src), { recursive: true });
       fs.copyFileSync(snap, src);
       // 仅在真正写回时留痕：此时原位配置已被同名其他任务搬走，或被重新生成的配置覆盖
-      if (task.log) task.log.push('[已按提交快照还原配置] ' + path.basename(src));
+      this._taskLog(task, '[已按提交快照还原配置] ' + path.basename(src));
       this._lg('MOD', 'task.txtsnap', '按提交快照还原配置 · ' + String(task.title || '').slice(0, 50),
         { id: task.id, txt: src });
     } catch (e) { /* 还原失败则交由引擎按原样报错 */ }
@@ -3775,14 +3800,14 @@ class Api {
       task.status = 'running';
       // 解除计时冻结：把暂停 / 排队这段并入总暂停时长，之后才继续累计耗时
       if (task.pausedAt) { task.totalPausedMs = (task.totalPausedMs || 0) + (Date.now() - task.pausedAt); task.pausedAt = null; }
-      task.log.push('[开始运行]');
+      this._taskLog(task, '[开始运行]');
       this._emitTasks();
       this._spawnEngine(task.type, task.env, task);
     } else {
       task.status = 'queued';
       // 排队等待不算运行耗时：先冻结计时，真正开始运行（_startNextQueued）时才解除
       if (!task.pausedAt) task.pausedAt = Date.now();
-      task.log.push('[已加入执行队列，等待前序任务完成]');
+      this._taskLog(task, '[已加入执行队列，等待前序任务完成]');
       this._taskQueue.push(task.id);
       this._emitTasks();
     }
@@ -3799,7 +3824,7 @@ class Api {
       t.status = 'running';
       // 解除计时冻结：排队 / 暂停这段不算运行耗时，并入总暂停时长后再累计
       if (t.pausedAt) { t.totalPausedMs = (t.totalPausedMs || 0) + (Date.now() - t.pausedAt); t.pausedAt = null; }
-      t.log.push('[前序任务完成，开始运行本任务]');
+      this._taskLog(t, '[前序任务完成，开始运行本任务]');
       this._emitTasks();
       this._spawnEngine(t.type, t.env, t);
       return;
@@ -3815,7 +3840,7 @@ class Api {
     if (i > 0) { this._taskQueue.splice(i, 1); this._taskQueue.unshift(id); }
     // 重算队列计划序号，使显示顺序与执行顺序一致
     this._taskQueue.forEach((qid, k) => { this.tasks.get(qid).planPos = k + 1; });
-    t.log.push('[已置顶，成为下一个执行的任务]');
+    this._taskLog(t, '[已置顶，成为下一个执行的任务]');
     this._emitTasks();
     return { ok: true };
   }
@@ -4054,11 +4079,11 @@ class Api {
         // （正常退出走 shutdownTasks 已完成转换，此处仅兜底）
         if (restored.status === 'queued') {
           restored.status = 'paused'; restored.paused = true;
-          if (restored.log[restored.log.length - 1] !== '[上次异常退出，排队任务已转为暂停]') { restored.log.push('[上次异常退出，排队任务已转为暂停]'); }
+          this._taskLog(restored, '[上次异常退出，排队任务已转为暂停]', { dedupe: true });
         } else if (restored.status === 'running') {
           restored.status = 'interrupted'; restored.paused = false;
           restored.endedAt = restored.endedAt || Date.now();
-          if (restored.log[restored.log.length - 1] !== '[上次异常退出，任务已中断，可继续制作]') { restored.log.push('[上次异常退出，任务已中断，可继续制作]'); }
+          this._taskLog(restored, '[上次异常退出，任务已中断，可继续制作]', { dedupe: true });
         }
         // 批量任务缺归属日时按提交/创建时刻补算（凌晨0-4点归前一天）
         if (restored.type === 'batch' && typeof restored.groupDate !== 'string') restored.groupDate = this._taskGroupDate(restored.type, restored.env, restored.createdAt);
@@ -4339,10 +4364,10 @@ class Api {
     for (const t of this.tasks.values()) {
       if (t.status === 'running') {
         t.status = 'interrupted'; t.paused = false; t.endedAt = now;
-        t.log.push('[应用退出，任务已中断]'); changed = true;
+        this._taskLog(t, '[应用退出，任务已中断]'); changed = true;
       } else if (t.status === 'queued') {
         t.status = 'paused'; t.paused = true; t.pausedAt = Date.now();
-        t.log.push('[应用退出，排队任务转为暂停]'); changed = true;
+        this._taskLog(t, '[应用退出，排队任务转为暂停]'); changed = true;
       }
     }
     this._taskQueue = [];
@@ -4378,7 +4403,7 @@ class Api {
       // 继续只是重新入队，此刻还没跑起来：保留计时冻结，由真正开始运行（_startNextQueued）时并入总暂停时长
       t.status = 'queued'; t.paused = false; delete t.resumeIdx;
       this._taskQueue.push(t.id);
-      t.log.push('[全部继续]');
+      this._taskLog(t, '[全部继续]');
     }
     this._taskQueue.forEach((qid, k) => { this.tasks.get(qid).planPos = k + 1; });
     if (!this._runningTaskId) this._startNextQueued();
@@ -4397,7 +4422,7 @@ class Api {
       const waiting = [...this.tasks.values()].filter((x) => x.status === 'queued' || x.status === 'paused')
         .sort((a, b) => (a.planPos || 1e9) - (b.planPos || 1e9));
       t.resumeIdx = Math.max(0, waiting.indexOf(t));
-      t.log.push('[全部暂停]');
+      this._taskLog(t, '[全部暂停]');
     }
     this._emitTasks();
     return { ok: true, count: queued.length };
@@ -4415,14 +4440,14 @@ class Api {
       t.paused = false;
       t.planPos = 0;
       t.endedAt = Date.now();
-      t.log.push('[已取消任务，不再执行]');
+      this._taskLog(t, '[已取消任务，不再执行]');
       this._emitTasks();
       return { ok: true };
     }
     if (t.status !== 'running') return { ok: false, error: '任务已结束' };
     if (!t.pid) return { ok: false, error: '任务进程尚未就绪' };
     t._stopRequested = true;
-    t.log.push('[已请求停止任务，正在终止进程…]');
+    this._taskLog(t, '[已请求停止任务，正在终止进程…]');
     this._emitTasks();
     try {
       const r = spawnSync('taskkill', ['/PID', String(t.pid), '/T', '/F'], { windowsHide: true, encoding: 'utf8' });
@@ -5372,7 +5397,7 @@ class Api {
       this._lg('RUN', 'task.softPause',
         '软暂停 · 当前成片完成后生效 · ' + t.type + ' · ' + String(t.title || '').slice(0, 50),
         { id: t.id });
-      t.log.push('[软暂停] 当前成片完成后暂停，让下一个任务先执行；剩余部分可「继续任务」续跑]');
+      this._taskLog(t, '[软暂停] 当前成片完成后暂停，让下一个任务先执行；剩余部分可「继续任务」续跑]');
       this._emitTasks();
       return { ok: true, soft: true, message: '将在当前成片完成后暂停' };
     }
@@ -5389,7 +5414,7 @@ class Api {
     this.tasks.forEach((t2) => { if (t2.status === 'queued' || t2.status === 'paused') waiting.push(t2); });
     waiting.sort((x, y) => (x.planPos || 1e9) - (y.planPos || 1e9));
     t.resumeIdx = Math.max(0, waiting.indexOf(t));
-    t.log.push('[已暂停，移出执行队列；点击继续将保持当前顺位插回]');
+    this._taskLog(t, '[已暂停，移出执行队列；点击继续将保持当前顺位插回]');
     this._emitTasks();
     return { ok: true };
   }
@@ -5419,7 +5444,7 @@ class Api {
     // 重算队列计划序号，使显示顺序与插队位置一致（继续后刷新队伍序号）
     this._taskQueue.forEach((qid, k) => { this.tasks.get(qid).planPos = k + 1; });
     delete t.resumeIdx;
-    t.log.push('[已恢复，插入队列第 ' + (pos + 1) + ' 位]');
+    this._taskLog(t, '[已恢复，插入队列第 ' + (pos + 1) + ' 位]');
     if (!this._runningTaskId) this._startNextQueued();
     else this._emitTasks();
     return { ok: true };
@@ -5519,7 +5544,7 @@ class Api {
             this._emitTasks();
             return;
           }
-          task.log.push(s);
+          this._taskLog(task, s);
           // 进度解析：匹配 "共 N 个" 与 "生成第 X / Y 个成片" / "复刻第 X / Y 个成片" /
           // 视频处理工具的 "处理第 X / Y 个视频"（同一套进度字段，措辞按模块区分）
           const totalMatch = s.match(/共\s*(\d+)\s*个/);
@@ -5543,7 +5568,7 @@ class Api {
           // 成片完成：把该成片最后一行帧进度固化进日志（每个成片保留最终进度）
           if (/成片完成/.test(s) && task._lastFrameLine) {
             const finalLine = zhLiveLine(task._lastFrameLine);
-            if (finalLine) task.log.push(finalLine);
+            if (finalLine) this._taskLog(task, finalLine);
             task._lastFrameLine = null;
             task.progress.liveLine = null; // 清除实时行，避免与固化行重复显示
           }
@@ -5629,7 +5654,7 @@ class Api {
             task.endedAt = null;
             task.failReason = '';
             task.resumeIdx = 1;
-            task.log.push('[软暂停生效] 当前成片已完成并保留，任务转入暂停队列第 1 位；点击「继续任务」接续]');
+            this._taskLog(task, '[软暂停生效] 当前成片已完成并保留，任务转入暂停队列第 1 位；点击「继续任务」接续]');
           }
           // 续跑补做成功：摘掉继承来的失败记录（引擎本次新报的失败保留）——
           // 那些记录的是上一次的缺口，本次已补回；留着会让任务被判成 error 并提示「继续制作」，
@@ -5765,7 +5790,7 @@ class Api {
           }
         });
         child.on('error', (err2) => {
-          task.log.push('[启动失败] ' + String(err2));
+          this._taskLog(task, '[启动失败] ' + String(err2));
           task.status = 'error';
           task.failReason = '程序运行组件启动失败，请重新安装或校验程序文件';
           task.endedAt = Date.now();

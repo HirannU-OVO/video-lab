@@ -20,11 +20,13 @@ const path = require('node:path');
 const { runFfmpeg, nvencArgs } = require('../base/ffmpeg');
 const { probeDetail } = require('../base/probe');
 const outplan = require('../base/outplan');
+const paths = require('../base/paths');
 const vf = require('../base/vf');
 const ranges = require('./ranges');
 const { listSteps } = require('./index');
 
-const VIDEO_EXTS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.m4v', '.webm', '.flv', '.ts']);
+// 视频扩展名以底座为准（保留 Set 的 has() 调用形态）
+const VIDEO_EXTS = { has: (ext) => paths.videoExts.has(String(ext || '').toLowerCase()) };
 
 /** 扫描目录下的视频（跳过应用自管产物目录，防"备份被当素材"反复增生） */
 function scanVideos(root, { recursive = true, storageDir = '' } = {}) {

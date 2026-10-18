@@ -5,7 +5,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
-const { runFfmpeg } = require('../../base/ffmpeg');
+const { runFfmpeg, nvencArgs, aacTail } = require('../../base/ffmpeg');
 const { probe, probeDetail } = require('../../base/probe');
 const { acquireLock } = require('../../base/lock');
 const { exists, getMaskDirName, renameWithRetry, tempNameFor } = require('../../base/paths');
@@ -226,7 +226,12 @@ async function run(ctx, env = process.env) {
   }
 
   // ── 主流程（锁 + 批量合成） ──
-  const lockPath = path.join(cfg.outputDir, '.video-lab-mask.lock');
+  // ⚠ 锁**不能**落在 outputDir（被处理的输出目录）：那会让目录变「非空」，
+  //   破坏「空目录 → 直接输出」规则，也会在用户目录里留残留文件。
+  //   与 batch 同口径：放在缓存库同级（跨进程稳定），库未注入时退回系统临时目录。
+  const lockDir = path.dirname(String(process.env.VL_CACHE_DB || '').trim() || cfg.outputDir);
+  try { fs.mkdirSync(lockDir, { recursive: true }); } catch (e) {}
+  const lockPath = path.join(lockDir, '.video-lab-mask.lock');
   logger.lockWaiting();
   const lock = await acquireLock(lockPath);
   logger.lockAcquired('开始遮罩叠加任务');
@@ -273,10 +278,11 @@ async function run(ctx, env = process.env) {
           '-i', j.vidPath, '-i', cfg.watermark,
           '-filter_complex', filter,
           '-map', '[outv]', '-map', '0:a?',
-          '-c:v', 'h264_nvenc', '-preset', 'p4', '-rc', 'vbr', '-cq', '26',
-          '-c:a', 'aac', '-b:a', '192k', '-shortest',
-          // 临时名无扩展名可推断容器 → 必须显式 -f mp4（与 batch/replica 同）
-          '-f', 'mp4',
+          // 编码参数统一走底座：nvencArgs 给视频段（含 profile/level），aacTail 给音轨+容器。
+          // ⚠ 不要在此手写编码参数 —— 音频尾巴与 faststart 必须跟底座走，
+          //   否则同一款 mp4 在不同模块的头部结构不同（无 faststart 不能边下边播）。
+          ...nvencArgs(null, 'h264'),
+          ...aacTail('mp4'), '-shortest',
           tmpOut];
       } else {
         const srcForDur = cfg.mode === 1 ? combinedMap.get(j.maskPath) : j.maskPath;
@@ -372,10 +378,11 @@ async function run(ctx, env = process.env) {
           // 音频来源：遮罩自带音轨时用遮罩音轨；遮罩没有音频流时回退原视频音轨，
           // ⚠ 否则成片会完全没有声音（固定取 1:a? 时，遮罩无声即输出无音轨）
           '-map', '[outv]', '-map', maskHasAudio ? '1:a?' : '0:a?',
-          '-c:v', 'h264_nvenc', '-preset', 'p4', '-rc', 'vbr', '-cq', '26',
-          '-c:a', 'aac', '-b:a', '192k',
-          // 临时名无扩展名可推断容器 → 必须显式 -f mp4（与 batch/replica 同）
-          '-f', 'mp4',
+          // 编码参数统一走底座：nvencArgs 给视频段（含 profile/level），aacTail 给音轨+容器。
+          // ⚠ 不要在此手写编码参数 —— 音频尾巴与 faststart 必须跟底座走，
+          //   否则同一款 mp4 在不同模块的头部结构不同（无 faststart 不能边下边播）。
+          ...nvencArgs(null, 'h264'),
+          ...aacTail('mp4'),
           tmpOut];
       }
       logger.clipDuration(targetDur);

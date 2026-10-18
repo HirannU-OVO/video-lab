@@ -111,6 +111,11 @@
   // 暴露与 preload.js 完全一致的接口签名
   var api = {
     list_projects: function (force) { return invokeArgs('list_projects', force); },
+  // A6 数据目录清理。⚠ 三处登记必须齐全（preload / txapi / server）：
+  // settings.js 用 `if (api && api.data_dir_scan)` 守卫，缺一处时该形态下按钮静默失效
+  // （不报错、无提示，用户以为点了没反应）。
+  data_dir_scan: function () { return invokeArgs('data_dir_scan'); },
+  data_dir_clean: function (keys) { return invokeArgs('data_dir_clean', keys); },
     list_versions: function (project, name, force) { return invokeArgs('list_versions', project, name, force); },
     read_config: function (p) { return invokeArgs('read_config', p); },
     save_config: function (p, folders, excludes, watermark, newName) { return invokeArgs('save_config', p, folders, excludes, watermark, newName); },

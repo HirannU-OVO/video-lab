@@ -22,10 +22,12 @@ const path = require('node:path');
 const { runFfmpeg, nvencArgs } = require('../base/ffmpeg');
 const { probeDetail } = require('../base/probe');
 const outplan = require('../base/outplan');
+const paths = require('../base/paths');
 const canvas = require('./canvas-plan');
 
 const IMG_RE = /\.(png|jpg|jpeg|webp|bmp)$/i;
-const VID_RE = /\.(mp4|mov|mkv|avi|m4v|webm)$/i;
+// 视频扩展名以底座为准（保留正则 test 的调用形态）
+const VID_RE = { test: (p) => paths.isVideoExt(String(p)) };
 const exists = (p) => {
   try { return !!p && fs.existsSync(p); } catch (e) { return false; }
 };

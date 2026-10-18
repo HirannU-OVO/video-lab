@@ -6,10 +6,10 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { runFfmpeg } = require('../../base/ffmpeg');
+const { runFfmpeg, nvencArgs, aacTail } = require('../../base/ffmpeg');
 const { probe } = require('../../base/probe');
 const { acquireLock } = require('../../base/lock');
-const { stripQuotes, exists, sortKey, renameWithRetry, tempNameFor } = require('../../base/paths');
+const { stripQuotes, exists, sortKey, renameWithRetry, tempNameFor, videoExts } = require('../../base/paths');
 const { pickCandidate, pickRandom, failKey, triedPathsFor } = require('../../base/retry');
 // 「加速换档重试」策略：本模块是它的原始出处，现已抽到 base/ladder.js 由批量与复刻共用。
 // 这里不再内联任何档位常量 —— 改动档位语义请改 ladder.js，否则两侧行为会再次分叉。
@@ -27,7 +27,9 @@ function scopes() {
   return _scopesCache;
 }
 
-const VIDEO_EXTS = ['.mp4', '.mov', '.avi', '.mkv', '.m4v'];
+// 视频扩展名以底座为准（base/paths 的 videoExts）：各模块自建白名单会让同一份素材
+// 在某些模块被当视频、在另一些被忽略 —— .webm/.flv/.ts 的差异正是这么来的。
+const VIDEO_EXTS = Array.from(videoExts);
 const VIDEO_EXT_SET = new Set(VIDEO_EXTS);
 // PS 的 LastWriteTimeUtc.Ticks 是 .NET DateTime.Ticks（0001-01-01 基准），
 // 偏移为 621355968000000000（**不是** FILETIME 的 1601 基准 116444736000000000）
@@ -1327,10 +1329,11 @@ async function run(ctx, env = process.env) {
       const encArgs = [
         '-filter_complex', filterComplex,
         '-map', mapV, '-map', mapA,
-        '-c:v', 'h264_nvenc', '-preset', 'p4', '-rc', 'vbr', '-cq', '26',
-        '-profile:v', 'high', '-level', '4.1',
-        '-c:a', 'aac', '-b:a', '192k',
-        '-f', 'mp4',
+        // 编码参数统一走底座：nvencArgs 给视频段（含 profile/level），aacTail 给音轨+容器。
+        // ⚠ 不要在此手写编码参数 —— 音频尾巴与 faststart 必须跟底座走，
+        //   否则同一款 mp4 在不同模块的头部结构不同（无 faststart 不能边下边播）。
+        ...nvencArgs(null, 'h264'),
+        ...aacTail('mp4'),
         '-y', tmpOut,
       ];
       const targetDur = totalDuration > cfg.maxTotalDuration ? cfg.maxTotalDuration : totalDuration;

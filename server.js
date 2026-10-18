@@ -46,6 +46,9 @@ const PURE_BACKEND_ROUTES = {
   set_log_level: { m: 'setLogLevel', a: (args) => [args[0]] },
   export_diag_pack: { m: 'exportDiagPack', a: (args) => [args[0]] },
   list_projects: { m: 'listProjectsAsync', a: (args) => [!!args[0]] },
+  // A6 数据目录清理（与 preload / IPC 三处登记保持一致，漏一处则该形态下静默失效）
+  data_dir_scan: { m: 'dataDirScan', a: () => [] },
+  data_dir_clean: { m: 'dataDirClean', a: (args) => [args[0]] },
   list_versions: { m: 'listVersions', a: (args) => [args[0], args[1], args[2]] },
   read_config: { m: 'readConfig', a: (args) => [args[0]] },
   save_config: { m: 'saveConfig', a: (args) => [args[0], args[1], args[2], args[3], args[4]] },

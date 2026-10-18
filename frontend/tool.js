@@ -695,7 +695,9 @@
       var cur = (t.progress && t.progress.current) || 0;
       var pct = total > 0 ? Math.min(100, Math.round((cur / total) * 100)) : 0;
       $('progBar').style.width = pct + '%';
-      var label = { queued: '排队中', running: '处理中', done: '已完成', error: '失败', stopped: '已停止', paused: '已暂停', interrupted: '已中断' }[t.status] || t.status;
+      // 与任务窗口共用同一份状态文案（VL.STATUS_TEXT）—— 内联对象会让两个窗口
+      // 对同一个 running 一个显示「处理中」一个「运行中」，所以统一走共享定义。
+      var label = ((window.VL && window.VL.STATUS_TEXT) || {})[t.status] || t.status;
       var detail = total > 0 ? ('　' + cur + ' / ' + total) : '';
       var live = t.progress && t.progress.liveLine;
       if (t.status === 'running' && live && live.time) detail += '　' + live.time;

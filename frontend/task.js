@@ -22,7 +22,9 @@
     return Promise.resolve().then(function () { return api[method].apply(api, args); });
   }
 
-  var STATUS_TEXT = { queued: '排队中', paused: '已暂停', running: '运行中', done: '已完成', error: '失败', stopped: '已停止', interrupted: '已中断' };
+  // 任务状态文案用共享定义（VL.STATUS_TEXT）—— tool.js 里另有一份内联对象，
+  // 两边曾对 running 一个显示「运行中」一个显示「处理中」。
+  var STATUS_TEXT = (window.VL && window.VL.STATUS_TEXT) || { queued: '排队中', paused: '已暂停', running: '运行中', done: '已完成', error: '失败', stopped: '已停止', interrupted: '已中断' };
   var LOCK_TEXT = { unknown: '', waiting: '等待前面的任务完成', locked: '开始处理', released: '' };
   var TYPE_TEXT = { batch: '批量拼接', replica: '视频复刻', mask: '遮罩叠加', tool: '视频处理' };
 

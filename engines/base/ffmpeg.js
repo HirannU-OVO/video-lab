@@ -91,4 +91,20 @@ function runFfmpeg(args, { onProgress, signal, cwd, env, binary, captureStdout =
   });
 }
 
-module.exports = { runFfmpeg, NVENC_ARGS, nvencArgs };
+/**
+ * 音轨 + 容器收尾参数（编码尾巴）。
+ *
+ * 为什么单独抽出来：`-c:a aac -b:a 192k` 这一对在五个模块里各写了一遍，
+ * 而 `-movflags +faststart` 只在其中两个有 —— 同一个「mp4 输出」在不同模块
+ * 得到的文件头部结构不一样（无 faststart 的 mp4 不能边下边播，下游平台可能
+ * 把它判为未就绪）。统一到一个出口后，这类"某处忘了加"不会再发生。
+ *
+ * @param {'mp4'|'mov'} [container] 容器格式（缺省 mp4）
+ * @returns {string[]} 追加在编码参数之后、输出文件名之前的参数
+ */
+function aacTail(container) {
+  const fmt = String(container || 'mp4').toLowerCase() === 'mov' ? 'mov' : 'mp4';
+  return ['-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', '-f', fmt];
+}
+
+module.exports = { runFfmpeg, NVENC_ARGS, nvencArgs, aacTail };
