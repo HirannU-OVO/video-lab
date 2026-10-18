@@ -2928,6 +2928,17 @@
       call('list_versions', state.activeProject, state.activeTxt).then(function (versions) {
         var vs = versions || [];
         var cur = state.versions || [];
+        // ⚠ 非 force 的 list_versions **不返回 hasLog**（后端为守住「启动期零素材盘访问」，
+        //   只在 force 时才算它 —— 见 backend.js listVersions）。
+        //   所以**空值不等于「没有日志」，只等于「这次没查」**。
+        //   直接用 vs 覆盖会把打开配置时算对的 true 抹成 false：4 秒轮询一次，
+        //   「日志」与「覆盖当前配置」两个按钮就集体变灰，日期分支同时刷新一遍。
+        // 只补 true、不改 false：force 明确给出的 false 是实测结论，不能被「没查」推翻。
+        cur.forEach(function (c) {
+          if (!c.hasLog) return;
+          var v = vs.find(function (x) { return normalizePath(x.path) === normalizePath(c.path); });
+          if (v) v.hasLog = true;
+        });
         var same = vs.length === cur.length && vs.every(function (v, i) {
           var c = cur[i];
           return c && v.label === c.label && v.path === c.path && !!v.hasLog === !!c.hasLog;
@@ -3291,9 +3302,29 @@
         var f = (state.logFiles || []).find(function (x) { return x.path === state.activeLogPath; }) || (state.logFiles || []).find(function (x) { return x.date === state.activeLogDate; });
         if (f) { var ver = versionForLogFile(f); if (ver) state.activeVersion = ver; }
       }
+      // 视图切换进日志：这一下会改变「哪些按钮可用」（日志/配置互相按对方的可达性灰显），
+      // 用户说"切过去再切回来按钮就灰了"时，日志里必须有这一步才能对上现场
+      try {
+        if (window.VL && VL.vlLogAction) {
+          VL.vlLogAction('ui.view', '日志 → 配置列表', {
+            ctx: { from: 'log', to: 'filelist', txt: state.activeTxt,
+                   logDate: state.activeLogDate || '', hasLog: state.activeVersion ? String(!!state.activeVersion.hasLog) : '0' },
+          });
+        }
+      } catch (e) {}
       state.selectMode = false; state.selectedLogPaths = {}; state.mode = 'filelist'; $('modeFilelist').classList.add('mode-toggle--active'); $('modeLog').classList.remove('mode-toggle--active'); buildDateBranches(); buildCenterBottom(); buildRightPanel();
     });
-    $('modeLog').addEventListener('click', function () { state.mode = 'log'; state._fromConfig = true; $('modeLog').classList.add('mode-toggle--active'); $('modeFilelist').classList.remove('mode-toggle--active'); buildDateBranches(); buildCenterBottom(); buildRightPanel(); });
+    $('modeLog').addEventListener('click', function () {
+      // 视图切换进日志（与「日志 → 配置」同一入口、同一理由：这一步会改变按钮可用性）
+      try {
+        if (window.VL && VL.vlLogAction) {
+          VL.vlLogAction('ui.view', '配置列表 → 日志', {
+            ctx: { from: 'filelist', to: 'log', txt: state.activeTxt,
+                   version: state.activeVersion ? state.activeVersion.label : '', hasLog: state.activeVersion ? String(!!state.activeVersion.hasLog) : '0' },
+          });
+        }
+      } catch (e) {}
+      state.mode = 'log'; state._fromConfig = true; $('modeLog').classList.add('mode-toggle--active'); $('modeFilelist').classList.remove('mode-toggle--active'); buildDateBranches(); buildCenterBottom(); buildRightPanel(); });
     $('searchInput').addEventListener('input', onProjectSearchInput);
     bindBatchLogSearch(); // 批量模式成片搜索（遮罩模式 clone 输入框后由 exit 强制重绑）
     // ── 左下角菜单按钮：刷新配置列表 / 选择路径 / 重置预检测缓存 / 设置 ──
