@@ -5,12 +5,16 @@
   var $ = function (id) { return document.getElementById(id); };
   var api = window.txapi;
 
-  function setStatus(msg, ok) {
+  // 提示统一走 VL.ui 门面：日志由门面记一次（唯一日志点），这里只负责渲染。
+  function setStatus(msg, ok) { try { return VL.ui.status(msg, { ok: ok }); } catch (e) {} }
+  function _statusRender(msg, opts) {
     var el = $('guideStatus');
     if (!el) return;
+    var ok = !(opts && opts.ok === false);
     el.textContent = msg || '';
     if (el.classList) el.classList.toggle('is-error', !ok);
   }
+  try { VL.ui.registerStatus(_statusRender); } catch (e) { /* 同上 */ }
 
   // 跳过引导：用户使用窗口自带关闭按钮（右上角 X）即可，不保存直接关闭
 

@@ -49,9 +49,10 @@
   }
   // 轻量角落提示（toast）：仅告知、无需用户操作，自动消失。type：ok(✓绿)/error(⚠红)/info(ℹ)/warn(黄)
   // 用于保存/删除/迁移等操作结果与失败提示，比状态栏小字更显眼，且不开大窗
-  function toast(message, type) {
-    // 用户看到的提示同步落日志：排障时不该靠用户复述（level=error 一条不落，info 按文案合并）
-    try { if (window.VL && VL.vlLogAction) VL.vlLogAction('ui.toast', message, { level: (type === true || type === 'error') ? 'error' : 'info', ctx: { type: String(type || 'info') } }); } catch (e) {}
+  // 提示统一走 VL.ui 门面：日志由门面记一次（唯一日志点），这里只负责渲染。
+  function toast(message, type) { try { return VL.ui.toast(message, type); } catch (e) { return null; } }
+  try { VL.ui.registerToast(_toastRender); } catch (e) { /* 门面未就绪也要让页面继续跑 */ }
+  function _toastRender(message, type) {
     var host = document.getElementById('toastHost');
     if (!host) {
       host = document.createElement('div');
@@ -169,7 +170,9 @@
       pop.querySelector('[data-k="ok"]').addEventListener('click', function () { done(true); });
     });
   }
-  function showDialog(opts) {
+  function showDialog(opts) { try { return VL.ui.dialog(opts); } catch (e) { return null; } }
+  try { VL.ui.registerDialog(_dialogRender); } catch (e) { /* 门面未就绪也要让页面继续跑 */ }
+  function _dialogRender(opts) {
     return new Promise(function (resolve) {
       var overlay = document.createElement('div');
       overlay.className = 'modal-overlay';
@@ -2528,7 +2531,9 @@
       content.scrollTop = Math.max(0, targetTop - 8);
     }
   }
-  function setStatus(msg) { var el = $('statusLeft'); if (!el) return; el.classList.remove('status-bar__success'); el.textContent = msg; }
+  function setStatus(msg) { try { return VL.ui.status(msg); } catch (e) {} }
+  function _statusRender(msg) { var el = $('statusLeft'); if (!el) return; el.classList.remove('status-bar__success'); el.textContent = msg; }
+  try { VL.ui.registerStatus(_statusRender); } catch (e) { /* 同上 */ }
 
   /**
    * 需要用户**立刻注意到**的提示：操作被拦下、或操作失败。
@@ -2565,7 +2570,9 @@
       if (location.protocol.indexOf('http') === 0) toast('已用默认程序打开（若未显示请查看任务栏）', 'info');
     }).catch(function (e) { toast('打开失败：' + e.message, true); });
   }
-  function setStatusDone(msg) { var el = $('statusLeft'); if (!el) return; el.classList.add('status-bar__success'); el.textContent = msg; }
+  function setStatusDone(msg) { try { return VL.ui.statusDone(msg); } catch (e) {} }
+  function _statusDoneRender(msg) { var el = $('statusLeft'); if (!el) return; el.classList.add('status-bar__success'); el.textContent = msg; }
+  try { VL.ui.registerStatusDone(_statusDoneRender); } catch (e) { /* 同上 */ }
 
   // 载入遮罩：工作路径扫描时提示用户
   // 已取消前台遮罩：所有「扫描 / 检测」类等待改为底部状态栏提示，

@@ -7827,6 +7827,28 @@ class Api {
         parts.push(r.lines && r.lines.length ? r.lines.join('\n') : '(无匹配行)');
         parts.push('');
       }
+      // ── 用户操作时间线（含**不带 taskId** 的界面动作）──
+      // 为什么必须单独加：上面三段都按 taskId grep，而"用户界面上点了什么/看到过什么"大多发生在
+      // 任务窗口之外、不带 taskId（实测本地 141 条 ui.* 里 78 条无 taskId）—— 那些恰恰是还原现场最缺的。
+      // 这里按**任务时间窗**再收一遍：带不带 taskId 都收，落在窗口内即算相关。
+      // 目标：用户不做任何说明，只看这个包就能顺着时间线还原他做过什么、看到过什么。
+      try {
+        const since = Number(t.startedAt || t.createdAt || 0) - 30 * 60 * 1000;   // 前置 30 分钟：覆盖"操作前的准备"
+        const until = Number(t.endedAt || Date.now()) + 30 * 60 * 1000;
+        const all = this._ensureRunLog().readLog({ file: 'app', tail: 60000, maxBytes: 32 * 1024 * 1024 });
+        const toTs = (ln) => {
+          const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})\.(\d{3})/.exec(ln);
+          return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6], +m[7]).getTime() : 0;
+        };
+        const uiLines = (all.lines || []).filter((ln) => {
+          if (ln.indexOf('"verb":"UIA"') < 0) return false;   // 只要界面动作（UIA）
+          const ts = toTs(ln);
+          return ts >= since && ts <= until;
+        }).slice(-3000);
+        parts.push('════ 用户操作时间线（' + uiLines.length + ' 行 · ' + new Date(since).toLocaleString() + ' ~ ' + new Date(until).toLocaleString() + ' · 含无 taskId 的动作）════');
+        parts.push(uiLines.length ? uiLines.join('\n') : '(无匹配行)');
+        parts.push('');
+      } catch (e) { /* 时间线取不到不影响其余段落 */ }
       const dir = path.join(this._ensureRunLog().getDir(), '..', 'diag');
       try { fs.mkdirSync(dir, { recursive: true }); } catch (e2) {}
       const file = path.join(dir, 'diag-' + String(id).replace(/[^\w-]/g, '') + '-' + Date.now().toString(36) + (opts && opts.maskPaths ? '-masked' : '') + '.txt');

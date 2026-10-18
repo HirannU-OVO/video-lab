@@ -86,7 +86,10 @@ function briefArgs(v, max) {
 }
 
 // 只读/展示类通道不记（轮询防噪音）
-const SILENT_CHANNEL = /^(list_|get_|read_|open_|window_|check_|resolve_|search_|find_|locate_|precheck|scan_|respond_|ack_|on_|task_replica_outdir)/;
+// ⚠ report_ui_error 也在此列：它是上报通道，内容已由 kind=action 分支单独落成 UIA/ERR 一条；
+//   若再走通用 IPC 访问日志，每次界面动作都会额外产出一条 error 级的 `report_ui_error http · ok`，
+//   把 error 文件（保留 30 天、排查首看）冲成噪音。
+const SILENT_CHANNEL = /^(list_|get_|read_|open_|window_|check_|resolve_|search_|find_|locate_|precheck|scan_|respond_|ack_|on_|task_replica_outdir|report_ui_error)/;
 function isSilentChannel(ch) { return SILENT_CHANNEL.test(String(ch == null ? '' : ch)); }
 
 // 配置保存类通道只记「变更了的键」（IPC 与 HTTP 共用一份快照）

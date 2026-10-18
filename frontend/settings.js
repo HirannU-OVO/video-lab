@@ -465,9 +465,10 @@
   };
 
   // 轻量角落提示（toast）：仅告知、无需操作，自动消失。type：ok/error/info/warn
-  function toast(message, type) {
-    // 用户看到的提示同步落日志：排障时不该靠用户复述（level=error 一条不落，info 按文案合并）
-    try { if (window.VL && VL.vlLogAction) VL.vlLogAction('ui.toast', message, { level: (type === true || type === 'error') ? 'error' : 'info', ctx: { type: String(type || 'info') } }); } catch (e) {}
+  // 提示统一走 VL.ui 门面：日志由门面记一次（唯一日志点），这里只负责渲染。
+  function toast(message, type) { try { return VL.ui.toast(message, type); } catch (e) { return null; } }
+  try { VL.ui.registerToast(_toastRender); } catch (e) { /* 门面未就绪也要让页面继续跑 */ }
+  function _toastRender(message, type) {
     var host = document.getElementById('toastHost');
     if (!host) {
       host = document.createElement('div');

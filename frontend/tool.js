@@ -38,16 +38,21 @@
   };
 
   // ── 状态栏 ──
-  function setStatus(text, kind) {
+  // 提示统一走 VL.ui 门面：日志由门面记一次（唯一日志点），这里只负责渲染。
+  function setStatus(text, kind) { try { return VL.ui.status(text, { kind: kind }); } catch (e) {} }
+  function _statusRender(text, opts) {
     var el = $('status');
+    var kind = opts && opts.kind;
     el.textContent = text || '';
     el.className = 'tl-status' + (kind ? ' tl-status--' + kind : '');
   }
+  try { VL.ui.registerStatus(_statusRender); } catch (e) { /* 同上 */ }
 
   // 轻提示（与主窗口/任务窗口同一套样式与行为）：错误与失败类提示不再走状态栏小字
-  function toast(message, type) {
-    // 用户看到的提示同步落日志：排障时不该靠用户复述（level=error 一条不落，info 按文案合并）
-    try { if (window.VL && VL.vlLogAction) VL.vlLogAction('ui.toast', message, { level: (type === true || type === 'error') ? 'error' : 'info', ctx: { type: String(type || 'info') } }); } catch (e) {}
+  // 提示统一走 VL.ui 门面：日志由门面记一次（唯一日志点），这里只负责渲染。
+  function toast(message, type) { try { return VL.ui.toast(message, type); } catch (e) { return null; } }
+  try { VL.ui.registerToast(_toastRender); } catch (e) { /* 门面未就绪也要让页面继续跑 */ }
+  function _toastRender(message, type) {
     var host = document.getElementById('toastHost');
     if (!host) {
       host = document.createElement('div');
@@ -72,7 +77,9 @@
   }
 
   // ── 大窗确认（与主窗口 showDialog 同一套样式类；高风险动作才用它，不用气泡）──
-  function showDialog(opts) {
+  function showDialog(opts) { try { return VL.ui.dialog(opts); } catch (e) { return null; } }
+  try { VL.ui.registerDialog(_dialogRender); } catch (e) { /* 门面未就绪也要让页面继续跑 */ }
+  function _dialogRender(opts) {
     return new Promise(function (resolve) {
       var overlay = document.createElement('div');
       overlay.className = 'modal-overlay';
