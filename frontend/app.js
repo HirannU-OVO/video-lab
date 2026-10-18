@@ -1730,6 +1730,11 @@
     var name = String(targetPath).replace(/[\\/]+/g, '\\').split('\\').pop().replace(/\.txt$/i, '');
     var pr = proj || state.activeProject;
     if (!pr || !name) return;
+    // ★ 记下跳转意图：保存配置后后端会广播 versions_changed，而自愈入口
+    //   refreshActiveVersions 会「保持当前分支」—— 那时当前分支还是改动前的旧分支，
+    //   于是它会忠实地把界面送回旧分支，把这里的跳转覆盖掉。
+    //   让意图在自愈里优先，界面才停在刚保存的那天。
+    _pendingJumpPath = targetKey;
     call('list_projects').then(function (projects) {
       state.projects = projects || []; state.activeTxt = name; state.activeProject = pr; buildSidebar(false, true);
       // force=true：跳转后要按磁盘真相展示 hasLog（它决定「覆盖当前配置」是否可用），
@@ -1740,6 +1745,9 @@
       var t = null;
       for (var i = 0; i < state.versions.length; i++) { if (normalizePath(state.versions[i].path) === targetKey) { t = state.versions[i]; break; } }
       state.activeVersion = t || (state.versions.length ? state.versions[0] : null);
+      // 意图已落地（或已证明列表里没有它）—— 清掉，否则用户之后手动切分支时，
+      // 下一次配置自愈会拿这个陈旧的路径把界面拉回去。
+      _pendingJumpPath = '';
       if (pruneEmptyTxt(pr, name, state.versions)) return;
       syncTxtCount(pr, name, state.versions);
       state.expandedProject = pr; buildDateBranches(); buildSidebar(false, true);
@@ -2828,6 +2836,11 @@
     if (!state.configModified || !state.configData) { respond('ok'); return; }
     checkConfigModifiedBeforeLeave(function () { respond('ok'); }, function () { respond('cancel'); });
   }
+  // 待跳转的日期分支（归一化路径）：保存配置 / 任务定位到某天时置位，
+  // 由下一次配置自愈消费。让「跳转意图」压过自愈的「保持当前分支」，
+  // 否则保存后界面会被送回改动前的那一天。
+  var _pendingJumpPath = '';
+
   // ── 配置自愈统一入口：静默重取当前选中配置，保持日期分支/徽章/侧栏与磁盘一致 ──
   // 触发源：① 主进程广播 versions_changed（软件内保存/清理配置，后端已清缓存，重取即最新）
   //         ② 定时轮询（外部删除/任务迁移等改盘动作，靠 listVersions 目录指纹自动失效重扫）
@@ -2856,7 +2869,11 @@
         if (same) return;
         state.versions = vs; state.activeVersion = null;
         if (vs.length > 0) {
-          var target = keepLabel ? vs.find(function (v) { return v.label === keepLabel; }) : null;
+          // 跳转意图优先于「保持当前分支」：保存配置后触发的这次自愈，
+          // 拿到的 keepLabel 是改动前那一天，照它走就会把界面送回旧分支。
+          var jumped = _pendingJumpPath ? vs.find(function (v) { return normalizePath(v.path) === _pendingJumpPath; }) : null;
+          if (jumped) _pendingJumpPath = '';
+          var target = jumped || (keepLabel ? vs.find(function (v) { return v.label === keepLabel; }) : null);
           state.activeVersion = target || vs[0];
         }
         if (pruneEmptyTxt(state.activeProject, state.activeTxt, vs)) return;

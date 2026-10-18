@@ -1782,6 +1782,9 @@ class Api {
     fs.writeFileSync(filePath, text, 'utf-8');
     this._putConfigCache(filePath, text, this._parseConfigText(filePath, text));
     this._markConfigModified(filePath);
+    // 新配置写进了新日期目录，界面上的日期分支就是旧的 —— 必须广播，
+    // 否则左侧仍停在改动前的那个分支，用户要手动切过去才看得见刚保存的配置。
+    try { this._notifyTreeChanged(); } catch (e2) {}
     return { ok: true, path: filePath };
   }
 
@@ -1807,6 +1810,8 @@ class Api {
       fs.writeFileSync(filePath, text, 'utf-8');
       this._putConfigCache(filePath, text, this._parseConfigText(filePath, text));
       this._markConfigModified(filePath);
+      // 同上：新建配置会产生新的日期分支，界面要立刻看到
+      try { this._notifyTreeChanged(); } catch (e2) {}
       return { ok: true, path: filePath, name, watermark };
     } catch (e) { return { ok: false, error: String(e) }; }
   }
