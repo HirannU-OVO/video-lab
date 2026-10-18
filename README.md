@@ -7,7 +7,7 @@
 扫描项目与 TXT 配置，按日期分支管理版本，一键批量生成成片；也可对已有视频批量后处理（去黑屏 / 变速 / 转分辨率 / 转码 等）。
 <br>
 
-[![版本](https://img.shields.io/badge/版本-2.6.0-0078D7?style=flat-square)](https://github.com/HirannU-OVO/video-lab/releases)
+[![版本](https://img.shields.io/badge/版本-2.6.1-0078D7?style=flat-square)](https://github.com/HirannU-OVO/video-lab/releases)
 ![Platform](https://img.shields.io/badge/平台-Windows%2010%2F11-00A4EF?style=flat-square)
 
 </div>
