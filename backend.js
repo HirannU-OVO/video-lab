@@ -3647,6 +3647,13 @@ class Api {
   _txtSnapPath(taskId) {
     return this.storageDir ? path.join(this.storageDir, 'txt-snap', String(taskId) + '.txt') : '';
   }
+  /**
+   * 删掉某个任务的提交快照（任务记录消失后它即成孤儿，且内容可由原 TXT 再生）。
+   * 统一出口：删快照的地方不只一处，各自写一遍 unlink 容易漏判"是否该删"。
+   */
+  _dropTxtSnap(taskId) {
+    try { fs.unlinkSync(this._txtSnapPath(taskId)); } catch (e) { /* 无快照或已清都无妨 */ }
+  }
   _snapshotTaskTxt(task) {
     try {
       const src = String((task && task.env && task.env.REPLICA_TXT) || '').trim();
@@ -4014,9 +4021,16 @@ class Api {
     const store = this._cacheStore;
     try {
       store.transaction(() => {
-        // 列表中已不存在的任务：连同其日志行一并删除
+        // 列表中已不存在的任务：连同其日志行与提交快照一并删除
+        // ⚠ 快照必须跟着任务走：它只在任务启动前用于还原配置，任务没了就永远用不上；
+        //   而删任务的路径不止一条（单条清除 / 重新开始 / 续跑 / 批量清除），
+        //   在这里统一回收，比在每条路径上各补一行更不容易漏。
         const keep = new Set(this.tasks.keys());
-        for (const id of store.listTaskIds()) { if (!keep.has(id)) store.removeTask(id); }
+        for (const id of store.listTaskIds()) {
+          if (keep.has(id)) continue;
+          store.removeTask(id);
+          this._dropTxtSnap(id);
+        }
         for (const t of this.tasks.values()) {
           const body = {
             id: t.id, type: t.type, title: t.title, env: t.env || {},
@@ -4391,6 +4405,9 @@ class Api {
     if (t.status === 'running' || t.status === 'queued' || t.status === 'paused') return { ok: false, error: '进行中的任务不能删除' };
     this.tasks.delete(id);
     this._removeMarker(t);
+    // 任务记录消失 ⇒ 提交快照即成孤儿（它只在任务启动前用于还原配置，任务没了就永远用不上）。
+    // 不删的话它会一直留在 txt-snap/ 里，只有「数据目录清理」手动点一次才可能被收走。
+    this._dropTxtSnap(t.id);
     this._emitTasks();
     return { ok: true };
   }
