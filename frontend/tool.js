@@ -125,14 +125,14 @@
   // ── 表单渲染 ──
   // ── 转分辨率专用交互：常用比例 + 宽高联动 + 锁链 ──
   // resize 是表单自动渲染的**唯一特例**：比例/锁链是纯前端交互，引擎只收最终 width/height。
-  // 比例表、标准档位、比例判定都在 vl-common.js —— 画布与后处理共用同一份
+  // 比例表、标准档位、比例判定都在 common.js —— 画布与后处理共用同一份
   const RESIZE_RATIOS = VL.RATIO_RATIOS;
   const RATIO_PRESETS = VL.RATIO_PRESETS;
   // 画布的锁链状态提到模块级：cvSyncSizeUI() 在 IIFE 之外，也要读它判断是否点亮锁链
   const cvLinkState = VL.createSizeLink(true);
   const even = (n) => Math.max(2, Math.round(n / 2) * 2);   // 编码要求宽高为偶数
 
-  // 锁链状态机与画布共用同一份（vl-common.js），避免两边各自维护给出不同答案
+  // 锁链状态机与画布共用同一份（common.js），避免两边各自维护给出不同答案
   const resizeLink = VL.createSizeLink(true);
   function resizeLinked() {
     return resizeLink.isLinked(state.values.resize.ratio);
