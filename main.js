@@ -801,8 +801,33 @@ if (pendingTrashDirs.length) {
     }
     // 库存在但没有版本标记（本版首次接触这份数据）⇒ 补记一次，供将来判断
     if (dv.status === 'ok' && dv.found == null && fs.existsSync(dvDbPath)) dataver.writeDataVersion(dvDbPath);
+
+    // 数据比程序旧 ⇒ 后续要迁移。迁移是**不可逆**的（旧库被就地改写），
+    // 中途失败（磁盘满 / 进程被杀 / 写了一半）就既回不到旧结构、也用不了新结构 ——
+    // 所以先整套备份，成功才继续。备份本身也是「用户想回退旧版本」时那份可用数据。
+    if (dv.status === 'ok' && dv.found != null && dv.found < dv.supported) {
+      const bk = dataver.preMigrateBackup(dvDbPath, dv.found);
+      if (bk.ok) {
+        console.error('[dataver] 迁移前已备份：' + bk.dir + '（' + bk.files.join('、') + '）');
+        try { dataver.pruneBackups(dvDbPath); } catch (e3) { /* 清理失败不影响迁移 */ }
+      } else {
+        // 备份不成功就**不迁移**：宁可让用户继续用旧数据，也不能在没有退路的情况下动它。
+        // ⚠ 这里必须弹框而不是只打日志 —— 用户看到"点了没反应"会反复重试，
+        //   每次重试都可能更接近数据损坏。
+        console.error('[dataver] 迁移前备份失败，已跳过迁移：' + bk.error);
+        try {
+          dialog.showErrorBox('无法安全升级数据',
+            '备份当前数据失败，为保护你的数据，软件没有继续升级。\n'
+            + '请检查磁盘空间是否充足，然后重新打开软件。\n\n'
+            + '错误信息：' + bk.error);
+        } catch (e2) { /* 弹框失败也要停下来 */ }
+        app.exit(1);
+        throw new Error('DATA_VERSION_BACKUP_FAILED');
+      }
+    }
   } catch (e) {
-    if (e && e.message === 'DATA_VERSION_TOO_NEW') throw e;
+    // 这两种是**主动拒绝启动**，必须继续抛出去（不然下面的"放行"会把它们吞掉）
+    if (e && (e.message === 'DATA_VERSION_TOO_NEW' || e.message === 'DATA_VERSION_BACKUP_FAILED')) throw e;
     // 检查本身出错（权限不足 / 库损坏 / 被独占）⇒ 放行。
     // 守卫的职责是拦住"确定不兼容"，而不是因为查不动就把用户锁在门外。
     console.error('[dataver] 版本检查失败，按放行处理：' + ((e && e.message) || e));

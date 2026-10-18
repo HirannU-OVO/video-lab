@@ -99,22 +99,121 @@ function writeDataVersion(dbPath, ver) {
   }
 }
 
-/** 给拒绝启动的场景生成一段用户能看懂的文案（含可执行的下一步）。 */
+/**
+ * 拒绝启动时给用户看的文案。
+ *
+ * ⚠ 面向**普通用户**，不是开发者：不写版本号、不写"数据格式 / schema"这类词。
+ *   用户只需要知道三件事 —— 为什么打不开、该怎么做、哪样东西绝对不能删。
+ *   版本号等细节写进日志，排查时再看。
+ *
+ * ⚠ 语气只陈述事实，不吓唬人：不说"可能把它弄坏"这类后果推演 ——
+ *   既然已经拒绝启动了，就不会弄坏；再强调一遍只是让用户更慌。
+ *
+ * ⚠ 待「迁移前自动备份」落地后，第二条出路应改为引导用备份恢复
+ *   （用户不必手动给文件夹改名）。备份目前尚未实现，这里先给可执行的手动路径。
+ *   见 migrations 计划中的 preMigrateBackup。
+ */
 function tooNewMessage(info, dbPath) {
   const dir = dbPath ? path.dirname(dbPath) : '';
   return [
-    '数据格式不兼容，已阻止启动。',
+    '软件版本过旧，无法打开这份数据。',
+    '这份数据是由更新版本的 Video Lab 创建的。',
     '',
-    '这个数据目录是由更新版本的程序创建的：',
-    '  数据格式版本 v' + info.found + '，当前程序只支持到 v' + info.supported + '。',
+    '请更新到最新版本后再试。',
     '',
-    '继续运行可能让数据变得无法读取。请任选一种处理方式：',
-    '  1）使用最新版本的程序打开（推荐）；',
-    '  2）若要继续使用当前版本，请先备份并移走数据目录：',
-    dir ? '     ' + dir : '     （数据目录）',
-    '',
-    '⚠ 不要直接删除该目录 —— 里面是你的项目设置与缓存。',
+    '如果你确实需要用旧版本，请先把下面这个文件夹改名备份，',
+    '再重新打开软件（软件会当作全新使用）：',
+    dir ? '  ' + dir : '  （软件的数据文件夹）',
+    '⚠ 千万不要直接删除这个文件夹，里面是你的项目和设置。',
   ].join('\n');
 }
 
-module.exports = { DATA_VERSION, META_KEY, checkDataVersion, writeDataVersion, tooNewMessage };
+// ── 迁移前自动备份 ──
+// 为什么必须有：数据格式迁移是**不可逆**的（旧库被就地改写）。迁移一旦中途失败
+// （磁盘满、进程被杀、写了一半），用户既回不到旧结构、也用不了新结构。
+// 备份是唯一能在事后把数据捞回来的东西 —— 而且它同时也是「旧版本用户想回退」时的
+// 那份可用数据（回退后旧程序读备份，而不是读已被改成新格式的库）。
+//
+// 存放位置：<数据目录>/backup/_premigrate_v<旧版本>_<时间戳>/ —— 放在数据目录内，
+// 因为用户备份数据目录时会一并带走；与既有的 backup/ 同处，符合「备份都在 backup 下」的既有约定。
+
+const BACKUP_SUBDIR = 'backup';
+/** 只保留最近几份迁移前备份：每次迁移复制整个 settings.db，攒多了会白占空间 */
+const BACKUP_KEEP = 3;
+
+function _pad(n) { return (n < 10 ? '0' : '') + n; }
+
+/** 备份目录名前缀（pruneBackups 靠它识别「这是迁移前备份」） */
+const PREMIGRATE_PREFIX = '_premigrate_v';
+
+/**
+ * 迁移前备份数据目录里的关键文件。
+ *
+ * ⚠ 复制的是**多个文件**而非只复制 settings.db：WAL 模式下未提交的事务在
+ *   settings.db-wal 里，只拷主库会丢最近写入；config.json 存的是引导配置，
+ *   迁移失败后回滚要靠它。
+ *
+ * @param {string} dbPath settings.db 的完整路径（其余文件按同目录推导）
+ * @param {number} fromVersion 迁移前的数据版本（仅用于命名，便于事后辨认）
+ * @returns {{ok:boolean, dir:string, files:string[], error?:string}}
+ */
+function preMigrateBackup(dbPath, fromVersion) {
+  const dataDir = path.dirname(dbPath);
+  const d = new Date();
+  const stamp = d.getFullYear() + _pad(d.getMonth() + 1) + _pad(d.getDate())
+    + '-' + _pad(d.getHours()) + _pad(d.getMinutes()) + _pad(d.getSeconds());
+  const dir = path.join(dataDir, BACKUP_SUBDIR, PREMIGRATE_PREFIX + (fromVersion == null ? 'x' : fromVersion) + '_' + stamp);
+  const names = ['settings.db', 'settings.db-wal', 'settings.db-shm', 'config.json'];
+  const copied = [];
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    for (const n of names) {
+      const src = path.join(dataDir, n);
+      if (!fs.existsSync(src)) continue;
+      fs.copyFileSync(src, path.join(dir, n));
+      copied.push(n);
+    }
+    if (!copied.length) {
+      return { ok: false, dir, files: [], error: '没有可备份的文件（settings.db 不存在？）' };
+    }
+    return { ok: true, dir, files: copied };
+  } catch (e) {
+    return { ok: false, dir, files: copied, error: (e && e.message) || String(e) };
+  }
+}
+
+/**
+ * 清理过旧的迁移前备份，只保留最近 keep 份。
+ *
+ * ⚠ 只删自己创建的（前缀匹配）：backup/ 下还有别的备份（如用户手动备份、
+ *   rootswitch 前的自动备份），不能误删。
+ *
+ * @returns {{removed:number, kept:number}}
+ */
+function pruneBackups(dbPath, keep) {
+  const n = keep == null ? BACKUP_KEEP : Number(keep);
+  const root = path.join(path.dirname(dbPath), BACKUP_SUBDIR);
+  let dirs = [];
+  try {
+    dirs = fs.readdirSync(root, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && e.name.indexOf(PREMIGRATE_PREFIX) === 0)
+      .map((e) => e.name)
+      .sort();                       // 名字含时间戳 ⇒ 字典序即时间序
+  } catch (e) {
+    return { removed: 0, kept: 0 };  // backup/ 不存在 ⇒ 无事可做
+  }
+  const extra = dirs.length - Math.max(0, n);
+  if (extra <= 0) return { removed: 0, kept: dirs.length };
+  let removed = 0;
+  for (const name of dirs.slice(0, extra)) {
+    try { fs.rmSync(path.join(root, name), { recursive: true, force: true }); removed++; }
+    catch (e) { /* 单个删不掉不影响其余 */ }
+  }
+  return { removed, kept: dirs.length - removed };
+}
+
+module.exports = {
+  DATA_VERSION, META_KEY, BACKUP_KEEP,
+  checkDataVersion, writeDataVersion, tooNewMessage,
+  preMigrateBackup, pruneBackups,
+};
