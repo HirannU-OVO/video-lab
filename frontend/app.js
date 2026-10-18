@@ -50,6 +50,8 @@
   // 轻量角落提示（toast）：仅告知、无需用户操作，自动消失。type：ok(✓绿)/error(⚠红)/info(ℹ)/warn(黄)
   // 用于保存/删除/迁移等操作结果与失败提示，比状态栏小字更显眼，且不开大窗
   function toast(message, type) {
+    // 用户看到的提示同步落日志：排障时不该靠用户复述（level=error 一条不落，info 按文案合并）
+    try { if (window.VL && VL.vlLogAction) VL.vlLogAction('ui.toast', message, { level: (type === true || type === 'error') ? 'error' : 'info', ctx: { type: String(type || 'info') } }); } catch (e) {}
     var host = document.getElementById('toastHost');
     if (!host) {
       host = document.createElement('div');
@@ -1654,6 +1656,16 @@
   }
   function saveConfig(noConfirm) {
     if (!state.configData) return Promise.resolve(false);
+    // 保存配置进日志：**成功与失败都记** —— "我保存了但没变化"这类问题，
+    // 只有把"点了保存 + 后端回了什么"记下来才查得清
+    try {
+      if (window.VL && VL.vlLogAction) {
+        VL.vlLogAction('ui.save.config', '保存配置 ' + (state.configData.path || ''), {
+          ctx: { path: state.configData.path, folders: String((getEditorState().folders || []).length),
+                 excludes: String((getEditorState().excludes || []).length), silent: String(!!noConfirm) },
+        });
+      }
+    } catch (e) {}
     var ed = getEditorState();
     var path = state.configData.path;
     return resolveDestProject().then(function (dest) {
@@ -1748,6 +1760,16 @@
       // 意图已落地（或已证明列表里没有它）—— 清掉，否则用户之后手动切分支时，
       // 下一次配置自愈会拿这个陈旧的路径把界面拉回去。
       _pendingJumpPath = '';
+      // 跳转进日志：「帮我定位到某个配置/日志」是任务栏的常用操作，
+      // 出问题时需要知道程序到底跳没跳、跳到了哪一天。
+      try {
+        if (window.VL && VL.vlLogAction) {
+          VL.vlLogAction('ui.jump', '定位到 ' + pr + ' / ' + name, {
+            level: t ? 'info' : 'warn',
+            ctx: { project: pr, txt: name, hit: t ? '1' : '0', versions: String(state.versions.length) },
+          });
+        }
+      } catch (e) {}
       if (pruneEmptyTxt(pr, name, state.versions)) return;
       syncTxtCount(pr, name, state.versions);
       state.expandedProject = pr; buildDateBranches(); buildSidebar(false, true);
@@ -1822,6 +1844,15 @@
     }).catch(function () {});
   }
   function runScript() {
+    // 启动批量进日志：**这是最关键的一条** —— 用户报"成片不对"时，
+    // 必须能还原他提交的是哪份配置、计划做几条、分几组
+    try {
+      if (window.VL && VL.vlLogAction) {
+        VL.vlLogAction('ui.batch.start', '开始制作 ' + (state.activeProject || '') + ' / ' + (state.activeTxt || ''),
+          { ctx: { project: state.activeProject, txt: state.activeTxt,
+                   path: (state.activeVersion && state.activeVersion.path) || '' } });
+      }
+    } catch (e) {}
     if (_envBad()) { notify('运行组件未就绪'); return; }
     if (!state.activeVersion) return;
     // 成片数：显式填写优先；留空则沿用占位符所示的默认值（预检测视频总数）
@@ -1853,6 +1884,16 @@
           toast('已保存并开始制作', 'ok');
           // 水印归属在选中配置预检测时已判定并提示，此处不再阻断启动
           call('run_batch', saved.path, count, group).then(function (r) {
+            // 提交结果进日志：**成功与失败都记**（含失败原因）——
+            // "点了开始制作但没动静"这类问题，成败两侧都要有据可查
+            try {
+              if (window.VL && VL.vlLogAction) {
+                VL.vlLogAction('ui.batch.submit', (r && r.ok) ? '已入队' : '启动失败',
+                  { level: (r && r.ok) ? 'info' : 'error',
+                    ctx: { count: String(count), group: String(group || ''), dest: String(dest),
+                           error: (r && r.error) ? String(r.error).slice(0, 80) : '' } });
+              }
+            } catch (e) {}
             if (!(r && r.ok)) { notify('启动失败：' + ((r && r.error) || '未知错误')); return; }
             notifyQueuePos();
           });
@@ -2146,6 +2187,16 @@
       });
     });
     renderProjDropdown(items, q);
+    // 搜索进日志：**搜不到**是高频且难复现的问题（用户往往只记得"我搜了但没结果"），
+    // 不留痕就无从判断是词打错、项目名变了，还是配置被删了。
+    try {
+      if (window.VL && VL.vlLogAction) {
+        VL.vlLogAction('ui.search', q, {
+          level: items.length ? 'info' : 'warn',
+          ctx: { hits: String(items.length), projects: String(sortedProjects().length) },
+        });
+      }
+    } catch (e) {}
   }
   function renderLogDropdown(items, q) {
     closeLogDropdown();
@@ -2716,6 +2767,12 @@
   }
   function selectTxt(project, name, keepVersion, silent) {
     function doSelect() {
+      // 切换配置进日志：用户报"界面不是我以为的那个"时，第一要知道的就是他当时点的是哪个
+      try {
+        if (window.VL && VL.vlLogAction && !silent) {
+          VL.vlLogAction('ui.select.txt', project + ' / ' + name, { ctx: { project: project, txt: name } });
+        }
+      } catch (e) {}
       state.activeLogDate = null;
       // 本次是否为"已选中后再次切换"（决定重建配置页时是否静止，参考徽章 --static）
       var switchingTxt = !!state.activeTxt;
@@ -2839,6 +2896,15 @@
   // 待跳转的日期分支（归一化路径）：保存配置 / 任务定位到某天时置位，
   // 由下一次配置自愈消费。让「跳转意图」压过自愈的「保持当前分支」，
   // 否则保存后界面会被送回改动前的那一天。
+  /** 排序切换进日志：用户按"我明明排序了"描述现象时，日志要能证明当时排的是什么 */
+  function vlLogSort(kind, mode, dir) {
+    try {
+      if (window.VL && VL.vlLogAction) {
+        VL.vlLogAction('ui.sort', '排序切到 ' + kind + ' · ' + dir, { ctx: { kind: kind, mode: mode, dir: dir } });
+      }
+    } catch (e) {}
+  }
+
   var _pendingJumpPath = '';
 
   // ── 配置自愈统一入口：静默重取当前选中配置，保持日期分支/徽章/侧栏与磁盘一致 ──
@@ -2890,6 +2956,13 @@
   function selectVersion(label) {
     var v = state.versions.find(function (x) { return x.label === label; });
     if (!v) return;
+    // 切换日期分支进日志：改的是哪一天的配置，是排查"保存没生效 / 内容对不上"的关键
+    try {
+      if (window.VL && VL.vlLogAction) {
+        VL.vlLogAction('ui.select.version', '切到 ' + (state.activeTxt || '') + ' 的 ' + label,
+          { ctx: { txt: state.activeTxt, from: state.activeVersion && state.activeVersion.label, to: label } });
+      }
+    } catch (e) {}
     var switching = !!state.activeVersion;
     // 切换日期分支会重载配置：未保存修改先弹窗确认
     checkConfigModifiedBeforeLeave(function () {
@@ -3095,8 +3168,8 @@
       var item = e.target.closest('.tree-txt-item');
       if (item) selectTxt(item.getAttribute('data-project'), item.getAttribute('data-name'), false);
     });
-    $('btnSortName').addEventListener('click', function () { if (state.sortMode === 'name') state.sortAsc = !state.sortAsc; else state.sortMode = 'name'; updateSortButtons(); buildSidebar(); });
-    $('btnSortTime').addEventListener('click', function () { if (state.sortMode === 'time') state.sortTimeDesc = !state.sortTimeDesc; else state.sortMode = 'time'; updateSortButtons(); buildSidebar(); });
+    $('btnSortName').addEventListener('click', function () { if (state.sortMode === 'name') state.sortAsc = !state.sortAsc; else state.sortMode = 'name'; vlLogSort('名称', state.sortMode, state.sortAsc ? '升序' : '降序'); updateSortButtons(); buildSidebar(); });
+    $('btnSortTime').addEventListener('click', function () { if (state.sortMode === 'time') state.sortTimeDesc = !state.sortTimeDesc; else state.sortMode = 'time'; vlLogSort('时间', state.sortMode, state.sortTimeDesc ? '新到旧' : '旧到新'); updateSortButtons(); buildSidebar(); });
     var btnNewCfg = $('btnNewConfig');
     if (btnNewCfg) btnNewCfg.addEventListener('click', createNewConfig);
     // 日期分支事件委托到 document（不直接绑在 #dateBranches 元素上）：
@@ -5081,6 +5154,14 @@
             if (!fc.disabled) fc.checked = cb.checked;
           });
           cb.indeterminate = false;
+          // 整组勾选/取消进日志：遮罩"选错了素材"类问题，靠这个还原当时选了多少
+          try {
+            if (window.VL && VL.vlLogAction) {
+              VL.vlLogAction('ui.mask.group', (cb.checked ? '整组勾选 ' : '整组取消 ') + (g.name || ''),
+                { ctx: { group: g.name || '', files: String(g.files.length),
+                         total: String(Object.keys(maskState.maskSel).length) } });
+            }
+          } catch (e) {}
           var filesBox = grp.querySelector('.mask-group-files');
           if (filesBox && !grp.classList.contains('mask-group--single')) filesBox.style.display = cb.checked ? '' : 'none';
           maskSyncDurDisabled();
@@ -5098,6 +5179,14 @@
           if (!g || !f) return;
           if (cb.checked) maskState.maskSel[f.full] = true;
           else delete maskState.maskSel[f.full];
+          // 单文件勾选进日志（只记文件名，不记全路径 —— 日志要能读，路径冗长且含业务信息）
+          try {
+            if (window.VL && VL.vlLogAction) {
+              VL.vlLogAction('ui.mask.file', (cb.checked ? '勾选 ' : '取消 ') + String(f.name || f.full || ''),
+                { ctx: { group: g.name || '', on: String(cb.checked ? 1 : 0),
+                         total: String(Object.keys(maskState.maskSel).length) } });
+            }
+          } catch (e) {}
           var st = refreshHead(g);
           var headCb = cb.closest('.mask-group').querySelector('input[data-grpall]');
           if (headCb) { headCb.checked = st.all; headCb.indeterminate = st.any && !st.all; }

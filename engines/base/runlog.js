@@ -127,7 +127,7 @@ function chEvent(transport, channel, args, result, ms) {
 
 // ── 核心写入 ──
 
-const VERB_LVL = { ERR: 'error', UI: 'error', DIAG: 'info', SYS: 'info', RUN: 'info', ADD: 'info', MOD: 'info', CFG: 'info', DEL: 'info', IPC: 'info' };
+const VERB_LVL = { ERR: 'error', UI: 'error', UIA: 'info', DIAG: 'info', SYS: 'info', RUN: 'info', ADD: 'info', MOD: 'info', CFG: 'info', DEL: 'info', IPC: 'info' };
 
 /** 单文件 32MB → -2/-3 滚动（先挪已有序号再让位当前文件） */
 function rotateIfNeeded(file) {

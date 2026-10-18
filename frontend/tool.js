@@ -46,6 +46,8 @@
 
   // 轻提示（与主窗口/任务窗口同一套样式与行为）：错误与失败类提示不再走状态栏小字
   function toast(message, type) {
+    // 用户看到的提示同步落日志：排障时不该靠用户复述（level=error 一条不落，info 按文案合并）
+    try { if (window.VL && VL.vlLogAction) VL.vlLogAction('ui.toast', message, { level: (type === true || type === 'error') ? 'error' : 'info', ctx: { type: String(type || 'info') } }); } catch (e) {}
     var host = document.getElementById('toastHost');
     if (!host) {
       host = document.createElement('div');
@@ -389,11 +391,34 @@
       var t = e.target;
       if (!t || !t.getAttribute) return;
       var sid = t.getAttribute('data-check');
-      if (sid) { setStepOn(sid, !!t.checked); return; }
+      if (sid) {
+        setStepOn(sid, !!t.checked);
+        // 步骤勾选/取消进日志：出片参数对不上时，第一要知道的是"当时勾了哪些步骤"
+        try {
+          if (window.VL && VL.vlLogAction) {
+            var on = [];
+            (state.info.steps || []).forEach(function (x) { if (state.sel[x.id]) on.push(x.id); });
+            VL.vlLogAction('ui.tool.step', (t.checked ? '启用步骤 ' : '停用步骤 ') + sid,
+              { ctx: { step: sid, on: String(t.checked ? 1 : 0), enabled: on.join(',') } });
+          }
+        } catch (e2) {}
+        return;
+      }
       var step = t.getAttribute('data-step');
       var key = t.getAttribute('data-key');
       if (!step || !key) return;
-      state.values[step][key] = t.getAttribute('data-bool') ? !!t.checked : t.value;
+      var isBool = !!t.getAttribute('data-bool');
+      state.values[step][key] = isBool ? !!t.checked : t.value;
+      // 步骤参数变更进日志（与勾选同一入口）：排障时要能还原"每个参数当时是什么值"，
+      // 否则光知道选了哪些步骤，无法判断是哪个参数导致的结果
+      try {
+        if (window.VL && VL.vlLogAction) {
+          var v = isBool ? String(!!t.checked) : String(t.value);
+          VL.vlLogAction('ui.tool.param', step + '.' + key + ' = ' + v.slice(0, 60), {
+            level: 'info', ctx: { step: step, key: key, value: v.slice(0, 60) },
+          });
+        }
+      } catch (e2) {}
       // 该字段是显隐条件的依赖键 → 重渲染参数区（模式切换后只显示生效中的参数）
       var changed = null;
       (state.info.steps || []).forEach(function (x) { if (x.id === step) changed = x; });

@@ -156,11 +156,59 @@
     };
   }
 
+  // ── 界面动作与提示的日志上报 ──
+  //
+  // 存在理由：用户报问题时**不应该需要复述他做过什么**。之前只有异常进日志，
+  // 于是「界面上弹过的提示」「切过的配置」「搜了什么都搜不到」全都不留痕 ——
+  // 排查只能靠用户口述 + 反复试，而口述经常和真实操作顺序对不上。
+  //
+  // 为什么要有节流：toast 在正常操作里出现得很频繁（每切一次配置都可能弹一条），
+  // 逐条发 IPC 会把日志文件灌满、拖慢界面。
+  // 策略：**error / warn 级一条不落**（这些正是要排查的）；info 级按「同文案间隔」合并。
+  var _actLogAt = Object.create(null);
+  var _actSentAt = 0;
+
+  /** 落盘的唯一出口：复用 logbootstrap 的 vlReportError（它按 txapi / call / api 三种形态择一） */
+  function vlSendReport(p) {
+    try {
+      if (root.vlReportError) { root.vlReportError(p); return true; }
+      // logbootstrap 尚未加载时自行择一 —— ⚠ 必须覆盖 window.txapi：
+      //   浏览器端走的就是 txapi，只试 call/api 会整条链路静默失败（本轮踩过）。
+      var api = root.txapi;
+      if (api && api.report_ui_error) { api.report_ui_error(p); return true; }
+      if (typeof root.call === 'function') { root.call('report_ui_error', p); return true; }
+      if (root.api && root.api.report_ui_error) { root.api.report_ui_error(p); return true; }
+    } catch (e) { /* 上报失败绝不能影响界面 */ }
+    return false;
+  }
+
+  function vlLogAction(action, msg, opts) {
+    var o = opts || {};
+    var level = String(o.level || 'info').toLowerCase();
+    var text = String(msg == null ? '' : msg);
+    // 空文案且没带上下文 ⇒ 没有排查价值，不记（避免日志被无意义条目稀释）
+    if (!text && !o.ctx) return;
+    var now = Date.now();
+    // 节流：同 action + 同文案，info 级 8 秒内只记一次；error 级放行
+    if (level === 'info') {
+      var key = String(action) + '\u0000' + text;
+      if (_actLogAt[key] && now - _actLogAt[key] < 8000) return;
+      _actLogAt[key] = now;
+    }
+    // 全局限流：极端情况下（脚本连点）不至于把 IPC 打满。error 级不受此限 —— 那些正是要查的。
+    if (level !== 'error' && now - _actSentAt < 120) return;
+    _actSentAt = now;
+    vlSendReport({ kind: 'action', action: String(action || 'ui.action'), level: level, msg: text.slice(0, 400),
+                  where: String(o.where || (root.location && root.location.pathname) || '').slice(0, 80),
+                  taskId: (root.vlGetTaskId ? root.vlGetTaskId() : ''), ctx: o.ctx || null });
+  }
+
   root.VL = root.VL || {};
   root.VL.STATUS_TEXT = STATUS_TEXT;
   root.VL.esc = esc;
   root.VL.fmtDur = fmtDur;
   root.VL.fmtSize = fmtSize;
+  root.VL.vlLogAction = vlLogAction;
   root.VL.fmtWhen = fmtWhen;
   root.VL.fmtHms = fmtHms;
   root.VL.RATIO_PRESETS = RATIO_PRESETS;

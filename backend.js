@@ -7683,11 +7683,51 @@ class Api {
       const href = String(o.href || '').slice(0, 240);
       // 前端可带当前任务 id（logbootstrap 的 vlSetTaskId）：排查时前端异常能与任务日志串起来
       const taskId = String(o.taskId || '').slice(0, 80);
+      // ── 「用户做了什么 / 看到了什么」也必须落日志 ──
+      //   目标：**用户报问题时不必再复述过程，日志本身就能还原他做过什么、看到过什么**。
+      //   之前只有异常进日志，于是「界面上弹过的提示」「切过的配置」全都不留痕 ——
+      //   用户说"刚才提示过什么"时，日志里什么都查不到，只能靠他口述。
+      //   kind=action：界面动作/提示（非异常）；level=error 的额外记一条，便于按错误筛选。
+      if (kind === 'action') {
+        const action = String(o.action || 'ui.action').slice(0, 60);
+        const level = String(o.level || 'info').toLowerCase();
+        const text = (msg || '').slice(0, 400);
+        const info = {
+          level,
+          where: where || undefined,
+          taskId: taskId || undefined,
+          ctx: (o.ctx && typeof o.ctx === 'object') ? this._briefUiCtx(o.ctx) : undefined,
+        };
+        // ⚠ 级别必须体现在 **verb** 上：runlog.logEvent 只按 verb 查级别表，data.level 形同虚设。
+        //   UIA = 普通操作（info，进 app 日志）· ERR = 需要排查（error，进 error 日志）。
+        //   分开是为了不冲淡 error 文件 —— 它保留 30 天，且是排查时第一个要看的东西。
+        // ⚠ src 标记来源：report_ui_error 自身也会被通用 IPC 访问日志记一条
+        //   （所有通道都如此，是既有机制，不为此改它）。带上 src，排查时能一眼过滤掉那条噪音。
+        info.src = 'ui-action';
+        this._lg(level === 'error' ? 'ERR' : 'UIA', action, text, info);
+        return { ok: true };
+      }
       this._lg('UI', kind === 'rejection' ? 'ui.rejection' : 'ui.exception',
         (msg || '前端异常（无错误消息）').split('\n')[0] + (where ? ' @ ' + where : ''),
         { where, href, stack, taskId: taskId || undefined, ctx: (o.ctx && typeof o.ctx === 'object') ? o.ctx : undefined });
       return { ok: true };
     } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+  }
+
+  /** 界面动作的上下文：只留标量字段并限长（对象会被 formatLine 折行淹没，也可能含长路径） */
+  _briefUiCtx(ctx) {
+    const out = {};
+    let n = 0;
+    for (const k in ctx) {
+      if (n >= 6) break;
+      const v = ctx[k];
+      if (v == null || typeof v === 'object') continue;
+      const t = String(v);
+      if (!t) continue;
+      out[k] = t.slice(0, 60);
+      n++;
+    }
+    return out;
   }
 
   // ── 日志体系 ──
