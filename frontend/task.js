@@ -721,9 +721,14 @@
     // 任务确实运行过（有 startedAt 或已推算出成片目录）就仍可能缺片 —— 一律给出续跑入口；
     // 究竟有没有缺片，由 backend 的第三层兜底（按成片目录反推待补序号）给出准确结论。
     var everRan = !!t.startedAt || !!t.outDir;
+    // ⚠ progress.current 的语义是「正在做第几个」，不是「已完成几个」：
+    //   停在第 1 个时它就是 1，而成片目录里一个产物都没有。
+    //   一个成片都没产出时**不存在"续"这回事**（整批重做才对），此时只应给「重新开始」。
+    //   故用 current > 1 作为「确实有产物」的下界：current=1 ⇒ 完成 0 个 ⇒ 不给续跑入口。
+    var hasOutput = progTotal > 0 ? progDone > 1 : false;
     var hasFail = (Array.isArray(t.failedVideos) && t.failedVideos.length > 0)
       || (t.log || []).some(function (l) { return /❌ 失败成片/.test(String(l)); })
-      || (progTotal > 0 ? progDone < progTotal : everRan);
+      || (progTotal > 0 ? (hasOutput && progDone < progTotal) : everRan);
     var canContinue = (t.type === 'replica' || t.type === 'batch') && canRerun && hasFail;
     continueBtn.style.display = (canContinue && state.tab !== 'running') ? '' : 'none';
     // 进度条：数字行（当前/总）+ 下方进度条，仅解析到总进度后显示；

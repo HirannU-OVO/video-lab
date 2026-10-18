@@ -7393,6 +7393,9 @@ class Api {
       const dir = (detail && detail.outDir) || path.dirname(String(src || ''));
       if (!dir) return [];
       let names = [];
+      // 目录不存在 ⇒ 一个成片都没产出。此时**不该走续跑**（没有可"续"的东西，
+      // 整批重做才是对的），所以这里返回空数组让续跑自然中止 ——
+      // 界面据此只显示「重新开始」，不显示「继续制作」。
       try { names = fs.readdirSync(dir); } catch (e) { return []; }
       const done = new Set();
       for (const f of names) {
