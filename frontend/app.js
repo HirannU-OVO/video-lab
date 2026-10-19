@@ -2710,7 +2710,7 @@
     clear: '清空缓存', walk: '扫描配置', log: '收集日志', list: '汇总项目',
     clip: '重建成片索引', mark: '统计水印归属', done: '检测完成'
   };
-  function refreshData(force, busyText, done, skipReflow) {
+  function refreshData(force, busyText, done) {
     // 扫描 / 检测不再弹前台遮罩：该流程不需要用户做任何选择，
     // 而遮罩带 backdrop-filter 模糊，会让人感觉窗口"冻结一会儿"。
     // 改为只在底部状态栏显示当前环节，界面其余部分保持可交互。
@@ -3517,14 +3517,10 @@
       if (later) later.textContent = custom.later || '取消';
       if (now) now.textContent = custom.now || '确定';
     } else if (_bannerState === 'downloaded') {
-      // 两种形态都走「安装并重启」—— 后端 apply_update 按形态分流：
-      //   便携分发 → 搬迁 + 线索 + 退出 + 拉起安装程序（改用安装版，设置与数据自动保留）
-      //   安装版   → electron-updater 静默升级安装并重启
-      var portableDist = state.portableDist === true;
       if (title) title.textContent = '更新文件已就绪';
-      if (desc) desc.textContent = portableDist ? '将改用安装版，设置与数据保持不变' : '是否立即重启并安装？';
+      if (desc) desc.textContent = '是否立即重启并安装？';
       if (later) later.textContent = '取消';
-      if (now) now.textContent = portableDist ? '安装更新并重启' : '重启并安装';
+      if (now) now.textContent = '重启并安装';
     } else {
       if (title) title.textContent = '发现新版本 v' + ((info && info.latest) || '');
       if (desc) desc.textContent = '当前版本 v' + ((info && info.current) || '') + ' · 点击立即更新获取最新功能';
@@ -3650,9 +3646,6 @@
       }
       now.disabled = true;
       if (_bannerState === 'downloaded') {
-        // 两种形态统一走 apply_update —— 后端按形态分流：
-        //   便携分发 → 搬迁 + 线索 + 退出 + 拉起安装程序（改用安装版，设置与数据自动保留）
-        //   安装版   → electron-updater 静默升级安装并重启
         setStatus('正在准备安装更新…');
         if (!gp.apply_update) { now.disabled = false; return; }
         gp.apply_update().then(function (r) {
@@ -3884,13 +3877,6 @@
         var el = $('versionTag');
         if (el) el.textContent = v ? 'v' + v : '';
       }).catch(function () {});
-    }
-    // 运行时形态（便携/setup），决定「下载完成」后是打开更新文件还是重启并安装
-    if (getApi().get_runtime) {
-      // portableDist 决定「更新文件已就绪」时的按钮与说明（后端 apply_update 才是权威的形态分流方）
-      getApi().get_runtime().then(function (r) {
-        state.portableDist = !!(r && r.portable_dist);
-      }).catch(function () { state.portableDist = true; });
     }
     if (!getApi()) { $('statusLeft').textContent = '通信组件未就绪，请重启软件'; return; }
     checkEnv(); buildDateBranches(); buildCenterBottom(); buildRightPanel(); refreshData(false, '正在检测工作路径文件，请稍候…');

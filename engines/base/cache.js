@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS meta (
 -- 启动只读本表（一次查询、零文件 IO），校验交给「用到时」或空闲批处理。
 -- 这是把冷启动从「每次重算」改成「复用 + 懒校验」的关键。
 CREATE TABLE IF NOT EXISTS verify_cache (
-  key         TEXT PRIMARY KEY,          -- 语义键：'hasoutput:<taskId>' / 'env:ffmpeg' / 'path:<abs>'
+        key         TEXT PRIMARY KEY,          -- 语义键：'hasoutput:<taskId>' / 'env:ffmpeg'
   fp          TEXT NOT NULL DEFAULT '',  -- 指纹：外部依赖变了（如文件 size/mtime）才失效
   result      TEXT NOT NULL DEFAULT '',  -- 结论（'1' / '0' / JSON）
   verified_at INTEGER NOT NULL DEFAULT 0,-- 上次校验时刻

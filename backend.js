@@ -39,7 +39,7 @@ const FFMPEG_REQUIRED_ENCODERS = ['h264_nvenc', 'hevc_nvenc', 'av1_nvenc'];
 // 环境探测超时（毫秒）：探测异步、不阻塞事件循环，宁可多等，也不要因超时把「没探到」误判成「缺滤镜」。
 const ENV_PROBE_TIMEOUT_MS = Math.max(1, Number(process.env.VL_ENV_PROBE_TIMEOUT_MS) || 45000);
 
-// 成片存在性判定的内存缓存有效期（毫秒）：启动预热写入后，期内 snapshotTasks 纯内存判定、不逐任务碰磁盘；超期回退实时探测（用户在资源管理器手动删掉成片后仍能纠正）。
+// 成片存在性判定的内存缓存有效期（毫秒），由 HAS_OUTPUT_PERSIST_TTL_MS 统一。
 
 // 启动保护期：启动后这段时间内空闲队列不消费任务（首屏渲染与用户首次操作期间零磁盘竞争），20 秒后后台才开始校验。
 const IDLE_BOOT_GRACE_MS = 20000;
@@ -55,10 +55,7 @@ const SCAN_FULL_MIN_INTERVAL_MS = 60 * 1000;
 // 只用于「合并同一批文件的重复校验」，不做长期真相缓存（窗口必须短，否则删了成片界面仍说「还在」）。
 const HAS_OUTPUT_PERSIST_TTL_MS = 10 * 60 * 1000;
 
-// ── 不判冷热，用后台队列 + 自适应节流 ──────────────
-// ⚠ 不要用「开机时长」或启动探针区分冷/热启动：判据都不可靠，判错代价双向。
 
-// 空闲队列每个批次核验的路径数（见 gcVideoCacheIdle：清理任务按批入队，由队列自适应节流执行）
 
 const DEFAULT_CONFIG = {
   skin: 'white_blue',
@@ -657,7 +654,7 @@ class Api {
   }
 
   // ── 日志 txt 缓存（cache_kv，键 log_index:<root>）：刷新配置时一并收集 ──
-  // 存 { files, fp }：fp = 目录树指纹，用于启动时判断能否直接复用（见 _collectLogFiles）。
+  // 存 { files, fp }：fp 仅供排查参考，不做指纹比对。
   // 兼容旧格式（纯数组）——读到数组时视为无指纹，回退一次全量扫描后自动升级。
   _loadLogCache() {
     if (this._logCacheRoot === this.root) return;
@@ -938,8 +935,6 @@ class Api {
     try { if (typeof this.onVersionsChanged === 'function') this.onVersionsChanged(); } catch (e) {}
   }
 
-  // 扫描缓存是否新鲜：仅比对目录树指纹，不做任何遍历。
-  // 供 main 判断「启动是否需要弹扫描小窗」——命中则连小窗都不必出现。
   // 扫描缓存是否新鲜（异步版，启动专用）：判定缓存是否可直接用。
   async isScanCacheFreshAsync() {
     const timing = { db: 0, fp: 0, kv: 0, total: 0 };
@@ -1924,17 +1919,15 @@ class Api {
   }
 
   // 并发限流执行器：同一时刻最多并发 limit 个，全部完成后按输入顺序返回结果数组。
-// shouldStop 可选：每轮分发前调用，返回 true 即停止分发新任务（已分发者自然完成），并尽快 resolve 已完成部分
-  _runWithLimit(items, worker, limit, shouldStop) {
+  _runWithLimit(items, worker, limit) {
     return new Promise((resolve) => {
       const n = items.length;
       if (n === 0) return resolve([]);
       const limitN = Math.max(1, limit | 0);
       const results = new Array(n);
-      let i = 0, running = 0, done = 0, stopped = false;
+      let i = 0, running = 0, done = 0;
       const pump = () => {
-        if (!stopped && shouldStop && shouldStop()) stopped = true; // 中断
-        while (running < limitN && i < n && !stopped) {
+        while (running < limitN && i < n) {
           const idx = i++;
           running++;
           Promise.resolve()
@@ -1944,11 +1937,9 @@ class Api {
             .then(() => {
               running--; done++;
               if (done === n) resolve(results);
-              else if (stopped && running === 0) resolve(results);
               else pump();
             });
         }
-        if (stopped && running === 0) resolve(results);
       };
       pump();
     });
@@ -2136,6 +2127,8 @@ class Api {
     catch (e) { if (store) return 0; plan = this._videoCacheGcPlan(knownPaths); }
     const all = plan.verify || [];
     const list = (limit > 0 && all.length > limit) ? all.slice(0, limit) : all;
+    // 批次在入队时算死，跑到这里待核验项可能已被前面的批次清空 —— 无事可做就直接退出
+    if (!list.length) return 0;
     const _t = Date.now();
     const gone = [], back = [];
     // ⚠ 让路粒度 24（不要再放大）：冷态下一次让路前最多 24 次随机 IO，再多会把机械盘队列打满、连带冻住主线程。
@@ -2279,7 +2272,7 @@ class Api {
     try {
       const kv = store.listKv('');
       for (const k of Object.keys(kv)) {
-        const m = /^(txt_tree|log_index|replica_logs):(.+)$/.exec(k);
+        const m = /^(txt_tree|log_index|replica_logs|scan_full_at):(.+)$/.exec(k);
         // proj_reg 的键是 proj_reg:<kind>:<工作根>（kind = batch|mask），根路径要从第二个冒号后取
         const mReg = /^proj_reg:(?:batch|mask):(.+)$/.exec(k);
         if ((m && !exists(m[2])) || (mReg && !exists(mReg[1]))) removed += store.deleteKvPrefix(k);
@@ -2597,16 +2590,20 @@ class Api {
     // **入队**：队列串行单发 + 自适应节流（慢盘自动放慢、快盘自动加速），因此不需要事先判断冷热；
     // 剩余条目留给后续轮次（自愈逐步收敛）。
     const N = Number(perJob) > 0 ? Number(perJob) : 4;      // 每条 job 核验的路径数
-    const MAX_JOBS = 200;                                    // 每轮最多排入的 job 数（避免队列过长）
+    const ROUND = 8;                                         // 每轮排入的 job 数；跑完再排下一轮
     const store = this._useDbCache() ? this._cacheStore : null;
     if (!store || typeof store.gcPendingCount !== 'function') return { queued: 0, pending: 0 };
     let pending = 0;
     try { pending = store.gcPendingCount(Date.now()); } catch (e) { pending = 0; }
     if (!pending) return { queued: 0, pending: 0 };
-    const jobs = Math.min(MAX_JOBS, Math.ceil(pending / N));
+    const jobs = Math.min(ROUND, Math.ceil(pending / N));
     let queued = 0;
     for (let i = 0; i < jobs; i++) {
-      if (this._verifyEnqueue('cachegc', i, (ctx) => this._gcVideoCache(null, { limit: N, idle: true, shouldYield: ctx.shouldYield }))) queued++;
+      const last = i === jobs - 1;
+      if (this._verifyEnqueue('cachegc', i, async (ctx) => {
+        await this._gcVideoCache(null, { limit: N, idle: true, shouldYield: ctx.shouldYield });
+        if (last) { try { await this.gcVideoCacheIdle(); } catch (e) {} }
+      })) queued++;
     }
     try {
       if (this._lg) this._lg('SYS', 'cache.gc.queue',
@@ -3735,8 +3732,6 @@ class Api {
     const memo = this._hasOutputMemo && this._hasOutputMemo.get(t.id);
     const ttl = (memo && memo.ttl) || HAS_OUTPUT_PERSIST_TTL_MS;
     if (memo && (Date.now() - memo.at) < ttl) return memo.v;
-    const probes = this._taskOutputProbes(t);
-    if (!probes) return true;
     return true;
   }
 
@@ -3948,18 +3943,21 @@ class Api {
       let yields = 0;
       const ctx = {
         kind: k,
-        shouldYield: () => this._shouldYieldToForeground(),
-        noteYield: () => { yields++; },
+        shouldYield: () => { const y = this._shouldYieldToForeground(); if (y) yields++; return y; },
       };
       let ok = true;
       let err = '';
       try { await run(ctx); } catch (e) { ok = false; err = String((e && e.message) || e); }
-      try {
-        this._lg('SYS', 'verify.' + k,
-          '后台校验 · ' + k + ' · ' + (Date.now() - t0) + 'ms'
-          + (yields ? ' · 让路 ' + yields + ' 次' : '') + (ok ? '' : ' · 失败'),
-          { kind: k, ms: Date.now() - t0, yields, ok, error: err || undefined });
-      } catch (e) {}
+      // 逐条记「后台校验 · kind · Nms」无诊断价值（核验结论见各自业务日志），
+      // 仅失败或让路过才留痕：让路说明前台有活动，可能与卡顿相关。
+      if (!ok || yields) {
+        try {
+          this._lg('SYS', 'verify.' + k,
+            '后台校验 · ' + k + ' · ' + (Date.now() - t0) + 'ms'
+            + (yields ? ' · 让路 ' + yields + ' 次' : '') + (ok ? '' : ' · 失败'),
+            { kind: k, ms: Date.now() - t0, yields, ok, error: err || undefined });
+        } catch (e) {}
+      }
     });
   }
 
