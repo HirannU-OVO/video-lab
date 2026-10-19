@@ -120,6 +120,8 @@ function readEnv(env = process.env) {
     group: intOrNull('BATCH_GROUP'),
     submitTs: parseInt(s('BATCH_SUBMIT_TS', '0'), 10) || 0,
     outputDirOverride: s('REPLICA_OUTPUT_DIR'),
+    // 成片目录的精确路径（续跑时由主进程传入）
+    outDirExact: s('BATCH_OUT_DIR'),
     noWait: s('REPLICA_NO_WAIT') === '1',
   };
 }
@@ -420,6 +422,60 @@ function parseOnlyNameIndex(name) {
   // 末段 = 可选后缀标识（不含短横与数字）+ 序号 + 可选组后缀；`[^-\d]*` 同时兼容漏掉分隔符的旧名字，已产出的成片仍可续跑。
   const m = /-([^-\d]*)(\d+)([A-Z]?)$/.exec(base);
   return m ? parseInt(m[2], 10) : 0;
+}
+
+/**
+ * 解析拼接日志，还原「本批已用过哪些素材」。
+ * 块结构：成片名 / 使用片段列表：/ N 条素材路径 / 空行 / 水印 / === 分隔。
+ * 水印行是块完整的标志，缺水印即残块。
+ * 残块不计入已用统计。
+ * 读不到或解析失败时返回空结果。
+ */
+function restoreRotationFromLog(logPath) {
+  const out = { blocks: 0, usedPaths: new Set(), usedCounts: new Map(), unknown: 0 };
+  let text = '';
+  try { text = fs.readFileSync(logPath, 'utf8'); } catch (e) { return out; }
+  if (!text) return out;
+  const lines = text.split(/\r?\n/);
+  const isPath = (s) => /^[A-Za-z]:[\\/]/.test(s) || /^\\\\/.test(s);
+  const isMark = (s) => /\.(png|jpg|jpeg|webp)$/i.test(s);
+  let i = 0;
+  while (i < lines.length) {
+    const line = String(lines[i] || '').trim();
+    if (line !== '使用片段列表：') {
+      if (line && !/^=+$/.test(line)) out.unknown++;
+      i++;
+      continue;
+    }
+    const clips = [];
+    let watermark = '';
+    let j = i + 1;
+    for (; j < lines.length; j++) {
+      const s = String(lines[j] || '').trim();
+      if (!s) break;                                       // 空行 → 素材段结束
+      if (s === '使用片段列表：' || /^=+$/.test(s)) { j--; break; }
+      if (isPath(s)) {
+        const p = s.replace(/^"|"$/g, '');
+        if (isMark(p)) watermark = p; else clips.push(p);
+      } else out.unknown++;
+    }
+    let k = j + 1;
+    if (!watermark) {                                      // 空行之后是水印行
+      const s = String(lines[k] || '').trim();
+      if (isPath(s) && isMark(s)) { watermark = s; k++; }
+    }
+    if (clips.length && watermark) {
+      out.blocks++;
+      for (const p of clips) {
+        out.usedPaths.add(p);
+        out.usedCounts.set(p, (out.usedCounts.get(p) || 0) + 1);
+      }
+    } else if (clips.length) {
+      out.unknown++;                                      // 残块不计入已用
+    }
+    i = k + 1;
+  }
+  return out;
 }
 
 /** 组后缀：第 idx（1 起）个成片属于第几组 → A/B/C…（对齐 PS 的分桶公式） */
@@ -902,7 +958,13 @@ async function run(ctx, env = process.env) {
     fs.mkdirSync(monthDir, { recursive: true });
     fs.mkdirSync(outputRootDir, { recursive: true });
     const tag = timeTag(taskDate(cfg.submitTs));
-    const outDir = path.join(outputRootDir, `${tag}-${txtName}-成片`);
+    const baseOutDir = path.join(outputRootDir, `${tag}-${txtName}-成片`);
+    // 目录名撞车时顺延序号（-成片-2、-成片-3）；续跑按 outDirExact 精确复用
+    let outDir = cfg.outDirExact || baseOutDir;
+    if (!cfg.outDirExact) {
+      let n = 2;
+      while (exists(outDir)) outDir = `${baseOutDir}-${n++}`;
+    }
     if (!exists(outDir)) {
       fs.mkdirSync(outDir, { recursive: true });
       logger.outDir(outDir);
@@ -935,6 +997,7 @@ async function run(ctx, env = process.env) {
       const idxs = cfg.onlyIndices.map((x) => parseInt(x, 10)).filter((n) => Number.isInteger(n) && n >= 1 && n <= totalOutput);
       if (!idxs.length) return fail(`续跑过滤未从序号解析出有效值：${cfg.onlyIndices.join(';')}（应为 1..${totalOutput}）`, '续跑过滤');
       indexList = Array.from(new Set(idxs)).sort((a, b) => a - b);
+      resumeMode = true;
     } else if (cfg.onlyNames) {
       const onlyIdx = [];
       for (const nm of String(cfg.onlyNames).split(';').map((x) => x.trim()).filter(Boolean)) {
@@ -947,13 +1010,59 @@ async function run(ctx, env = process.env) {
       indexList = Array.from(new Set(onlyIdx)).sort((a, b) => a - b);
       resumeMode = true;
     }
+    // 续跑：从拼接日志还原轮转与去重计数，叠加到现有计数器上
+    if (cfg.onlyIndices.length || cfg.onlyNames) {
+      let restored = null;
+      try { restored = restoreRotationFromLog(logFilePath); } catch (e) { restored = null; }
+      if (restored && restored.blocks > 0) {
+        for (const track of usageTracker.values()) {
+          const fd = folderVideos.get(track.folder);
+          if (!fd) continue;
+          for (const [p, n] of restored.usedCounts) {
+            if (!track.usedCount.has(p)) continue;               // 不在本批候选池里 → 忽略
+            track.usedCount.set(p, (track.usedCount.get(p) || 0) + n);
+          }
+          for (const p of restored.usedPaths) {
+            if (track.usedCount.has(p) && track.roundUsed.indexOf(p) < 0) track.roundUsed.push(p);
+          }
+          for (const g of fd.subGroupList) {
+            const vids = fd.subGroups.get(g) || [];
+            let used = 0;
+            for (const v of vids) {
+              const n = restored.usedCounts.get(v.fullName);
+              if (n) used += n;
+            }
+            if (!used) continue;
+            fd.subUsageCount.set(g, (fd.subUsageCount.get(g) || 0) + used);
+            if (fd.subUsedInRound.indexOf(g) < 0) fd.subUsedInRound.push(g);
+          }
+        }
+        logger.info(`[续跑] 已按拼接日志还原轮转状态：${restored.blocks} 个已完成成片、${restored.usedPaths.size} 个已用素材`
+          + (restored.unknown ? `（${restored.unknown} 行无法识别已跳过）` : ''));
+      } else {
+        logger.info('[续跑] 拼接日志里没有可用的历史素材记录，本批按新一轮开始轮转');
+      }
+    }
     // 先声明模式与范围、再报总数：否则续跑时那句「开始批量生成（共 N 个）」会被误读成要重做 N 个
     logger.info(resumeMode
-      ? `🔁 续跑模式：仅重做 ${indexList.length} 个成片（序号 ${indexList.join(', ')}）—— 本批总量 ${totalOutput} 个，其余保留既有产物`
+      // 只报首尾序号
+    ? `🔁 续跑模式：仅重做 ${indexList.length} 个成片（序号 ${indexList[0]}…${indexList[indexList.length - 1]}）—— 本批总量 ${totalOutput} 个，其余保留既有产物`
       : `开始批量生成（共 ${totalOutput} 个）`);
 
     const dPrefix = datePrefix(taskDate(cfg.submitTs));
     const parentFolder = path.basename(baseDir);
+    // 序号幂等：已有该序号（任意分组后缀）的成片则跳过
+    const doneIdx = new Set();
+    try {
+      for (const fn of fs.readdirSync(outDir)) {
+        const m2 = /-(\d+)([A-Z]?)\.[A-Za-z0-9]+$/i.exec(fn);
+        if (m2) { const n2 = parseInt(m2[1], 10); if (n2 >= 1 && n2 <= totalOutput) doneIdx.add(n2); }
+      }
+    } catch (e) { /* 目录读不到就按没有既有产物处理 */ }
+    const preDone = doneIdx.size;
+    if (preDone > 0 && !resumeMode) {
+      logger.info(`检测到目录内已有 ${preDone} 个成片，本次只补未产出的序号（1…${totalOutput} 中缺失的部分）`);
+    }
     // ★ 分级降级：先按用户设置跑足重试轮数，仍凑不出组合再逐级加大加速倍率；倍率设硬顶，避免画面加速过狠。
     //   红线：输出时长始终以 maxTotalDuration 封顶（平台规则，超出无法过审）—— 加大倍率只放宽「允许的组合时长」。
     //   「每档轮数」直接取设置页「重试次数」的设定值；⚠ 不要用 Math.max(100, ...) 等兜底，会把 ≤100 的设定值一律抬成 100。
@@ -966,7 +1075,14 @@ async function run(ctx, env = process.env) {
     const ladderRounds = L.rounds;
 
     for (const outIndex of indexList) {
-      logger.info('');
+         // 已有成片则跳过
+         if (doneIdx.has(outIndex)) {
+           logger.info('');
+           logger.info('-'.repeat(48));
+           logger.info(`跳过：序号 ${outIndex} 已有成片（${groupSuffixFor(outIndex, totalOutput, groupCount) || '无分组'}），不重复产出`);
+           continue;
+         }
+         logger.info('');
       logger.info('-'.repeat(48));
       // 续跑：进度按「本次补做」视角显示（第 k / N 片），否则会显示成整批的 X / 20 与实际不符；绝对序号在命名与日志中不受影响。
       logger.progress('生成', resumeMode ? (indexList.indexOf(outIndex) + 1) : outIndex,

@@ -2889,10 +2889,20 @@
   //         ② 定时轮询（外部删除/任务迁移等改盘动作，靠 listVersions 目录指纹自动失效重扫）
   function refreshActiveVersions() {
     if (!getApi()) return;
-    if (maskState.on) return; // 遮罩叠加模式：暂停批量配置自愈轮询，避免重画侧栏/中心区覆盖遮罩界面
-    if (!state.activeProject || !state.activeTxt || state.activeProject === REPLICA_PROJECT) return; // 复刻为虚拟项目，不走配置自愈
+    // 遮罩模式：发读请求但不重绘
+    if (maskState.on) { call('list_projects', false).catch(function () {}); return; }
     call('list_projects', false).then(function (projects) {
-      state.projects = projects || [];
+      var list = projects || [];
+      // 项目签名变化时重绘侧栏
+      var sig = list.map(function (p) {
+        return p.name + '|' + (p.txts || []).map(function (t) { return t.name + ':' + (t.count || 0) + ':' + (t.latest || ''); }).join(',');
+      }).join(';');
+      var projChanged = sig !== state._projSig;
+      state._projSig = sig;
+      state.projects = list;
+      if (projChanged) { try { buildSidebar(false, true); } catch (e) {} }
+      // 引导态 / 复刻虚拟项目：项目列表已刷，版本与日志链路不适用
+      if (!state.activeProject || !state.activeTxt || state.activeProject === REPLICA_PROJECT) return;
       var foundProj = state.projects.find(function (p) { return p.name === state.activeProject; });
       var foundTxt = foundProj && foundProj.txts.find(function (t) { return t.name === state.activeTxt; });
       if (!foundTxt) { // 当前配置已被整体删除/迁移：即时复位视图，无需等手动刷新
@@ -2904,9 +2914,8 @@
       call('list_versions', state.activeProject, state.activeTxt).then(function (versions) {
         var vs = versions || [];
         var cur = state.versions || [];
-        // ⚠ 非 force 的 list_versions **不返回 hasLog**（后端为守住「启动期零素材盘访问」，
-        //   只在 force 时才算它 —— 见 backend.js listVersions）。
-        //   所以**空值不等于「没有日志」，只等于「这次没查」**。
+        // 非 force 的 list_versions 也返回 hasLog（后端用内存日志索引算）
+        // 空值只代表这一版确实没查到日志
         cur.forEach(function (c) {
           if (!c.hasLog) return;
           var v = vs.find(function (x) { return normalizePath(x.path) === normalizePath(c.path); });

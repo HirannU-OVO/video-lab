@@ -678,11 +678,16 @@
       pauseBtn.innerHTML = icon('pause', 12) + '暂停';
       pauseBtn.title = '移出执行队列（点击继续可插回原位置）';
     } else if (t.status === 'paused') {
-      pauseBtn.style.display = '';
-      pauseBtn.className = 'task-card__pause task-card__pause--resume';
-      pauseBtn.disabled = false;
-      pauseBtn.innerHTML = icon('play', 12) + '继续';
-      pauseBtn.title = '按当前位置插回执行队列';
+    // 非软暂停的暂停不显示「继续」
+      if (t.startedAt && !t.softPaused) {
+        pauseBtn.style.display = 'none';
+      } else {
+        pauseBtn.style.display = '';
+        pauseBtn.className = 'task-card__pause task-card__pause--resume';
+        pauseBtn.disabled = false;
+        pauseBtn.innerHTML = icon('play', 12) + '继续';
+        pauseBtn.title = '按当前位置插回执行队列';
+      }
     } else {
       pauseBtn.style.display = 'none';
     }
@@ -762,9 +767,8 @@
         rec.progressFill.style.width = (batchCur / batchTotal * 100) + '%';
         rec.progressEl.style.display = 'flex';
         if (rec.progressSub) {
-          var ridx = Array.isArray(prog.resumeIndices) ? prog.resumeIndices : [];
-          rec.progressSub.textContent = '已有 ' + batchBase + ' 片 · 本次补 ' + total + ' 片'
-            + (ridx.length ? '（#' + ridx.join(' #') + '）' : '');
+          // 只报数量
+          rec.progressSub.textContent = '已有 ' + batchBase + ' 片 · 本次补 ' + total + ' 片';
           rec.progressSub.style.display = '';
         }
       } else {
