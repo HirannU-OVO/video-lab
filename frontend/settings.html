@@ -425,21 +425,18 @@
       <div class="form-group">
         <div class="form-group__head">
           <label class="form-group__label">问题反馈包</label>
-          <div class="form-group__desc">把运行记录与环境信息打包成一个文本文件，发给开发者即可排查</div>
+          <div class="form-group__desc">按所选时间范围打包运行记录与设置信息</div>
         </div>
         <div class="form-group__ops">
-        <div class="opt-row">
-          <button type="button" class="btn btn-ghost" id="btnExportDiagToday">导出今天的记录</button>
-          <button type="button" class="btn btn-ghost" id="btnExportDiagAll">导出全部记录</button>
+        <div class="opt-row" data-nosave>
+          <select class="form-input opt-time-select" id="diagRange" title="反馈包包含的日志范围">
+            <option value="today">今天</option>
+            <option value="3d">近 3 天</option>
+            <option value="7d">近 7 天</option>
+            <option value="all">全部</option>
+          </select>
+          <button type="button" class="btn btn-ghost" id="btnExportDiag">导出压缩包</button>
         </div>
-        <div class="opt-row">
-          <label class="opt-check">
-            <input type="checkbox" id="diagMaskPaths">
-            <span class="opt-check__box"></span>
-            <span>隐去本机路径（发送给他人前建议勾选）</span>
-          </label>
-        </div>
-        <div class="form-group__desc" id="diagExportHint" style="margin-top:6px">全部记录最多包含最近 14 天。</div>
         </div>
       </div>
       <div class="form-group">

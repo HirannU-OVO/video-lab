@@ -38,7 +38,7 @@ const PURE_BACKEND_ROUTES = {
   read_log: { m: 'readLog', a: (args) => [args[0]] },
   get_log_level: { m: 'getLogLevel', a: () => [] },
   set_log_level: { m: 'setLogLevel', a: (args) => [args[0]] },
-  export_diag_pack: { m: 'exportDiagPack', a: (args) => [args[0]] },
+  export_diag_pack: { m: 'exportDiagPack', a: (args) => [args[0], args[1]] },
   list_projects: { m: 'listProjectsAsync', a: (args) => [!!args[0]] },
   // A6 数据目录清理（与 preload / IPC 三处登记保持一致，漏一处则该形态下静默失效）
   data_dir_scan: { m: 'dataDirScan', a: () => [] },
@@ -166,6 +166,16 @@ function startHttpServer(opts) {
       const win = getMainWin() || getSettingsWin();
       const result = await dialog.showOpenDialog({ title: args[0] || '选择目录', defaultPath: args[1] || api.getRoot() || '', properties: ['openDirectory'] });
       return result.canceled || !result.filePaths || result.filePaths.length === 0 ? '' : result.filePaths[0];
+    },
+    pick_save_file: async (args) => {
+      const win = getMainWin() || getSettingsWin();
+      const opts = {
+        title: args[0] || '保存到',
+        defaultPath: args[1] || 'VideoLab.zip',
+        filters: [{ name: '压缩包', extensions: ['zip'] }]
+      };
+      const result = win ? await dialog.showSaveDialog(win, opts) : await dialog.showSaveDialog(opts);
+      return result.canceled || !result.filePath ? '' : result.filePath;
     },
     choose_workdir: async () => {
       const result = await dialog.showOpenDialog({ title: '选择工作路径', defaultPath: api.getRoot(), properties: ['openDirectory'] });

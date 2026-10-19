@@ -597,8 +597,7 @@ try {
   if (mr.migrated && mr.stagingDir) pendingTrashDirs.push(mr.stagingDir);
   if (mr.errors && mr.errors.length) console.error('[migrate] ' + mr.errors.join('；'));
 } catch (e) { console.error('[migrate] 迁移异常：' + ((e && e.message) || e)); }
-// config.json 已退休：设置项全部落在 settings.db，该文件既不再被读也不再被写，
-// 留着只剩风险（含明文令牌，且内容冻结后会误导人工排查）。移入回收站，需要时可还原。
+// config.json 已退休（设置项全在 settings.db），含明文令牌，移入回收站
 try {
   if (fs.existsSync(configFile)) {
     if (recycleFile(configFile)) {
@@ -667,15 +666,7 @@ const api = new Api(root, config, resolveEnginesDir(), storageDir());
 // （搬迁后仍留在程序目录里的 ffmpeg\ / preview\ / .locks\ / txt-snap\ / backup\ / 老 log\），
 // 否则那批遗留永远不会出现在清单一里。详见 legacyDataDirs() 的注释。
 try { api.setLegacyDataDirs(legacyDataDirs()); } catch (e) { console.error('[legacy] 历史数据根注入失败：' + ((e && e.message) || e)); }
-// ── 启动清理：旧版遗留统一在启动时回收 ──────────────────────────────
-// 原则：凡是「旧版本代码产生、当前版本不会再用」的产物，都在启动时自动清掉，
-// 不进设置页「可清理项」—— 用户不必为过时代码做决定，维护时也不用在清单里到处找。
-// 触发点统一收在这里，各步骤实现在别处：
-//   ① 迁移暂存目录回收（本文件上方 migrateToFlatLayout / listStagingDirs）
-//   ② config.json 退休回收（本文件上方）
-//   ③ 旧版独立缓存 JSON / 便携包 zip（含分卷）/ 脚本时代残留（backend 的 cleanupLegacyArtifacts）
-// 保留在「可清理项」里的都是**当前版本仍在产生、且有保留期机制**的东西
-// （运行日志、处理前备份、缓存与预览产物）—— 想提前腾空间时可手动清。
+// 启动清理触发点：暂存目录 / config.json / 后端 cleanupLegacyArtifacts
 try { if (api && typeof api.cleanupLegacyArtifacts === 'function') api.cleanupLegacyArtifacts(); }
 catch (e) { console.error('[legacy] 启动清理失败：' + ((e && e.message) || e)); }
 // ── 设置库载入（两阶段之二）：api 就绪后用 settings.db 的真实值覆盖内存 config ──
@@ -706,7 +697,7 @@ catch (e) { console.error('[legacy] 启动清理失败：' + ((e && e.message) |
       _pendingRootMigration = '';
       _pendingRootCleanup = false;
     } else if (_pendingRootCleanup) {
-      // 清理残留的旧顶层 root（batch.root 已是真相；留着它会与 batch.root 形成两个真相）
+      // 清理残留的旧顶层 root（真相是 batch.root）
       try {
         api._removeAppSetting('root');
         runLog.sys('app.config', '已清理残留的顶层 root（工作路径的真相在 batch.root）', {});
@@ -2068,6 +2059,17 @@ function registerIpc() {
       const result = await dialog.showOpenDialog(win, { title: title || '选择目录', defaultPath: defaultPath || api.getRoot() || defaultRoot() || os.homedir(), properties: ['openDirectory'] });
       return result.canceled || !result.filePaths || result.filePaths.length === 0 ? '' : result.filePaths[0];
     } finally { settingsPickingDir = false; }
+  });
+  ipcMain.handle('pick_save_file', async (e, title, defaultName) => {
+    try {
+      const win = BrowserWindow.fromWebContents(e.sender) || mainWin;
+      const r = await dialog.showSaveDialog(win, {
+        title: title || '保存到',
+        defaultPath: defaultName || ('VideoLab-' + APP_VERSION + '.zip'),
+        filters: [{ name: '压缩包', extensions: ['zip'] }]
+      });
+      return r.canceled || !r.filePath ? '' : r.filePath;
+    } catch (e) { return ''; }
   });
   ipcMain.handle('get_root', () => api.getRoot());
   // ⚠ 必须走异步版：同步 checkEnv 会在冷启动时用 spawnSync 阻塞主进程事件循环数十秒

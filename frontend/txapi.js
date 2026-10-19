@@ -289,6 +289,7 @@
     get_settings: function () { return invoke('get_settings', []); },
     save_settings: function (s) { return invokeArgs('save_settings', s); },
     pick_directory: function (title, defaultPath) { return invokeArgs('pick_directory', title, defaultPath); },
+    pick_save_file: function (title, defaultName) { return invokeArgs('pick_save_file', title, defaultName); },
     on_settings_saved: function (cb) { return onEvent('settings_saved', cb); },
     notify_dirty: function (d) { /* 浏览器侧无需通知主进程脏标记 */ },
     on_settings_window_opened: function (cb) { return onEvent('settings_window_opened', cb); },

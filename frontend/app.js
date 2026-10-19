@@ -1087,21 +1087,18 @@
     //   任务实际用了哪些片段。就地覆盖会让两者脱钩 —— 复刻按「日志的结构 + 本配置的素材池」
     var hasLog = !!(state.activeVersion && state.activeVersion.hasLog);
     if (b1) {
-      if (hasLog) b1.disabled = true;
-      setBtnHint(b1, hasLog ? '该配置已有对应日志，不能覆盖；请改用右侧「保存为当日配置」'
-        : (modified ? null : '配置未发生改变'));
+      b1.style.display = hasLog ? 'none' : '';
+      setBtnHint(b1, hasLog ? null : (modified ? null : '配置未发生改变'));
     }
     if (b2) {
       b2.disabled = false;
-      setBtnHint(b2, hasLog ? '推荐：保存为当日配置 —— 新名字、新日志，与原有配置和日志彻底脱钩' : null);
+      setBtnHint(b2, null);
     }
     var hint = $('configModifiedHint');
     if (hint) {
-      hint.style.display = (modified || hasLog) ? '' : 'none';
+      hint.style.display = modified ? '' : 'none';
       // 明确生效范围：任务在提交入队时已快照配置，之后的修改只影响新提交的任务
-      hint.textContent = hasLog
-        ? '该配置已有对应日志，不能覆盖 → 请用「保存为当日配置」'
-        : '配置发生改变（保存后仅对之后启动的任务生效）';
+      hint.textContent = '配置发生改变（保存后仅对之后启动的任务生效）';
     }
     // ── 元素级红框提示 ──
     var orig = state._configOrig || {};
@@ -1675,7 +1672,6 @@
       //   绕过按钮的路径）。后端 saveConfig 也有一道同样的拦截作为最终防线。
       //   ⚠ 必须放在「另存到其他项目」分支**之后**：另存是合法出口，不该被当前配置的日志状况拦住。
       if (state.activeVersion && state.activeVersion.hasLog) {
-        toast('该配置已有对应日志，不能覆盖；请用「保存为当日配置」', true);
         return false;
       }
       // 配置名改了就地改名（名字随保存一并交给后端，不另发一次请求，避免"改了名但内容没写进新文件"）

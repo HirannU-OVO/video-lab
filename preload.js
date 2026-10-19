@@ -153,6 +153,7 @@ contextBridge.exposeInMainWorld('txapi', {
   get_settings: () => invoke('get_settings'),
   save_settings: (s) => invoke('save_settings', s),
   pick_directory: (title, defaultPath) => invoke('pick_directory', title, defaultPath),
+  pick_save_file: (title, defaultName) => invoke('pick_save_file', title, defaultName),
   on_settings_saved: (cb) => { ipcRenderer.on('settings_saved', (e, cfg) => { try { cb(cfg); } catch (err) {} }); },
   notify_dirty: (d) => { try { ipcRenderer.send('settings_dirty', !!d); } catch (e) {} },
   // 关闭设置面板（面板内点击外部 / Esc）：统一走主进程，保持「设置是否打开」的状态一致
@@ -172,7 +173,7 @@ contextBridge.exposeInMainWorld('txapi', {
   read_log: (o) => invoke('read_log', o),
   get_log_level: () => invoke('get_log_level'),
   set_log_level: (lvl) => invoke('set_log_level', lvl),
-  export_diag_pack: (id) => invoke('export_diag_pack', id),
+  export_diag_pack: (id, opts) => invoke('export_diag_pack', id, opts),
   open_parent: (p) => invoke('open_parent', p),
   open_project_dir: (p) => invoke('open_project_dir', p),
   external_edit: (p) => invoke('external_edit', p),

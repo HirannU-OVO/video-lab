@@ -2351,9 +2351,7 @@ class Api {
     } catch (e) { this._legacyDirs = []; }
   }
 
-  // 启动期清理历史遗留：旧版本代码留下的产物，当前版本不会再产生也不再需要。
-  // 这类项不列入「可清理项」—— 用户不必为过时代码做决定，由程序在启动时直接回收。
-  // 保留在清单里的都是「有保留期机制、用户可能想提前手动清」的部分（运行日志、备份、缓存等）。
+  // 清理旧版本留下的产物：独立缓存 JSON、便携包 zip（含分卷）、脚本时代残留、config.json 副本
   cleanupLegacyArtifacts() {
     const dir = String(this.storageDir || '');
     if (!dir) return { removed: 0, freed: 0 };
@@ -2448,7 +2446,7 @@ class Api {
     try {
       const files = walkRoots('preview', (n) => /\.(png|jpe?g)$/i.test(n));
       add({ key: 'preview', label: '画布预览中间产物', files, legacyN,
-        desc: '预览图只为在界面上显示一次，用完即无价值，可安全回收'
+        desc: '预览图，用完即删'
           + (legacyN ? '；另含程序目录里的遗留文件' : '') });
     } catch (e) {}
 
@@ -2467,12 +2465,12 @@ class Api {
       }
       // ⚠ 必须显式写 `files: dead`（该作用域无此变量）：写错会 ReferenceError 并被外层 catch 静默吞掉，导致整项从清单里消失且毫无提示。
       add({ key: 'txtsnap', label: 'TXT 提交快照（已无用）', files: dead, legacyN,
-        desc: '快照只在任务启动前用于还原配置；任务记录已不存在或任务已完成时它再无用途'
+        desc: '已完成任务的配置快照'
           + (legacyN ? '；另含程序目录里的遗留文件' : '') });
       if (keep.length) {
         add({ key: 'txtsnap-live', label: 'TXT 提交快照（保留中）', cleanable: false, count: keep.length,
           reason: '有 ' + keep.length + ' 个任务未完成（失败/中断/停止/暂停/在跑），它们续跑时要按快照还原配置',
-          desc: '这些快照会一直保留到你把对应任务从列表清除为止' });
+          desc: '完成任务后自动清除' });
       }
     } catch (e) {}
 
@@ -2481,7 +2479,7 @@ class Api {
       const files = fs.existsSync(dir)
         ? fs.readdirSync(dir).filter((n) => /\.bak(-|$)/i.test(n)).map((n) => abs(n)) : [];
       add({ key: 'cfgbak', label: '配置备份残留', files,
-        desc: '切换保存位置 / 迁移时留下的旧副本；确认当前配置正常后即可清理（进回收站，可还原）' });
+        desc: '切换位置时留下的配置副本' });
     } catch (e) {}
 
     // ④ 数据搬迁残留（*.migrated）：数据搬进 AppData 后，旧位置三个库改名留下的副本
@@ -2493,7 +2491,7 @@ class Api {
         for (const n of ns) if (/\.migrated$/.test(n)) files.push(path.join(d, n));
       }
       add({ key: 'migrated', label: '数据搬迁残留', files,
-        desc: '数据搬进 AppData 时，原位置三个库改名留下的副本（回滚取证用）；确认应用运行正常后即可清理' });
+        desc: '搬迁前原位置的库副本' });
     } catch (e) {}
 
     // ⑤ FFmpeg 组件目录：**只有当前没在用它**的那一份才可清（逐个根判，混在一起会误清在用的那份）
@@ -2512,10 +2510,10 @@ class Api {
         } catch (e) {}
       }
       add({ key: 'ffmpeg', label: 'FFmpeg 组件目录', files, cleanable: files.length > 0,
-        reason: files.length ? '' : '当前正在使用这份组件，清理后软件将无法处理视频',
+        reason: files.length ? '' : '正在使用，清理后无法处理视频',
         desc: files.length
-          ? '当前使用的是另一份组件，这份可以回收；另含程序目录里遗留的自动下载组件'
-          : (usedN ? '' : '没有发现可回收的组件目录') });
+          ? '另一份组件 + 程序目录遗留的下载组件'
+          : (usedN ? '' : '没有可清理的目录') });
     } catch (e) {}
 
     // ⑥⑦ 只展示不清理的两项（让用户知道它们的去向）：统计跨根（旧版本数据根里同样有 log\ 与 backup\）。
@@ -2524,15 +2522,15 @@ class Api {
       for (const r of roots) { try { for (const p of this._ddWalk(path.join(r, 'log'))) lg.push(p); } catch (e) {} }
       add({ key: 'log', label: '运行日志', files: [], cleanable: false, count: lg.length,
         bytes: lg.reduce((s, p) => s + this._ddSize(p), 0),
-        reason: '日志是排查「某次成片去哪了」的唯一证据，任何清理都不触碰它',
-        desc: '按各自保留期自动清理（app 7 天 / error 30 天 / engine 7 天）'
+        reason: '排查问题的证据，不自动清',
+        desc: '自动清理：普通与引擎 7 天、错误 30 天'
           + (legacyN ? '；另含程序目录里遗留的日志，需要时可自行删除' : '') });
       const bk = [];
       for (const r of roots) { try { for (const p of this._ddWalk(path.join(r, 'backup'))) bk.push(p); } catch (e) {} }
       add({ key: 'backup', label: '处理前备份', files: [], cleanable: false, count: bk.length,
         bytes: bk.reduce((s, p) => s + this._ddSize(p), 0),
         reason: '属于你的数据，只能由你决定',
-        desc: '在「视频处理」设置里开启自动清理并按保留天数处理' });
+        desc: '在「视频处理」里设保留天数' });
     } catch (e) {}
 
 
@@ -7388,7 +7386,6 @@ class Api {
       const parts = [];
       parts.push('Video Lab 诊断包（全局现场）');
       parts.push('生成时间: ' + new Date().toLocaleString());
-      parts.push('⚠ 包内含本机路径与任务信息，请勿随意分享；外发前可自行将路径打码。');
       parts.push('');
       parts.push('════ 环境快照（已脱敏）════');
       try { parts.push(this._ensureRunLog().scrub(JSON.stringify(this._envBrief({}), null, 1))); } catch (e) { parts.push('(取不到)'); }
@@ -7437,67 +7434,122 @@ class Api {
     } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
   }
 
-  // 按日期导出反馈包：界面不要求用户知道任务 id，只问「今天」还是「全部」
-  // 全量最多覆盖近 14 天，避免单包过大到发不出附件
-  _exportRangeDiagPack(mode, opts) {
+  // 按时间范围导出反馈包，逐日保留原始日志文件
+  _exportRangeDiagPack(range, opts) {
     try {
       const rl = this._ensureRunLog();
       const o = opts || {};
-      const isAll = mode === 'all';
-      const days = isAll
-        ? (rl.listDays() || []).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(String(d))).sort().slice(-14)
-        : [''];   // 空 day = 今天（readLog 内部按当天解析）
-      if (!days.length) days.push('');
-      const parts = [];
-      parts.push('Video Lab 问题反馈包');
-      parts.push('生成时间: ' + new Date().toLocaleString());
-      parts.push('导出范围: ' + (isAll ? '最近 ' + days.length + ' 天（' + days.join('、') + '）' : '今天'));
-      parts.push('⚠ 包内含本机路径与任务信息，发送前建议勾选「隐去本机路径」。');
-      parts.push('');
-      parts.push('════ 环境快照（已脱敏）════');
-      try { parts.push(rl.scrub(JSON.stringify(this._envBrief({}), null, 1))); } catch (e) { parts.push('(取不到)'); }
-      parts.push('');
-      parts.push('════ 最近任务（最多 30 条）════');
-      try {
-        const list = Array.from(this.tasks.values())
-          .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 30);
-        parts.push(list.length ? list.map((t) => [
-          String(t.id || '').slice(0, 40), String(t.type || ''), String(t.status || ''),
-          new Date(t.createdAt || 0).toLocaleString(),
-          t.endedAt ? new Date(t.endedAt).toLocaleString() : '进行中',
-          String(t.title || '').slice(0, 40),
-        ].join(' · ')).join('\n') : '(无任务)');
-      } catch (e) { parts.push('(取不到)'); }
-      parts.push('');
-      const ro = isAll ? { tail: 8000, maxBytes: 4 * 1024 * 1024 } : { tail: 20000, maxBytes: 16 * 1024 * 1024 };
-      for (const day of days) {
-        for (const name of ['app', 'error', 'engine']) {
-          let r = null;
-          try { r = rl.readLog(Object.assign({ file: name, day }, ro)); } catch (e) {}
-          parts.push('════ ' + name + ' · ' + (day || '今天') + '（' + (r && r.lines ? r.lines.length : 0) + ' 行）════');
-          parts.push(r && r.lines && r.lines.length ? r.lines.join('\n') : '(无)');
-          parts.push('');
+      const logDir = rl.getDir();
+      const DAYS = { today: 1, '3d': 3, '7d': 7, all: 0 };
+      const days = DAYS[range] != null ? DAYS[range] : 1;
+      // 只收录 app / error / engine 三类日志
+      const RE = /^(app|error|engine)-(\d{4}-\d{2}-\d{2})(?:-\d+)?\.log(?:\.gz)?$/;
+      let cutoff = null;
+      if (days) {
+        const t = new Date();
+        cutoff = new Date(t.getFullYear(), t.getMonth(), t.getDate() - (days - 1));
+      }
+      const picked = [];
+      let names = [];
+      try { names = fs.readdirSync(logDir); } catch (e) {}
+      for (const n of names) {
+        const m = RE.exec(n);
+        if (!m) continue;
+        if (cutoff) {
+          const d = new Date(+m[2].slice(0, 4), +m[2].slice(5, 7) - 1, +m[2].slice(8, 10));
+          if (!(d >= cutoff)) continue;
+        }
+        picked.push({ name: n, day: m[2], size: 0 });
+      }
+      picked.sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : a.name.localeCompare(b.name)));
+      for (const f of picked) {
+        try { f.size = fs.statSync(path.join(logDir, f.name)).size; } catch (e) {}
+      }
+      // 日志读一次，既用于生成包内任务索引也用于打包
+      const zlib = require('node:zlib');
+      const loaded = [];
+      let failed = 0;
+      for (const f of picked) {
+        try {
+          let buf = fs.readFileSync(path.join(logDir, f.name));
+          if (/\.gz$/i.test(f.name)) { try { buf = zlib.gunzipSync(buf); } catch (e2) {} }
+          loaded.push({ f, buf });
+        } catch (e) { failed++; }
+      }
+      // 任务索引取自包内 app 日志的 task.* 事件
+      const tMap = new Map();
+      for (const it of loaded) {
+        if (!/^app-/.test(it.f.name)) continue;
+        for (const ln of it.buf.toString('utf8').split('\n')) {
+          const m = /\btask\.(\w+)\s+(.+?)\s+·\s+\{/.exec(ln);
+          if (!m) continue;
+          const id = (/"(?:taskId|id)":"(task_[^"]+)"/.exec(ln) || [])[1];
+          if (!id) continue;
+          let e = tMap.get(id);
+          if (!e) { e = { n: 0, ev: m[1], msg: m[2] }; tMap.set(id, e); }
+          e.n++;
+          if (m[1] === 'start') { e.ev = 'start'; e.msg = m[2]; }
         }
       }
-      const dir = path.join(rl.getDir(), '..', 'diag');
-      try { fs.mkdirSync(dir, { recursive: true }); } catch (e2) {}
-      const tag = isAll ? 'all-' + days.length + 'd' : 'today';
-      const file = path.join(dir, 'diag-' + tag + '-' + Date.now().toString(36) + (o.maskPaths ? '-masked' : '') + '.txt');
-      const raw = parts.join('\n');
-      fs.writeFileSync(file, o.maskPaths ? this._maskDiagPaths(raw) : raw, 'utf8');
-      this._lg('SYS', 'diag.export', '导出问题反馈包 · ' + (isAll ? '近 ' + days.length + ' 天' : '今天')
-        + (o.maskPaths ? ' · 路径已打码' : '') + ' · ' + path.basename(file),
-        { path: file, masked: !!o.maskPaths, scope: 'range' });
-      return { ok: true, path: file, masked: !!o.maskPaths, scope: 'range', days: days.length };
-    } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+      const tIdx = [...tMap.entries()].map(([id, e]) =>
+        '  ' + id + ' · ' + e.n + ' 条记录 · ' + e.ev + ' · ' + String(e.msg || '').slice(0, 46));
+
+      const head = [];
+      head.push('Video Lab 问题反馈包');
+      head.push('生成时间: ' + new Date().toLocaleString());
+      head.push('日志范围: ' + (range === 'all' ? '全部' : range === 'today' ? '今天' : '近 ' + days + ' 天')
+        + '（命中 ' + picked.length + ' 个文件）');
+      head.push('');
+      head.push('════ 本机概况（设置项，敏感字段已剔除）════');
+      try {
+        const st = this._settingsStore ? this._settingsStore.all('app') : {};
+        const safe = {};
+        for (const k of Object.keys(st)) {
+          if (/token|secret|password/i.test(k)) continue;
+          safe[k] = st[k];
+        }
+        head.push(rl.scrub(JSON.stringify(safe, null, 1).slice(0, 8000)));
+      } catch (e) { head.push('(取不到)'); }
+      head.push('');
+      head.push('════ 包内任务（' + tIdx.length + ' 个）════');
+      head.push(tIdx.length ? tIdx.join('\n') : '（本次范围内没有任务日志）');
+      head.push('');
+      head.push('════ 包内文件索引 ════');
+      head.push('app-* 运行事件流（一行一事）· error-* warn/error 索引行');
+      head.push('engine-* 引擎 stdout/stderr（含 ffmpeg 行）· task-* 任务标记与产物归属');
+      head.push('');
+      head.push(picked.length ? picked.map((f) => '  ' + f.name + '  ' + rl.humanSize(f.size)).join('\n') : '（该范围内没有日志文件）');
+
+      const entries = [{ name: '概况.txt', data: head.join('\n') }];
+      const { zip } = require(path.join(__dirname, 'engines', 'base', 'zipwriter.js'));
+      for (const it of loaded) {
+        entries.push({ name: '日志/' + it.f.name.replace(/\.gz$/i, ''), data: it.buf });
+      }
+      const zipBuf = zip(entries);
+      const t = new Date();
+      const tag = range === 'all' ? '全部' : range === 'today' ? '今日' : '近' + days + '天';
+      const dflt = 'VideoLab-' + tag + '记录-' + t.getFullYear()
+        + String(t.getMonth() + 1).padStart(2, '0') + String(t.getDate()).padStart(2, '0') + '.zip';
+      const outPath = String(o.outPath || '').trim() || path.join(logDir, '..', 'diag', dflt);
+      try { fs.mkdirSync(path.dirname(outPath), { recursive: true }); } catch (e) {}
+      fs.writeFileSync(outPath, zipBuf);
+      this._lg('SYS', 'diag.export', '导出问题反馈包 · ' + tag + ' · ' + picked.length + ' 个文件 · '
+        + rl.humanSize(zipBuf.length) + (failed ? ' · ' + failed + ' 个读取失败' : ''),
+        { path: outPath, files: picked.length, bytes: zipBuf.length });
+      return { ok: true, path: outPath, files: picked.length, days: days, bytes: zipBuf.length };
+    } catch (e) {
+      const msg = String((e && e.message) || e);
+      try { this._lg('SYS', 'diag.export', '导出问题反馈包失败 · ' + msg, { error: msg, range }); } catch (e2) {}
+      return { ok: false, error: msg };
+    }
   }
 
   exportDiagPack(id, opts) {
-    // 按日期导出（界面的「问题反馈包」用）：用户无需知道任务 id
+    // 按范围导出（界面的「问题反馈包」用）
     // ⚠ 判断必须放在 try 之外：本方法块内有 `const opts` 声明，块内任意位置读参数都会撞 TDZ
-    const mode = opts && opts.mode;
-    if (mode === 'today' || mode === 'all') {
-      try { return this._exportRangeDiagPack(mode, opts); } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+    const range = opts && opts.range;
+    if (range) {
+      try { return this._exportRangeDiagPack(range, opts); } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
     }
     try {
       let t = id ? this.tasks.get(id) : null;
@@ -7512,17 +7564,17 @@ class Api {
       if (id && !t) return { ok: false, error: '任务不存在' };
       if (!t) return this._exportGlobalDiagPack(opts);
       id = t.id;
-      const opts = { grep: id, tail: 20000, maxBytes: 16 * 1024 * 1024 };
-      const app = this._ensureRunLog().readLog(Object.assign({ file: 'app' }, opts));
-      const error = this._ensureRunLog().readLog(Object.assign({ file: 'error' }, opts));
-      const engine = this._ensureRunLog().readLog(Object.assign({ file: 'engine' }, opts));
+      // ⚠ 刻意不叫 opts：块级 const 会遮蔽同名参数，且从块起始就进入 TDZ
+      const readOpts = { grep: id, tail: 20000, maxBytes: 16 * 1024 * 1024 };
+      const app = this._ensureRunLog().readLog(Object.assign({ file: 'app' }, readOpts));
+      const error = this._ensureRunLog().readLog(Object.assign({ file: 'error' }, readOpts));
+      const engine = this._ensureRunLog().readLog(Object.assign({ file: 'engine' }, readOpts));
       const marker = this._loadMarker(t);
       const outs = Array.isArray(marker && marker.videos) ? marker.videos : [];
       const parts = [];
       parts.push('Video Lab 诊断包');
       parts.push('生成时间: ' + new Date().toLocaleString());
       parts.push('任务: ' + id + ' · ' + t.type + ' · ' + String(t.title || '').slice(0, 80) + ' · 状态 ' + t.status);
-      parts.push('⚠ 包内含本机路径与任务信息，请勿随意分享；外发前可自行将路径打码。');
       parts.push('');
       parts.push('════ 任务 env 快照（已脱敏）════');
       parts.push(this._ensureRunLog().scrub(JSON.stringify(this._envBrief(t.env), null, 1)));

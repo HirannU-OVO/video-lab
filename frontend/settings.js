@@ -89,11 +89,15 @@
     return html;
   }
 
+  // 不需要保存的控件：容器打 data-nosave 标记，绑定时跳过
+  function isNoSave(el) { return !!(el.closest && el.closest('[data-nosave]')); }
+
   // 绑定「变更即保存」：只负责事件绑定（即时保存靠它触发）；
   // 不再插红色 *（未保存标记）与包裹层 —— 已无「未保存」概念。
   function wrapAllInputs() {
     document.querySelectorAll('.form-input').forEach(function (input) {
       if (input.dataset.wrapped) return;
+      if (isNoSave(input)) return;
       input.dataset.wrapped = '1';
       input.addEventListener('input', recomputeDirty);
       input.addEventListener('change', recomputeDirty);
@@ -688,6 +692,7 @@
     wrapAllInputs();
     // 勾选 / 单选切换同样触发即时保存；已无「未保存」标记概念
     document.querySelectorAll('input[type=checkbox], input[type=radio]').forEach(function (input) {
+      if (isNoSave(input)) return;
       input.addEventListener('change', recomputeDirty);
     });
     buildThemeRow();
@@ -1034,24 +1039,42 @@
         if (!(r && r.ok)) toast('打开失败：' + ((r && r.error) || '路径不存在'), true);
       }).catch(function () { setStatus('打开失败', false); });
     });
-    // 问题反馈包：把运行记录与环境信息打成一个文本文件，用户不需要知道任务 id
-    function bindDiagButton(btnId, mode) {
-      var btn = document.getElementById(btnId);
-      if (!btn || !api || !api.export_diag_pack) return;
-      btn.addEventListener('click', function () {
-        var maskPaths = !!(document.getElementById('diagMaskPaths') || {}).checked;
-        btn.disabled = true;
-        api.export_diag_pack('', { mode: mode, maskPaths: maskPaths }).then(function (r) {
-          btn.disabled = false;
-          if (r && r.ok) {
-            toast('已生成，可直接发给开发者，即将打开所在文件夹', 'ok');
-            if (api.open_parent) api.open_parent(r.path);
-          } else toast('导出失败：' + ((r && r.error) || '未知错误'), true);
-        }).catch(function () { btn.disabled = false; setStatus('导出失败', true); });
-      });
+    // 失败原因映射为普通用户可读的文案
+    function readableDiagErr(msg) {
+      var s = String(msg || '');
+      if (/EBUSY|resource busy|locked|另一个程序正在使用|正由另一进程使用/i.test(s)) {
+        return '导出失败：文件被占用，请换文件名';
+      }
+      if (/EACCES|EPERM|permission denied|拒绝访问/i.test(s)) {
+        return '导出失败：无写入权限，请换位置';
+      }
+      if (/ENOENT|no such file|找不到指定的路径/i.test(s)) {
+        return '导出失败：路径不存在';
+      }
+      if (/ENOSPC|no space|空间不足|磁盘空间/i.test(s)) {
+        return '导出失败：磁盘空间不足';
+      }
+      return '导出失败，请重试';
     }
-    bindDiagButton('btnExportDiagToday', 'today');
-    bindDiagButton('btnExportDiagAll', 'all');
+    (function bindDiagButton() {
+      var btn = document.getElementById('btnExportDiag');
+      if (!btn || !api || !api.export_diag_pack || !api.pick_save_file) return;
+      var LABEL = { today: '今日', '3d': '近3天', '7d': '近7天', all: '全部' };
+      btn.addEventListener('click', function () {
+        var sel = document.getElementById('diagRange');
+        var range = (sel && sel.value) || 'today';
+        btn.disabled = true;
+        Promise.resolve(api.pick_save_file('保存问题反馈包到', 'VideoLab-' + (LABEL[range] || '') + '记录.zip')).then(function (p) {
+          var out = String(p || '').trim();
+          if (!out) { btn.disabled = false; return; }   // 用户取消：不导出
+          return api.export_diag_pack('', { range: range, outPath: out }).then(function (r) {
+            btn.disabled = false;
+            if (r && r.ok) toast('已打包 ' + r.files + ' 个日志文件，可直接发给开发者', 'ok');
+            else toast(readableDiagErr(r && r.error), true);
+          });
+        }).catch(function () { btn.disabled = false; toast('导出失败，请重试', true); });
+      });
+    })();
     // 复制浏览器访问地址：该按钮在当前设置页 DOM 中并不存在（历史残留绑定）——
     // 地址本身由 #httpUrl 链接承担（点击即用系统浏览器打开），这里显式置空以免留下"看起来会生效"的死代码。
     var btnCopyUrl = null;
