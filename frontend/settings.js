@@ -382,20 +382,6 @@
       var policy = (s.cache_keep_days || 0) > 0 ? 'auto' : 'off';
       document.querySelectorAll('input[name="cachePolicy"]').forEach(function (rd) { rd.checked = rd.value === policy; });
       if (ckc) ckc.value = String((s.cache_keep_days || 0) > 0 ? s.cache_keep_days : 7);
-      // 「维护」板块可见性：config.json 的 show_maintenance（用户侧默认关闭；本机可置 true）
-      var mtOn = s.show_maintenance === true;
-      var mtNav = document.querySelector('.settings-nav__item[data-view="maintenance"]');
-      var mtView = $('view-maintenance');
-      if (mtNav) mtNav.style.display = mtOn ? '' : 'none';
-      if (mtView) mtView.style.display = mtOn ? '' : 'none';
-      // 「查看构成」属开发者诊断信息（表名/条数/体积），普通用户只需清理 →
-      // 与维护板块共用同一开关：非开发机隐藏按钮，明细区也随之不可达
-      var bcs = $('btnCacheStats');
-      if (bcs) bcs.style.display = mtOn ? '' : 'none';
-      if (!mtOn) {
-        var boxHide = document.getElementById('cacheStatsBox');
-        if (boxHide) boxHide.style.display = 'none';
-      }
       var b = s.batch || {};
       $('batchSuffixMark').value = b.suffix_mark != null ? b.suffix_mark : '';
       $('batchMaxDuration').value = b.max_duration != null ? b.max_duration : '';
@@ -1048,51 +1034,24 @@
         if (!(r && r.ok)) toast('打开失败：' + ((r && r.error) || '路径不存在'), true);
       }).catch(function () { setStatus('打开失败', false); });
     });
-    // 日志查看器：文件类型 + 级别 + 关键词过滤
-    var btnLogView = document.getElementById('btnLogViewLoad');
-    if (btnLogView && api && api.read_log) btnLogView.addEventListener('click', function () {
-      var file = (document.getElementById('logViewFile') || {}).value || 'app';
-      var lvl = (document.getElementById('logViewLevel') || {}).value || '';
-      var grep = (document.getElementById('logViewGrep') || {}).value || '';
-      api.read_log({ file: file, lvl: lvl, grep: grep, tail: 2000 }).then(function (r) {
-        var out = document.getElementById('logViewOut');
-        if (!out) return;
-        if (!r || !r.ok) { out.value = '读取失败：' + ((r && r.error) || '未知错误'); return; }
-        if (!r.exists) { out.value = '该日尚无 ' + file + ' 日志文件。'; return; }
-        out.value = r.text || '（无匹配行）';
-      }).catch(function () { setStatus('读取日志失败', true); });
-    });
-    // 日志级别（**持久化**：写入设置库，启动后在空闲期恢复；页面上「会话级」的旧说明已同步更正）
-    if (api && api.get_log_level && api.set_log_level) {
-      api.get_log_level().then(function (r) {
-        if (r && r.ok) { var sel = document.getElementById('logLevelSel'); if (sel) sel.value = r.level || 'info'; }
-      }).catch(function () {});
-      var lvlSel = document.getElementById('logLevelSel');
-      if (lvlSel) lvlSel.addEventListener('change', function () {
-        api.set_log_level(lvlSel.value).then(function (r) {
-          toast(r && r.ok ? '日志级别已切换：' + r.level : '切换失败', r && r.ok ? 'ok' : true);
-        }).catch(function () {});
-      });
-    }
-    // 一键诊断包：相关日志行 + env 快照 + 产物清单 → 单个 txt
-    // 第二个入口为「路径打码」版：外发前用，盘符与各级目录折叠为 <路径>，只保留文件名。
-    function bindDiagButton(btnId, maskPaths) {
+    // 问题反馈包：把运行记录与环境信息打成一个文本文件，用户不需要知道任务 id
+    function bindDiagButton(btnId, mode) {
       var btn = document.getElementById(btnId);
       if (!btn || !api || !api.export_diag_pack) return;
       btn.addEventListener('click', function () {
-        var id = (document.getElementById('diagTaskId') || {}).value || '';
+        var maskPaths = !!(document.getElementById('diagMaskPaths') || {}).checked;
         btn.disabled = true;
-        api.export_diag_pack(id.trim(), { maskPaths: !!maskPaths }).then(function (r) {
+        api.export_diag_pack('', { mode: mode, maskPaths: maskPaths }).then(function (r) {
           btn.disabled = false;
           if (r && r.ok) {
-            toast(maskPaths ? '诊断包已生成（路径已打码，可安全外发），即将打开' : '诊断包已生成（日志目录 diag\\ 下），即将打开', 'ok');
+            toast('已生成，可直接发给开发者，即将打开所在文件夹', 'ok');
             if (api.open_parent) api.open_parent(r.path);
           } else toast('导出失败：' + ((r && r.error) || '未知错误'), true);
-        }).catch(function () { btn.disabled = false; setStatus('导出诊断包失败', true); });
+        }).catch(function () { btn.disabled = false; setStatus('导出失败', true); });
       });
     }
-    bindDiagButton('btnExportDiag', false);
-    bindDiagButton('btnExportDiagMasked', true);
+    bindDiagButton('btnExportDiagToday', 'today');
+    bindDiagButton('btnExportDiagAll', 'all');
     // 复制浏览器访问地址：该按钮在当前设置页 DOM 中并不存在（历史残留绑定）——
     // 地址本身由 #httpUrl 链接承担（点击即用系统浏览器打开），这里显式置空以免留下"看起来会生效"的死代码。
     var btnCopyUrl = null;

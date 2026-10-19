@@ -47,8 +47,7 @@
     <button class="settings-nav__item" data-view="mask">遮罩叠加</button>
     <button class="settings-nav__item" data-view="tool">视频处理</button>
 
-    <!-- 「维护」板块：默认隐藏，由 config.json 的 show_maintenance 控制（用户侧关闭） -->
-    <button class="settings-nav__item" data-view="maintenance" style="display:none">维护</button>
+    <button class="settings-nav__item" data-view="maintenance">维护</button>
     <button class="settings-nav__item" data-view="changelog">更新日志</button>
     <button class="settings-nav__item" data-view="about">关于</button>
   </aside>
@@ -396,7 +395,7 @@
       </div>
     </section>
 
-    <section class="settings-view" id="view-maintenance" style="display:none">
+    <section class="settings-view" id="view-maintenance">
       <h2 class="settings-view__title">维护</h2>
 
       <div class="form-group">
@@ -423,60 +422,26 @@
         </div>
         </div>
       </div>
-      <div class="form-group form-group--stack">
-        <div class="form-group__head">
-          <label class="form-group__label">日志查看</label>
-          <div class="form-group__desc">按文件类型与级别过滤日志内容</div>
-        </div>
-        <div class="form-group__ops">
-        <div class="opt-row">
-          <select class="opt-time-select" id="logViewFile" style="width:100px">
-            <option value="app">app（全量）</option>
-            <option value="error">error（错误）</option>
-            <option value="engine">引擎日志</option>
-          </select>
-          <select class="opt-time-select" id="logViewLevel" style="width:90px">
-            <option value="">全部级别</option>
-            <option value="fatal">fatal</option>
-            <option value="error">error</option>
-            <option value="warn">warn</option>
-            <option value="info">info</option>
-            <option value="debug">debug</option>
-          </select>
-          <input type="text" class="form-input" id="logViewGrep" placeholder="按任务 id / 关键词过滤（可留空）" style="flex:1;min-width:0">
-          <button type="button" class="btn btn-ghost" id="btnLogViewLoad">加载</button>
-        </div>
-        <textarea class="form-input" id="logViewOut" readonly style="width:100%;height:220px;margin-top:8px;font-family:Consolas,monospace;font-size:12px;white-space:pre;overflow:auto"></textarea>
-        </div>
-      </div>
       <div class="form-group">
         <div class="form-group__head">
-          <label class="form-group__label">日志级别</label>
-          <div class="form-group__desc">日志的详细程度，重启后仍生效</div>
+          <label class="form-group__label">问题反馈包</label>
+          <div class="form-group__desc">把运行记录与环境信息打包成一个文本文件，发给开发者即可排查</div>
         </div>
         <div class="form-group__ops">
         <div class="opt-row">
-          <select class="opt-time-select" id="logLevelSel" style="width:120px">
-            <option value="info">info（默认）</option>
-            <option value="debug">debug（排查）</option>
-          </select>
+          <button type="button" class="btn btn-ghost" id="btnExportDiagToday">导出今天的记录</button>
+          <button type="button" class="btn btn-ghost" id="btnExportDiagAll">导出全部记录</button>
         </div>
-        </div>
-      </div>
-      <div class="form-group">
-        <div class="form-group__head">
-          <label class="form-group__label">一键诊断包</label>
-          <div class="form-group__desc">把该任务的日志与产物信息合成一个文本文件</div>
-        </div>
-        <div class="form-group__ops">
         <div class="opt-row">
-          <input type="text" class="form-input" id="diagTaskId" placeholder="任务 id（可留空：自动取最近一个失败任务，没有则导出全局现场）" style="flex:1;min-width:0">
-          <button type="button" class="btn btn-ghost" id="btnExportDiag">导出诊断包</button>
-          <button type="button" class="btn btn-ghost" id="btnExportDiagMasked">路径打码后导出</button>
+          <label class="opt-check">
+            <input type="checkbox" id="diagMaskPaths">
+            <span class="opt-check__box"></span>
+            <span>隐去本机路径（发送给他人前建议勾选）</span>
+          </label>
         </div>
+        <div class="form-group__desc" id="diagExportHint" style="margin-top:6px">全部记录最多包含最近 14 天。</div>
         </div>
       </div>
-
       <div class="form-group">
         <div class="form-group__head">
           <label class="form-group__label">可清理项</label>

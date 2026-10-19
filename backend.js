@@ -64,7 +64,6 @@ const DEFAULT_CONFIG = {
   skin: 'white_blue',
   ffmpeg_dir: '',             // FFmpeg 组件目录（启动自动下载落到「数据目录\ffmpeg」）；空 = 尚未就绪，启动时会自动下载
   notify_task_end: true,      // 任务失败 / 本轮跑完的 Windows 系统通知（默认开启，可在 设置-通用设置 关闭）
-  show_maintenance: false,    // 设置页「维护」板块是否可见（用户侧默认关闭：重建缓存/日志等属维护用途）
   backup_dir: '',             // 视频处理「处理前备份」的默认目录；留空 = 数据目录下 backup（与缓存库同目录）
   backup_auto_clean: false,   // 视频处理任务完成后自动清理过期备份（默认关闭；删除走回收站可还原）
   backup_keep_days: 7,        // 备份保留天数（3 / 7 / 15 / 30）
@@ -2352,6 +2351,65 @@ class Api {
     } catch (e) { this._legacyDirs = []; }
   }
 
+  // 启动期清理历史遗留：旧版本代码留下的产物，当前版本不会再产生也不再需要。
+  // 这类项不列入「可清理项」—— 用户不必为过时代码做决定，由程序在启动时直接回收。
+  // 保留在清单里的都是「有保留期机制、用户可能想提前手动清」的部分（运行日志、备份、缓存等）。
+  cleanupLegacyArtifacts() {
+    const dir = String(this.storageDir || '');
+    if (!dir) return { removed: 0, freed: 0 };
+    const roots = [dir];
+    for (const d of (this._legacyDirs || [])) {
+      try {
+        if (!d) continue;
+        const a = path.resolve(d);
+        if (roots.every((x) => path.resolve(x) !== a)) roots.push(d);
+      } catch (e) { /* 无效路径：跳过 */ }
+    }
+    // 旧版独立缓存 JSON（别名表见 engines/base/migrate.js 的 ALIASES），内容已并入 settings.db / cache.db
+    const JSON_RE = /^(scan_cache|video_lab_scan_cache|scan-cache|log_cache|video_cache|usage_cache|task_cache|task_snapshot|mask_cache|mask_session|Batch|watermark_cache|Mask|mask_default_dir|clip_cache)\.json(\.bak)?$/i;
+    let removed = 0, freed = 0;
+    const drop = (p) => {
+      try {
+        if (!fs.existsSync(p)) return;
+        const sz = this._ddSize(p);
+        this._recycleFile(p);
+        removed++;
+        freed += sz;
+      } catch (e) {}
+    };
+    for (const r of roots) {
+      let ns = [];
+      try { ns = fs.readdirSync(r); } catch (e) { continue; }
+      for (const n of ns) {
+        const p = path.join(r, n);
+        // 便携包 zip（含 .001/.002 分卷）：旧版「下载更新」落地物，解压覆盖后即无用途
+        if (/^Video-Lab-.*-x64-Portable\.zip(\.\d{3,})?$/i.test(n)) { drop(p); continue; }
+        if (JSON_RE.test(n)) { drop(p); continue; }
+        // 已退休的 config.json 的改名副本（回收失败时的兜底产物，内容与 config.json 相同）
+        if (/^config\.json\.bak/i.test(n)) { drop(p); continue; }
+        // 脚本版（PS1 时代）残留：报表文件与备份目录
+        if (/^usage_report\.txt$/i.test(n)) { drop(p); continue; }
+        if (/^(QuickAccessBackup|帧删除备份_.*)$/i.test(n)) {
+          try {
+            if (!fs.statSync(p).isDirectory()) continue;
+            let sub = [];
+            try { sub = fs.readdirSync(p); } catch (e) {}
+            for (const q of sub) drop(path.join(p, q));
+            try { if (!fs.readdirSync(p).length) this._recycleFile(p); } catch (e) {}
+          } catch (e) {}
+        }
+      }
+    }
+    if (removed) {
+      try {
+        this._lg('SYS', 'data.legacy.clean',
+          '启动清理历史遗留产物 · ' + removed + ' 项 · ' + this._humanSize(freed),
+          { removed, freed });
+      } catch (e) {}
+    }
+    return { removed, freed };
+  }
+
   dataDirScan() {
     const dir = String(this.storageDir || '');
     const tasks = this.tasks || new Map();
@@ -2477,62 +2535,6 @@ class Api {
         desc: '在「视频处理」设置里开启自动清理并按保留天数处理' });
     } catch (e) {}
 
-    // ⑧ 旧版更新包残留：≤2.5.0 便携版「下载更新」落在程序目录的便携包 zip（含分卷），解压覆盖后即无用途。
-    try {
-      const files = [];
-      for (const r of roots) {
-        let ns = [];
-        try { ns = fs.readdirSync(r); } catch (e) { continue; }
-        for (const n of ns) {
-          if (!/^Video-Lab-.*-x64-Portable\.zip(\.\d{3,})?$/i.test(n)) continue;
-          const p = path.join(r, n);
-          try { if (fs.statSync(p).isFile()) files.push(p); } catch (e) {}
-        }
-      }
-      add({ key: 'updatepkg', label: '便携包残留', files,
-        desc: '更新时下载落地的便携包（含分卷）；这类包已无用途，可安全回收' });
-    } catch (e) {}
-
-    // ⑨ 旧版缓存 JSON（布局改造前的独立缓存文件，别名见 engines/base/migrate.js 的 ALIASES）：数据已并入三库，
-    //    migrate 只认 Cache\/Config\，落在数据根上的那些需在此回收。
-    try {
-      const RE = /^(scan_cache|video_lab_scan_cache|scan-cache|log_cache|video_cache|usage_cache|task_cache|task_snapshot|mask_cache|mask_session|Batch|watermark_cache|Mask|mask_default_dir|clip_cache)\.json$/i;
-      const files = [];
-      for (const r of roots) {
-        let ns = [];
-        try { ns = fs.readdirSync(r); } catch (e) { continue; }
-        for (const n of ns) {
-          if (!RE.test(n)) continue;
-          const p = path.join(r, n);
-          try { if (fs.statSync(p).isFile()) files.push(p); } catch (e) {}
-        }
-      }
-      add({ key: 'legacyjson', label: '独立缓存文件', files,
-        desc: '内容已并进 settings.db / cache.db 的独立缓存 JSON，文件本身可安全回收' });
-    } catch (e) {}
-
-    // ⑩ 脚本版（PS1 时代）残留：与新架构无关，只在旧数据根里出现
-    try {
-      const files = [];
-      for (const r of roots) {
-        let ns = [];
-        try { ns = fs.readdirSync(r); } catch (e) { continue; }
-        for (const n of ns) {
-          // usage_report.txt 是单文件；（QuickAccessBackup / 帧删除备份_*）是**目录**，需展开成文件清单
-          // ⚠ 不在这里匹配 config.json.bak*：那已由上方「配置备份残留」③ 统一负责，避免重复计数
-          const p = path.join(r, n);
-          try {
-            if (/^usage_report\.txt$/i.test(n)) {
-              if (fs.statSync(p).isFile()) files.push(p);
-            } else if (/^(QuickAccessBackup|帧删除备份_.*)$/i.test(n)) {
-              if (fs.statSync(p).isDirectory()) { for (const q of this._ddWalk(p)) files.push(q); }
-            }
-          } catch (e) {}
-        }
-      }
-      add({ key: 'ps1era', label: '脚本版残留', files,
-        desc: '脚本版工具留下的报表与备份目录，与本程序无关，可安全回收' });
-    } catch (e) {}
 
     // 体积/条数只在可清项上按文件清单算（不可清项已自行给出）
     for (const it of items) {
@@ -7435,7 +7437,68 @@ class Api {
     } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
   }
 
+  // 按日期导出反馈包：界面不要求用户知道任务 id，只问「今天」还是「全部」
+  // 全量最多覆盖近 14 天，避免单包过大到发不出附件
+  _exportRangeDiagPack(mode, opts) {
+    try {
+      const rl = this._ensureRunLog();
+      const o = opts || {};
+      const isAll = mode === 'all';
+      const days = isAll
+        ? (rl.listDays() || []).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(String(d))).sort().slice(-14)
+        : [''];   // 空 day = 今天（readLog 内部按当天解析）
+      if (!days.length) days.push('');
+      const parts = [];
+      parts.push('Video Lab 问题反馈包');
+      parts.push('生成时间: ' + new Date().toLocaleString());
+      parts.push('导出范围: ' + (isAll ? '最近 ' + days.length + ' 天（' + days.join('、') + '）' : '今天'));
+      parts.push('⚠ 包内含本机路径与任务信息，发送前建议勾选「隐去本机路径」。');
+      parts.push('');
+      parts.push('════ 环境快照（已脱敏）════');
+      try { parts.push(rl.scrub(JSON.stringify(this._envBrief({}), null, 1))); } catch (e) { parts.push('(取不到)'); }
+      parts.push('');
+      parts.push('════ 最近任务（最多 30 条）════');
+      try {
+        const list = Array.from(this.tasks.values())
+          .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 30);
+        parts.push(list.length ? list.map((t) => [
+          String(t.id || '').slice(0, 40), String(t.type || ''), String(t.status || ''),
+          new Date(t.createdAt || 0).toLocaleString(),
+          t.endedAt ? new Date(t.endedAt).toLocaleString() : '进行中',
+          String(t.title || '').slice(0, 40),
+        ].join(' · ')).join('\n') : '(无任务)');
+      } catch (e) { parts.push('(取不到)'); }
+      parts.push('');
+      const ro = isAll ? { tail: 8000, maxBytes: 4 * 1024 * 1024 } : { tail: 20000, maxBytes: 16 * 1024 * 1024 };
+      for (const day of days) {
+        for (const name of ['app', 'error', 'engine']) {
+          let r = null;
+          try { r = rl.readLog(Object.assign({ file: name, day }, ro)); } catch (e) {}
+          parts.push('════ ' + name + ' · ' + (day || '今天') + '（' + (r && r.lines ? r.lines.length : 0) + ' 行）════');
+          parts.push(r && r.lines && r.lines.length ? r.lines.join('\n') : '(无)');
+          parts.push('');
+        }
+      }
+      const dir = path.join(rl.getDir(), '..', 'diag');
+      try { fs.mkdirSync(dir, { recursive: true }); } catch (e2) {}
+      const tag = isAll ? 'all-' + days.length + 'd' : 'today';
+      const file = path.join(dir, 'diag-' + tag + '-' + Date.now().toString(36) + (o.maskPaths ? '-masked' : '') + '.txt');
+      const raw = parts.join('\n');
+      fs.writeFileSync(file, o.maskPaths ? this._maskDiagPaths(raw) : raw, 'utf8');
+      this._lg('SYS', 'diag.export', '导出问题反馈包 · ' + (isAll ? '近 ' + days.length + ' 天' : '今天')
+        + (o.maskPaths ? ' · 路径已打码' : '') + ' · ' + path.basename(file),
+        { path: file, masked: !!o.maskPaths, scope: 'range' });
+      return { ok: true, path: file, masked: !!o.maskPaths, scope: 'range', days: days.length };
+    } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+  }
+
   exportDiagPack(id, opts) {
+    // 按日期导出（界面的「问题反馈包」用）：用户无需知道任务 id
+    // ⚠ 判断必须放在 try 之外：本方法块内有 `const opts` 声明，块内任意位置读参数都会撞 TDZ
+    const mode = opts && opts.mode;
+    if (mode === 'today' || mode === 'all') {
+      try { return this._exportRangeDiagPack(mode, opts); } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+    }
     try {
       let t = id ? this.tasks.get(id) : null;
       if (!t && !id) {

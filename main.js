@@ -477,7 +477,6 @@ function writeSettingsApp(values) {
 function loadConfig() {
   const cfg = Object.assign({}, DEFAULT_CONFIG);
   // ① config.json 现有内容（一次性引导的取值来源；此后不再参与业务键读取）
-  const disk = readConfigDisk();
   // ② 业务键：settings.db 全量载入（库不可用时保持默认值 —— 不回退 config.json）
   const app = readSettingsApp();
   if (app) {
@@ -499,54 +498,14 @@ function loadConfig() {
       if (app[k] === undefined || app[k] === null) continue;
       cfg[k] = app[k];
     }
-    // ③ 一次性引导：settings.db 尚未落过的键，用 config.json 的同名值补齐并落库
-    //    （详规见 seedSettingsFromConfig 注释）。
-    const seed = seedSettingsFromConfig(disk, app);
-    for (const k of Object.keys(seed)) cfg[k] = seed[k];
   } else {
     // 设置库确实读不到（api 与直读两条路都失败）—— 保持默认值，不回退 config.json。
     // ⚠ 此处**不可引用 api**：顶层首调时 const api 尚在 TDZ，即使 typeof 也会抛 ReferenceError
     //   （会让整个启动崩溃）。readSettingsApp 内部已做 try 探测，走到这里就是真读不到。
     try { runLog.sys('app.config', '设置库不可用：本次按默认值运行（不回退 config.json）', {}); } catch (e) {}
   }
-  // ④ 开发者开关 show_maintenance：前端无控件，只认 config.json（编辑器直改即生效），不随 settings.db
-  cfg.show_maintenance = (disk && typeof disk.show_maintenance === 'boolean')
-    ? disk.show_maintenance
-    : DEFAULT_CONFIG.show_maintenance;
   for (const k of OBSOLETE_CONFIG_KEYS) delete cfg[k];
   return cfg;
-}
-// 读 config.json 全量内容（读不到返回空对象）；顺带清理上次中断遗留的临时文件
-function readConfigDisk() {
-  try {
-    const p = configFilePath();
-    try { if (fs.existsSync(p + '.tmp')) fs.unlinkSync(p + '.tmp'); } catch (e2) {}
-    if (!fs.existsSync(p)) return {};
-    const data = JSON.parse(fs.readFileSync(p, 'utf-8'));
-    return (data && typeof data === 'object' && !Array.isArray(data)) ? data : {};
-  } catch (e) { return {}; }
-}
-// 一次性引导：settings.db 尚未落过的键，用 config.json 的同名值补齐并落库。
-//   这是「修好断点」而非数据迁移 —— 补齐之后读路径完全只认 settings，config.json 不再被读。
-//   幂等：仅写 settings 里**不存在**的键，已落过库的值绝不覆盖；config.json 没有该键就跳过（留给 DEFAULT_CONFIG 默认值）。
-const SEED_EXCLUDE_KEYS = OBSOLETE_CONFIG_KEYS.concat([
-  'root',   // 旧版的顶层工作路径镜像键：真相是 batch.root，不作为独立键落库
-]);
-function seedSettingsFromConfig(disk, app) {
-  const seed = {};
-  try {
-    for (const k of Object.keys(disk || {})) {
-      if (SEED_EXCLUDE_KEYS.indexOf(k) >= 0) continue;
-      if (Object.prototype.hasOwnProperty.call(app || {}, k)) continue;
-      if (disk[k] === undefined || disk[k] === null) continue;
-      seed[k] = disk[k];
-    }
-    if (Object.keys(seed).length) {
-      writeSettingsApp(seed);
-      try { runLog.sys('app.config', '设置库首次引导（' + Object.keys(seed).length + ' 项，取自 config.json）', { keys: Object.keys(seed) }); } catch (e) {}
-    }
-  } catch (e) {}
-  return seed;
 }
 // 保存配置：以「实际变更的键」为单位落盘，避免每次保存全量重写。
 // 唯一落盘目标是 settings.db（也是唯一读取来源）。
@@ -590,7 +549,6 @@ function _configValueEqual(a, b) {
 function mergeAppSettings(cfg, s) {
   if (!s || typeof s !== 'object') return cfg;
   if (typeof s.notify_task_end === 'boolean') cfg.notify_task_end = s.notify_task_end;
-  if (typeof s.show_maintenance === 'boolean') cfg.show_maintenance = s.show_maintenance;
   if (typeof s.backup_dir === 'string') cfg.backup_dir = s.backup_dir;
   if (typeof s.backup_auto_clean === 'boolean') cfg.backup_auto_clean = s.backup_auto_clean;
   if (s.backup_keep_days !== undefined) cfg.backup_keep_days = parseInt(s.backup_keep_days, 10) || 7;
@@ -639,6 +597,15 @@ try {
   if (mr.migrated && mr.stagingDir) pendingTrashDirs.push(mr.stagingDir);
   if (mr.errors && mr.errors.length) console.error('[migrate] ' + mr.errors.join('；'));
 } catch (e) { console.error('[migrate] 迁移异常：' + ((e && e.message) || e)); }
+// config.json 已退休：设置项全部落在 settings.db，该文件既不再被读也不再被写，
+// 留着只剩风险（含明文令牌，且内容冻结后会误导人工排查）。移入回收站，需要时可还原。
+try {
+  if (fs.existsSync(configFile)) {
+    if (recycleFile(configFile)) {
+      try { runLog.sys('app.config', '已回收退休的 config.json（设置项全部存于 settings.db）', {}); } catch (e) {}
+    }
+  }
+} catch (e) {}
 // ⚠ 跨根收集：暂存目录（.video-lab-legacy-*）可能落在历史数据根里（搬迁前后各产生过一次）。
 //   只扫当前根会让旧根里的暂存永不回收（它非空，recycleIfEmpty 那条路也不适用）。legacyDataDirs 已按当前根去重。
 const _stagingRoots = [path.dirname(configFile)].concat(legacyDataDirs());
@@ -700,6 +667,17 @@ const api = new Api(root, config, resolveEnginesDir(), storageDir());
 // （搬迁后仍留在程序目录里的 ffmpeg\ / preview\ / .locks\ / txt-snap\ / backup\ / 老 log\），
 // 否则那批遗留永远不会出现在清单一里。详见 legacyDataDirs() 的注释。
 try { api.setLegacyDataDirs(legacyDataDirs()); } catch (e) { console.error('[legacy] 历史数据根注入失败：' + ((e && e.message) || e)); }
+// ── 启动清理：旧版遗留统一在启动时回收 ──────────────────────────────
+// 原则：凡是「旧版本代码产生、当前版本不会再用」的产物，都在启动时自动清掉，
+// 不进设置页「可清理项」—— 用户不必为过时代码做决定，维护时也不用在清单里到处找。
+// 触发点统一收在这里，各步骤实现在别处：
+//   ① 迁移暂存目录回收（本文件上方 migrateToFlatLayout / listStagingDirs）
+//   ② config.json 退休回收（本文件上方）
+//   ③ 旧版独立缓存 JSON / 便携包 zip（含分卷）/ 脚本时代残留（backend 的 cleanupLegacyArtifacts）
+// 保留在「可清理项」里的都是**当前版本仍在产生、且有保留期机制**的东西
+// （运行日志、处理前备份、缓存与预览产物）—— 想提前腾空间时可手动清。
+try { if (api && typeof api.cleanupLegacyArtifacts === 'function') api.cleanupLegacyArtifacts(); }
+catch (e) { console.error('[legacy] 启动清理失败：' + ((e && e.message) || e)); }
 // ── 设置库载入（两阶段之二）：api 就绪后用 settings.db 的真实值覆盖内存 config ──
 // 分两阶段：loadConfig() 需要 api 才能读 settings.db，而 api 的构造又需要 config.root（库路径由 storageDir 派生，无法自举）——
 // 故顶层先用「锚点 + 默认值」建 api，再用真值覆盖。
@@ -717,9 +695,6 @@ try { api.setLegacyDataDirs(legacyDataDirs()); } catch (e) { console.error('[leg
       n++;
     }
     runLog.sys('app.config', '设置库已载入（' + n + ' 项）', { keys: Object.keys(app).length });
-    // 首次引导：settings.db 尚未落过的键用 config.json 同名值补齐（幂等，详见 seedSettingsFromConfig）
-    const seed = seedSettingsFromConfig(readConfigDisk(), app);
-    for (const k of Object.keys(seed)) config[k] = seed[k];
     // 工作路径迁移落库（api 此时已就绪）：把旧顶层 root 写进 batch.root 并删除旧键，
     // 保持「唯一真相」。内存迁移已在 loadConfig 完成（首阶段就要用它定位工作目录）。
     if (_pendingRootMigration) {
@@ -731,7 +706,7 @@ try { api.setLegacyDataDirs(legacyDataDirs()); } catch (e) { console.error('[leg
       _pendingRootMigration = '';
       _pendingRootCleanup = false;
     } else if (_pendingRootCleanup) {
-      // 清理残留的旧顶层 root（batch.root 已是真相；留着它会被 seed 反复灌回、形成两个真相）
+      // 清理残留的旧顶层 root（batch.root 已是真相；留着它会与 batch.root 形成两个真相）
       try {
         api._removeAppSetting('root');
         runLog.sys('app.config', '已清理残留的顶层 root（工作路径的真相在 batch.root）', {});
@@ -1652,7 +1627,6 @@ function buildHttpExtraRoutes() {
         log_dir: runLog.getDir(),
         cache_keep_days: (() => { const n = parseInt(c.cache_keep_days, 10); return Number.isFinite(n) && n >= 0 ? n : 30; })(),
         cache_info: (() => { try { return api.cacheInfo(); } catch (e) { return {}; } })(),
-        show_maintenance: c.show_maintenance === true,
         notify_task_end: c.notify_task_end !== false,
         backup_dir: String(c.backup_dir || ''),
         backup_auto_clean: c.backup_auto_clean === true,
@@ -1990,7 +1964,6 @@ function registerIpc() {
       log_dir: runLog.getDir(),   // 运行日志目录（设置页「打开文件夹」用；与 HTTP 版 get_settings 对齐）
       cache_keep_days: (() => { const n = parseInt(c.cache_keep_days, 10); return Number.isFinite(n) && n >= 0 ? n : 30; })(),
       cache_info: (() => { try { return api.cacheInfo(); } catch (e) { return {}; } })(),
-      show_maintenance: c.show_maintenance === true,   // 「维护」板块可见性（用户侧默认关闭）
       notify_task_end: c.notify_task_end !== false,   // 任务通知（默认开启）
       backup_dir: String(c.backup_dir || ''),
       backup_auto_clean: c.backup_auto_clean === true,
