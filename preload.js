@@ -43,7 +43,6 @@ contextBridge.exposeInMainWorld('txapi', {
   clean_caches: () => invoke('clean_caches'),
   data_dir_scan: () => invoke('data_dir_scan'),                 // A6 数据目录清理：扫描可清项
   data_dir_clean: (keys) => invoke('data_dir_clean', keys),    // A6 数据目录清理：执行（进回收站）
-  uninstall_info: () => invoke('uninstall_info'),              // 卸载准备：数据位置与体积
   uninstall_confirm: (opts) => invoke('uninstall_confirm', opts), // 卸载准备：确认卸载（可一并删除个人数据）
   uninstall_cancel: () => invoke('uninstall_cancel'),           // 卸载准备：取消
   cancel_precheck: () => invoke('cancel_precheck'),

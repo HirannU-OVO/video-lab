@@ -47,20 +47,13 @@
   </div>
   <div class="body">
     <h1>卸载 Video Lab</h1>
-    <p class="sub">卸载将移除程序文件。个人数据默认保留，重新安装后可继续使用。</p>
-    <div class="card">
-      <div class="row">个人数据</div>
-      <div class="path" id="dataPath">正在读取…</div>
-      <div class="row" style="margin-top:8px">占用空间 <b id="dataSize">—</b></div>
-    </div>
     <label class="check" id="wrapCheck">
       <input type="checkbox" id="chkDelete">
       <span>
         <b>同时删除个人数据</b>
-        <span class="hint block">包含设置、缓存、任务记录与运行日志。删除后移入回收站，可从回收站还原。</span>
+        <span class="hint block">包含设置、缓存、任务记录与运行日志，删除后不可恢复。</span>
       </span>
     </label>
-    <p class="warn" id="warnNoData">未检测到可清理的个人数据。</p>
   </div>
   <div class="foot">
     <button class="btn" id="btnCancel">取消</button>
@@ -69,7 +62,7 @@
   <div class="modal" id="modal">
     <div class="box">
       <h2>确认删除个人数据？</h2>
-      <p>设置、缓存、任务记录与运行日志将被移入回收站，可从回收站还原。</p>
+      <p>设置、缓存、任务记录与运行日志将被删除，删除后不可恢复。</p>
       <div class="acts">
         <button class="btn" id="btnBack">取消</button>
         <button class="btn danger" id="btnConfirm">删除并卸载</button>

@@ -2154,7 +2154,7 @@ function openUninstallWindow() {
     return;
   }
   uninstallWin = new BrowserWindow({
-    width: 560, height: 470, resizable: false, maximizable: false, minimizable: false,
+    width: 560, height: 320, resizable: false, maximizable: false, minimizable: false,
     frame: false, show: false, alwaysOnTop: true, skipTaskbar: !!process.env.VL_UNINSTALL_HEADLESS,
     title: '卸载 Video Lab',
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false },
@@ -2171,25 +2171,7 @@ function openUninstallWindow() {
   uninstallWin.on('closed', () => { uninstallWin = null; });
 }
 
-// 体积与文件数（权限不足或路径消失按 0 计）
-async function measureDir(dir) {
-  let bytes = 0, files = 0;
-  async function walk(d) {
-    let names = [];
-    try { names = await fs.promises.readdir(d, { withFileTypes: true }); } catch (e) { return; }
-    for (const it of names) {
-      const p = path.join(d, it.name);
-      if (it.isDirectory()) { await walk(p); continue; }
-      try { const st = await fs.promises.stat(p); bytes += st.size; files++; } catch (e) {}
-    }
-  }
-  await walk(dir);
-  return { bytes, files };
-}
-
-async function collectUninstallInfo() {
-  const dataDir = storageDir();
-  const markerDir = localAppDir();
+function resolveUninstallPaths() {
   const installDir = path.dirname(process.execPath);
   // 按实际文件名定位卸载器（文件名随产品名变化）
   let uninstaller = path.join(installDir, 'Uninstall ' + (IS_PREVIEW ? 'Video Lab Preview' : 'Video Lab') + '.exe');
@@ -2199,16 +2181,11 @@ async function collectUninstallInfo() {
       if (cand.length) uninstaller = path.join(installDir, cand[0]);
     } catch (e) {}
   }
-  const data = await measureDir(dataDir);
-  const marker = await measureDir(markerDir);
   return {
-    ok: true,
-    dataDir, dataBytes: data.bytes, dataFiles: data.files,
-    markerDir, markerBytes: marker.bytes,
+    dataDir: storageDir(),
+    markerDir: localAppDir(),
     installDir, uninstaller,
     uninstallerExists: fs.existsSync(uninstaller),
-    hasData: (data.bytes + data.files + marker.bytes) > 0,
-    version: app.getVersion(),
   };
 }
 
@@ -2224,8 +2201,8 @@ function launchUninstallHelper(info, deleteData) {
     'if (' + (deleteData ? '$true' : '$false') + ') {',
     '  foreach ($d in @(' + q(info.dataDir) + ', ' + q(info.markerDir) + ')) {',
     '    if (-not (Test-Path -LiteralPath $d)) { continue }',
-    '    $ok = $false',
-    '    try { $sh = New-Object -ComObject Shell.Application; $sh.NameSpace(0xA).MoveHere($d) | Out-Null; $ok = -not (Test-Path -LiteralPath $d) } catch {}',
+    '    try { Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue } catch {}',
+    '    $ok = -not (Test-Path -LiteralPath $d)',
     "    ('data ' + $d + ' removed=' + $ok) | Out-File -LiteralPath $log -Append -Encoding UTF8",
     '  }',
     '}',
@@ -2264,7 +2241,7 @@ function launchUninstallHelper(info, deleteData) {
 async function startUninstall(opts) {
   const deleteData = !!(opts && opts.deleteData);
   let info = null;
-  try { info = await collectUninstallInfo(); } catch (e) {}
+  try { info = resolveUninstallPaths(); } catch (e) {}
   try {
     runLog.sys('uninstall.start', '开始卸载', { deleteData, installDir: info && info.installDir });
   } catch (e) {}
@@ -2280,7 +2257,6 @@ async function startUninstall(opts) {
 }
 
 function registerUninstallIpc() {
-  ipcMain.handle('uninstall_info', () => collectUninstallInfo());
   ipcMain.handle('uninstall_confirm', (e, opts) => startUninstall(opts));
   ipcMain.handle('uninstall_cancel', () => { isQuitting = true; setTimeout(() => app.exit(0), 100); return { ok: true }; });
 }
