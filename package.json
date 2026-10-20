@@ -38,14 +38,14 @@
       "engines/modules/**/*",
       "engines/tools/**/*",
       "frontend/**/*",
-      "build/uninstall-entry.ps1",
       "icon/**/*",
       "README.md",
       "CHANGELOG.md",
       "LICENSE",
       "LICENSE-ARTWORK",
       "NOTICE",
-      "package.json"
+      "package.json",
+      "build/uninstall-entry.js"
     ],
     "extraResources": [
       {

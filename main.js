@@ -2267,8 +2267,9 @@ async function startUninstall(opts, installDirOverride) {
 
 // 已运行的实例被要求打开卸载窗口时（second-instance），这两个通道必须早已注册 —— 否则窗口能显示但点不动
 let uninstallIpcReady = false;
-// 带静默参数（/S、--updated）被调起时视为脚本化/安装器调用：直通卸载、不弹询问，
-// 免得无人应答把调用方挂住；安装目录优先从 _?= 参数取（此时 exe 可能是被复制到临时目录的副本）。
+// 带静默参数（/S、--updated）被调起时视为脚本化/安装器调用：直通、不弹询问，
+// 免得无人应答把调用方挂住；此时只结束正在运行的同名实例并以 0 退出，
+// 让调用方（安装器）认为旧版已卸下、继续覆盖安装 —— 卸载动作留给调用方自己完成。
 function installerCallInfo() {
   let installDir = '';
   for (const a of process.argv) {
@@ -2280,7 +2281,29 @@ function installerCallInfo() {
       return { installDir: installDir };
     }
   }
+  // 卸载入口脚本判定"自己是被安装器复制到临时目录执行的"时带上的标记
+  if (process.argv.indexOf('--from-installer') >= 0) return { installDir: installDir };
   return null;
+}
+
+// 结束正在运行的同名实例：安装器随后要覆盖这些文件，被占用会失败。
+// ⚠ 普通 detached 子进程会随本进程退出被终止，必须经 wscript 脱离进程树。
+function killRunningInstances(exeName) {
+  try {
+    const stamp = Date.now();
+    const ps1 = path.join(os.tmpdir(), 'vl-kill-instances-' + stamp + '.ps1');
+    const script = [
+      'Start-Sleep -Seconds 2',
+      "Get-Process -Name '" + String(exeName).replace(/'/g, "''") + "' -ErrorAction SilentlyContinue | Stop-Process -Force",
+    ].join('\r\n');
+    fs.writeFileSync(ps1, '\uFEFF' + script, 'utf8');
+    const vbs = path.join(os.tmpdir(), 'vl-kill-instances-' + stamp + '.vbs');
+    const cmd = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + ps1 + '"';
+    const vbsText = 'CreateObject("WScript.Shell").Run "' + cmd.replace(/"/g, '""') + '", 0, False';
+    fs.writeFileSync(vbs, Buffer.concat([Buffer.from([0xFF, 0xFE]), Buffer.from(vbsText, 'utf16le')]));
+    const child = require('child_process').spawn('wscript.exe', [vbs], { detached: true, stdio: 'ignore', windowsHide: true });
+    child.on('spawn', () => child.unref());
+  } catch (e) {}
 }
 
 function registerUninstallIpc() {
@@ -2309,30 +2332,14 @@ function registerUninstallIpc() {
   });
 }
 
-// 统一卸载入口（幂等，每次启动校正）：
-//   ① 框架卸载器（NSIS 写的 Uninstall <产品名>.exe）挪进 uninstaller\ 子目录并改名，避免用户在安装目录里误选；
-//   ② 注册表 UninstallString 指向本程序的询问窗口；
-//   ③ QuietUninstallString 仍指向子目录里的 core（自动更新与脚本化路径不受影响）；
-//   ④ 开始菜单放一个「卸载 Video Lab」快捷方式，直达询问窗口。
+// 统一卸载入口（幂等，每次启动校正）：注册表入口 + 开始菜单文件夹 + 安装目录中文入口。
 // 只在安装形态生效；任何一步失败都保持原样，不影响既有卸载能力。
 function ensureUninstallEntryPointsHere() {
   if (!app.isPackaged || IS_UNINSTALL_PREP || IS_PREVIEW) return;
-  const installDir = path.dirname(process.execPath);
-  const src = path.join(__dirname, 'build', 'uninstall-entry.ps1');
-  const f = path.join(os.tmpdir(), 'vl-uninstall-entry.ps1');
   try {
-    fs.writeFileSync(f, fs.readFileSync(src));   // 从 asar 内取出脚本再落到临时目录执行
-    const env = Object.assign({}, process.env, { VL_INSTALL_DIR: installDir, VL_EXE: process.execPath });
-    const { execFile } = require('child_process');
-    execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', f],
-      { env: env, timeout: 30000, windowsHide: true },
-      (err, stdout) => {
-        try {
-          const line = String(stdout || '').trim().split(/\r?\n/).filter(Boolean).pop() || '';
-          const [key, core] = line.split('|');
-          runLog.sys('uninstall.entry', key ? '卸载入口已统一到本程序' : '未找到卸载注册表项（保持原样）', { key, core });
-        } catch (e) {}
-      });
+    const { applyUninstallEntry } = require('./build/uninstall-entry.js');
+    const key = applyUninstallEntry(path.dirname(process.execPath), process.execPath);
+    runLog.sys('uninstall.entry', key ? '卸载入口已统一到本程序' : '未找到卸载注册表项（保持原样）', { key });
   } catch (e) {}
 }
 
@@ -2434,9 +2441,13 @@ app.whenReady().then(async () => {
   // 卸载准备：只装载询问窗口所需的能力后返回
   if (IS_UNINSTALL_PREP) {
     registerUninstallIpc();
-    // 被安装器调起（升级/重装旧版）：直接卸载并保留数据，不弹询问
+    // 被安装器调起（升级/重装旧版）：结束运行中的实例后以 0 退出，让安装器继续覆盖安装
     const byInstaller = installerCallInfo();
-    if (byInstaller) { await startUninstall({ deleteData: false }, byInstaller.installDir); return; }
+    if (byInstaller) {
+      killRunningInstances(path.basename(process.execPath, '.exe'));
+      setTimeout(() => { isQuitting = true; app.exit(0); }, 300);
+      return;
+    }
     openUninstallWindow();
     return;
   }

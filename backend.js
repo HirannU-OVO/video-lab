@@ -1400,6 +1400,8 @@ class Api {
       if (this._versionsFp.get(key) === fp) {
         const alive = fromCache.filter((v) => { try { return fs.existsSync(v.path); } catch (e) { return false; } });
         alive.forEach((v) => { v.hasLog = this._versionHasLog(v, project, name, logs); });
+        // 回写本次算出的指纹：否则本进程后续查询每次都要重算指纹、重扫整棵项目目录
+        this._versionsFp.set(key, fp);
         return alive;
       }
       // 指纹不符：只重扫这个项目并就地更新缓存，重新派生后直接返回
