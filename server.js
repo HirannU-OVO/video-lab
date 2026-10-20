@@ -468,6 +468,10 @@ function startHttpServer(opts) {
       serveStatic(req, res, path.join(FRONTEND_DIR, 'guide.html'));
       return;
     }
+    if (pathname === '/uninstall' || pathname === '/uninstall.html') {
+      serveStatic(req, res, path.join(FRONTEND_DIR, 'uninstall.html'));
+      return;
+    }
     if (pathname === '/manifest.json') {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(manifest);

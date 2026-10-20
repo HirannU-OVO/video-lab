@@ -17,6 +17,25 @@ const os = require('os');
 const crypto = require('crypto');
 const { app, BrowserWindow, ipcMain, dialog, shell, Menu, Tray, nativeImage, net, screen } = require('electron');
 const _bootReqElectron = bootMs();
+
+// ── 预览版（Preview）分支 ──
+// 判定依据：**可执行文件名**（预览版打包为 "Video Lab Preview.exe"，正式版 "Video Lab.exe"，开发态 electron.exe）。
+//   ⚠ 不用 app.getName()：asar 内 package.json 顶层没有 productName 时它回落到 name（"video-lab"），
+//     正式版与预览版会得到同一个值，判定失效。exe 名由 build.productName 决定，是这里唯一可靠的事实源。
+//   与 preload.js 的 IS_PREVIEW_BUILD 同源同义（那边也按 execPath 判断）。
+// 目的：改造期让"预览版"与正式版**同时运行且数据互不干扰**（方案见 开发相关文档/方案/Preview双版本隔离方案.md）。
+// ⚠ 必须在下方 app.setPath('userData') 与 appdataConfigPath() 之前定义 —— 后者在模块顶层即被调用。
+const IS_PREVIEW = (() => {
+  try {
+    if (process.argv.indexOf('--vl-preview') >= 0) return true;
+    return /preview/i.test(String(process.execPath || ''));
+  } catch (e) { return false; }
+})();
+// 打包 version 之外再落一行启动日志，便于排查"我到底跑的是哪一版、写的是哪份数据"
+console.log('[BUILD] preview=' + IS_PREVIEW + ' exe=' + path.basename(process.execPath || ''));
+// 预览版独占默认端口：正式版默认 9527，预览版 9528，避免抢 bind（只影响"未配置端口时"的默认值）
+const DEFAULT_HTTP_PORT = IS_PREVIEW ? 9528 : 9527;
+
 const { Api, DEFAULT_CONFIG } = require('./backend');
 const { startHttpServer } = require('./server');
 const _bootReqBackend = bootMs();
@@ -28,7 +47,7 @@ function httpUrl() {
   if (httpServerInfo && httpServerInfo.ok) return httpServerInfo.url;
   try {
     if (typeof config !== 'undefined' && config && config.http_token) {
-      const p = parseInt(config.http_port, 10) || 9527;
+      const p = parseInt(config.http_port, 10) || DEFAULT_HTTP_PORT;
       return 'http://localhost:' + p + '/?token=' + config.http_token;
     }
   } catch (e) {}
@@ -51,7 +70,7 @@ function restartHttpServer() {
     api,
     getMainWin: () => mainWin,
     getSettingsWin: () => null,   // 设置已内嵌为主窗口面板，不再有独立窗口
-    httpPort: parseInt(config.http_port, 10) || 9527,
+    httpPort: parseInt(config.http_port, 10) || DEFAULT_HTTP_PORT,
     httpToken: httpToken,
     extraRoutes: buildHttpExtraRoutes(),
     runLog: runLog,
@@ -64,12 +83,18 @@ function restartHttpServer() {
 }
 
 // 单实例锁：统一 userData 到固定全局路径（跨盘 / 开发版与打包版共享同一把锁），使"同一时刻仅允许一个主进程实例"真正生效；重复打开时唤出现有实例主窗口
-app.setPath('userData', path.join(os.homedir(), '.video-lab'));
+// 预览版必须用独立 userData：锁的标识就是它，且其中存放 Local Storage（皮肤 vl_skin / token tx_token）。
+//   只绕锁而不隔离数据 → 两版会同时写同一份 cache.db/settings.db，比"不能双开"更糟。
+app.setPath('userData', path.join(os.homedir(), IS_PREVIEW ? '.video-lab-preview' : '.video-lab'));
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
   app.quit();
 } else {
-  app.on('second-instance', () => showMainWindow());
+  app.on('second-instance', (e, argv) => {
+    // 卸载请求转交给已有实例处理
+    if (argv && argv.indexOf('--uninstall-prep') >= 0) { openUninstallWindow(); return; }
+    showMainWindow();
+  });
 }
 
 // 版本形态判定：electron-builder portable 运行时注入 PORTABLE_EXECUTABLE_FILE；
@@ -86,6 +111,9 @@ const IS_PORTABLE = (() => {
 
 // 开机自启动形态：由登录项以 --autostart 启动时静默到托盘，不打扰用户
 const IS_AUTOSTART = process.argv.includes('--autostart');
+
+// 卸载准备形态：只显示卸载询问窗口，不进入主界面（不初始化托盘 / HTTP / 扫描 / 任务恢复）
+const IS_UNINSTALL_PREP = process.argv.includes('--uninstall-prep');
 
 function projectDir() {
   if (!app.isPackaged) return __dirname;
@@ -124,7 +152,8 @@ function appdataConfigPath() {
   if (!base) { try { base = process.env.APPDATA || ''; } catch (e) {} }
   if (!base) { try { base = app.getPath('home'); } catch (e) {} }
   if (!base) { try { base = app.getPath('userData'); } catch (e) {} }
-  return path.join(base, 'Video Lab', 'config.json');
+  // 预览版使用独立数据目录：三库（config.json / settings.db / cache.db）与正式版完全分离，避免双开互相写坏
+  return path.join(base, IS_PREVIEW ? 'Video Lab Preview' : 'Video Lab', 'config.json');
 }
 // 数据目录**恒为 %APPDATA%\Video Lab**（写死，不提供「程序目录」选项）：
 //   程序目录可能在受控环境下不可写，且卸载重装会随目录丢数据；旧版留在程序目录的数据由下方「启动期搬迁」接管。
@@ -731,9 +760,12 @@ const ICON_DIR = path.join(__dirname, 'icon');
 let _trayIcon = null;
 function trayIcon() {
   if (_trayIcon) return _trayIcon;
-  const img = nativeImage.createFromPath(path.join(ICON_DIR, 'tray-icon.png'));
+  // 预览版用橙色剪影托盘图标（icon/preview/）：托盘只有 16px，深灰在深色任务栏上几乎看不见，
+  // 橙色在深/浅任务栏都醒目，且与标题栏"预览版"徽标同色 —— 一眼能区分自己点的是哪一版。
+  const dir = IS_PREVIEW ? path.join(ICON_DIR, 'preview') : ICON_DIR;
+  const img = nativeImage.createFromPath(path.join(dir, 'tray-icon.png'));
   for (const rep of ['tray-icon@1.25x.png', 'tray-icon@1.5x.png', 'tray-icon@2x.png']) {
-    img.addRepresentation(nativeImage.createFromPath(path.join(ICON_DIR, rep)));
+    img.addRepresentation(nativeImage.createFromPath(path.join(dir, rep)));
   }
   _trayIcon = img.isEmpty() ? nativeImage.createEmpty() : img;
   return _trayIcon;
@@ -771,7 +803,8 @@ function showMainWindow() {
 function createTray() {
   if (tray) return; // 已创建：避免重复 new Tray 与重复绑定 click 回调（会触发多次 showMainWindow）
   tray = new Tray(trayIcon());
-  tray.setToolTip('Video Lab');
+  // 悬停提示：预览版必须自报身份，否则两个托盘图标并排时无法分辨
+  tray.setToolTip(IS_PREVIEW ? 'Video Lab 预览版（与正式版数据互不影响）' : 'Video Lab');
   // 左键直接唤起主窗口；右键唤出自绘托盘菜单
   // ⚠ 点击留痕放在回调**最前**：用于区分两种「图标在、点不动」——① 没有「托盘收到点击」日志 = 事件没送达主进程（托盘对象异常）；
   //   ② 有「托盘收到点击」但没有后续「托盘唤出主窗口」= 回调执行了但卡在 show() 之前。
@@ -861,7 +894,7 @@ function createToolWindow() {
   if (toolWin && !toolWin.isDestroyed()) { try { if (!toolWin.isVisible()) toolWin.show(); } catch (e) {} toolWin.focus(); return toolWin; }
   // 尺寸=主窗口（1360×860）同比例缩小到 0.75：1020×645 —— 一眼看出是同一套界面的小窗
   toolWin = new BrowserWindow({
-    title: 'Video Lab - 视频处理', width: 1020, height: 645, minWidth: 760, minHeight: 520,
+    title: IS_PREVIEW ? 'Video Lab Preview - 视频处理' : 'Video Lab - 视频处理', width: 1020, height: 645, minWidth: 760, minHeight: 520,
     resizable: true, frame: false, show: false,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false },
   });
@@ -890,7 +923,7 @@ let taskWin = null;
 function createTaskWindow() {
   // 复用已有窗口：同工具窗，需显式 show 回前台
   if (taskWin && !taskWin.isDestroyed()) { try { if (!taskWin.isVisible()) taskWin.show(); } catch (e) {} taskWin.focus(); return taskWin; }
-  taskWin = new BrowserWindow({ title: 'Video Lab - 任务', width: 760, height: 620, resizable: false, maximizable: false, minimizable: false, frame: false, show: false, webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false } });
+  taskWin = new BrowserWindow({ title: IS_PREVIEW ? 'Video Lab Preview - 任务' : 'Video Lab - 任务', width: 760, height: 620, resizable: false, maximizable: false, minimizable: false, frame: false, show: false, webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false } });
   // 首帧就绪后再显示：避免「先出现空白窗、再刷出内容」的闪烁观感
   taskWin.once('ready-to-show', async () => { await waitForWindowContent(taskWin); try { if (taskWin && !taskWin.isDestroyed()) { taskWin.show(); taskWin.focus(); } } catch (e) {} });
   taskWin.loadFile(path.join(__dirname, 'frontend', 'task.html'));
@@ -1294,7 +1327,7 @@ function buildHttpExtraRoutes() {
       const env = await api.checkEnvAsync().catch(() => null);
       return {
         ok: true,
-        app: 'Video Lab',
+        app: IS_PREVIEW ? 'Video Lab Preview' : 'Video Lab',
         version: app.getVersion(),
         form: IS_PORTABLE ? 'portable' : 'installed',
         autostart: IS_AUTOSTART,
@@ -1304,7 +1337,7 @@ function buildHttpExtraRoutes() {
         logDir: runLog.getDir(),
         root: api.getRoot(),
         skin: c.skin || '',
-        http: { url: httpUrl(), port: parseInt(c.http_port, 10) || 9527 },
+        http: { url: httpUrl(), port: parseInt(c.http_port, 10) || DEFAULT_HTTP_PORT },
         env: env,
         modules: [
           { id: 'batch', ready: ready(path.join(enginesDir, 'modules', 'batch', 'index.js')) },
@@ -1353,7 +1386,7 @@ function buildHttpExtraRoutes() {
         config_path_appdata: path.dirname(appdataConfigPath()),
         autostart: c.autostart === true,
         close_behavior: c.close_behavior === 'exit' ? 'exit' : 'tray',
-        http_port: parseInt(c.http_port, 10) || 9527,
+        http_port: parseInt(c.http_port, 10) || DEFAULT_HTTP_PORT,
         http_token: String(c.http_token || ''),
         http_url: httpUrl(),
         log_dir: runLog.getDir(),
@@ -1398,7 +1431,7 @@ function buildHttpExtraRoutes() {
       saveConfig(cfg);   // 只写实际变更的键：settings.db（唯一读取来源）+ config.json（旧版本兼容快照）
       Object.assign(config, cfg);
       // 端口/令牌实际变更才重启 HTTP 服务器（重启会断开浏览器既有 SSE 连接）；皮肤等其它设置变更保留连接，settings_saved 广播可即时送达浏览器，无需手动刷新
-      const httpPortWanted = parseInt(cfg.http_port, 10) || 9527;
+      const httpPortWanted = parseInt(cfg.http_port, 10) || DEFAULT_HTTP_PORT;
       const httpTokenWanted = String(cfg.http_token || '').trim();
       if (httpServerInfo && httpServerInfo.close && (httpServerInfo.port !== httpPortWanted || httpServerInfo.token !== httpTokenWanted)) {
         try { httpServerInfo.close(); } catch (e) {}
@@ -1702,7 +1735,7 @@ function registerIpc() {
       backup_root_effective: api.getBackupRoot(),   // 备份实际落盘根（自定义目录时含「Video Lab 备份」层）
       autostart: c.autostart === true,
       close_behavior: c.close_behavior === 'exit' ? 'exit' : 'tray',
-      http_port: parseInt(c.http_port, 10) || 9527,
+      http_port: parseInt(c.http_port, 10) || DEFAULT_HTTP_PORT,
       http_token: String(c.http_token || ''),
       http_url: httpUrl(),
     };
@@ -1735,10 +1768,11 @@ function registerIpc() {
     mergeAppSettings(cfg, s);   // 应用级设置（含 v2.2.1 新增项）
     saveConfig(cfg);   // 只写实际变更的键：settings.db（唯一读取来源）+ config.json（旧版本兼容快照）
     // 应用开机自启动（openAtLogin + --autostart 静默托盘启动）；开发版不注册，避免污染开发环境
-    try { if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: cfg.autostart === true, args: ['--autostart'] }); } catch (e) {}
+    // 预览版绝不注册开机自启：dir 包同样是 isPackaged，不拦会与正式版各起一个托盘图标
+    try { if (app.isPackaged && !IS_PREVIEW) app.setLoginItemSettings({ openAtLogin: cfg.autostart === true, args: ['--autostart'] }); } catch (e) {}
     Object.assign(config, cfg);
     // 端口/令牌实际变更才重启 HTTP 服务器（重启会断开浏览器既有 SSE 连接）；皮肤等其它设置变更保留连接，settings_saved 广播可即时送达浏览器，无需手动刷新
-    const httpPortWanted = parseInt(cfg.http_port, 10) || 9527;
+    const httpPortWanted = parseInt(cfg.http_port, 10) || DEFAULT_HTTP_PORT;
     const httpTokenWanted = String(cfg.http_token || '').trim();
     if (httpServerInfo && httpServerInfo.close && (httpServerInfo.port !== httpPortWanted || httpServerInfo.token !== httpTokenWanted)) {
       try { httpServerInfo.close(); } catch (e) {}
@@ -2082,7 +2116,7 @@ function createWindow() {
   // nodeIntegrationInSubFrames：让 preload 也注入 iframe。
   // 设置页已内嵌为主窗口面板（iframe），其 settings.js 依赖 preload 暴露的 window.txapi；
   // 不开此项则 iframe 内取不到，设置页所有接口都会失效。
-  mainWin = new BrowserWindow({ title: 'Video Lab', width: 1360, height: 860, minWidth: 1120, minHeight: 700, frame: false, show: false, webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false, nodeIntegrationInSubFrames: true } });
+  mainWin = new BrowserWindow({ title: IS_PREVIEW ? 'Video Lab Preview' : 'Video Lab', width: 1360, height: 860, minWidth: 1120, minHeight: 700, frame: false, show: false, webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false, nodeIntegrationInSubFrames: true } });
   mainWin.loadFile(path.join(__dirname, 'frontend', 'index.html'));
   // 页面加载完成即放行「窗口加载后」初始化。注册必须紧跟 loadFile：
   // ⚠ 若推迟到第一次 runAfterWindowLoad 调用时才注册，那时页面往往已经加载完，
@@ -2108,6 +2142,183 @@ function createWindow() {
     if (!isQuitting) { e.preventDefault(); handleMainWindowClose(); }
   });
   mainWin.on('closed', () => { mainWin = null; });
+}
+
+// ═══ 卸载准备 ═══
+// 卸载询问窗口：收集「是否一并删除个人数据」，随后交给原卸载程序收尾。
+let uninstallWin = null;
+
+function openUninstallWindow() {
+  if (uninstallWin && !uninstallWin.isDestroyed()) {
+    try { uninstallWin.show(); uninstallWin.focus(); } catch (e) {}
+    return;
+  }
+  uninstallWin = new BrowserWindow({
+    width: 560, height: 470, resizable: false, maximizable: false, minimizable: false,
+    frame: false, show: false, alwaysOnTop: true, skipTaskbar: !!process.env.VL_UNINSTALL_HEADLESS,
+    title: '卸载 Video Lab',
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false },
+  });
+  uninstallWin.loadFile(path.join(__dirname, 'frontend', 'uninstall.html'));
+  // VL_UNINSTALL_HEADLESS=1：渲染在屏幕外，供自动化验证读取界面
+  const headless = !!process.env.VL_UNINSTALL_HEADLESS;
+  uninstallWin.once('ready-to-show', () => {
+    try {
+      if (headless) { uninstallWin.setPosition(-32000, -32000); uninstallWin.showInactive(); }
+      else { uninstallWin.show(); }
+    } catch (e) {}
+  });
+  uninstallWin.on('closed', () => { uninstallWin = null; });
+}
+
+// 体积与文件数（权限不足或路径消失按 0 计）
+async function measureDir(dir) {
+  let bytes = 0, files = 0;
+  async function walk(d) {
+    let names = [];
+    try { names = await fs.promises.readdir(d, { withFileTypes: true }); } catch (e) { return; }
+    for (const it of names) {
+      const p = path.join(d, it.name);
+      if (it.isDirectory()) { await walk(p); continue; }
+      try { const st = await fs.promises.stat(p); bytes += st.size; files++; } catch (e) {}
+    }
+  }
+  await walk(dir);
+  return { bytes, files };
+}
+
+async function collectUninstallInfo() {
+  const dataDir = storageDir();
+  const markerDir = localAppDir();
+  const installDir = path.dirname(process.execPath);
+  // 按实际文件名定位卸载器（文件名随产品名变化）
+  let uninstaller = path.join(installDir, 'Uninstall ' + (IS_PREVIEW ? 'Video Lab Preview' : 'Video Lab') + '.exe');
+  if (!fs.existsSync(uninstaller)) {
+    try {
+      const cand = fs.readdirSync(installDir).filter((n) => /^Uninstall .+\.exe$/i.test(n));
+      if (cand.length) uninstaller = path.join(installDir, cand[0]);
+    } catch (e) {}
+  }
+  const data = await measureDir(dataDir);
+  const marker = await measureDir(markerDir);
+  return {
+    ok: true,
+    dataDir, dataBytes: data.bytes, dataFiles: data.files,
+    markerDir, markerBytes: marker.bytes,
+    installDir, uninstaller,
+    uninstallerExists: fs.existsSync(uninstaller),
+    hasData: (data.bytes + data.files + marker.bytes) > 0,
+    version: app.getVersion(),
+  };
+}
+
+// 启动退出后执行的收尾脚本：（按选择）清理个人数据 → 调原卸载程序静默卸载。
+// ⚠ 清理必须由独立进程执行：本进程持有数据目录里的库文件句柄。
+function launchUninstallHelper(info, deleteData) {
+  const q = (p) => "'" + String(p).replace(/'/g, "''") + "'";
+  const lines = [
+    "$ErrorActionPreference = 'SilentlyContinue'",
+    'Start-Sleep -Seconds 3',
+    "$log = Join-Path $env:TEMP 'vl-uninstall.log'",
+    '(Get-Date -Format o) | Out-File -LiteralPath $log -Encoding UTF8',
+    'if (' + (deleteData ? '$true' : '$false') + ') {',
+    '  foreach ($d in @(' + q(info.dataDir) + ', ' + q(info.markerDir) + ')) {',
+    '    if (-not (Test-Path -LiteralPath $d)) { continue }',
+    '    $ok = $false',
+    '    try { $sh = New-Object -ComObject Shell.Application; $sh.NameSpace(0xA).MoveHere($d) | Out-Null; $ok = -not (Test-Path -LiteralPath $d) } catch {}',
+    "    ('data ' + $d + ' removed=' + $ok) | Out-File -LiteralPath $log -Append -Encoding UTF8",
+    '  }',
+    '}',
+    'if (Test-Path -LiteralPath ' + q(info.uninstaller) + ') {',
+    "  'run uninstaller' | Out-File -LiteralPath $log -Append -Encoding UTF8",
+    '  Start-Process -FilePath ' + q(info.uninstaller) + " -ArgumentList '/S' -Wait",
+    "} else { 'uninstaller missing' | Out-File -LiteralPath $log -Append -Encoding UTF8 }",
+  ];
+  const stamp = Date.now();
+  const ps1 = path.join(os.tmpdir(), 'vl-uninstall-' + stamp + '.ps1');
+  // UTF-8 带 BOM：脚本内含数据路径，PowerShell 按 UTF-8 读取
+  fs.writeFileSync(ps1, '\uFEFF' + lines.join('\r\n'), 'utf8');
+  // ⚠ 不能直接 spawn powershell：它会随本进程退出被终止；经 wscript 脱离进程树后再拉起。
+  const vbs = path.join(os.tmpdir(), 'vl-uninstall-' + stamp + '.vbs');
+  const cmd = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + ps1 + '"';
+  const vbsText = 'CreateObject("WScript.Shell").Run "' + cmd.replace(/"/g, '""') + '", 0, False';
+  fs.writeFileSync(vbs, Buffer.concat([Buffer.from([0xFF, 0xFE]), Buffer.from(vbsText, 'utf16le')]));   // UTF-16LE + BOM
+  return new Promise((resolve) => {
+    let settled = false;
+    const child = require('child_process').spawn('wscript.exe', [vbs],
+      { detached: true, stdio: 'ignore', windowsHide: true });
+    child.once('error', (e) => {
+      if (settled) return;
+      settled = true;
+      resolve({ ok: false, error: String((e && e.message) || e) });
+    });
+    child.once('spawn', () => {
+      if (settled) return;
+      settled = true;
+      resolve({ ok: true });
+      child.unref();
+    });
+  });
+}
+
+async function startUninstall(opts) {
+  const deleteData = !!(opts && opts.deleteData);
+  let info = null;
+  try { info = await collectUninstallInfo(); } catch (e) {}
+  try {
+    runLog.sys('uninstall.start', '开始卸载', { deleteData, installDir: info && info.installDir });
+  } catch (e) {}
+  if (!info || !info.uninstallerExists) return { ok: false, error: 'uninstaller' };
+  let launched = null;
+  try { launched = await launchUninstallHelper(info, deleteData); } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+  if (!launched || !launched.ok) {
+    try { runLog.sys('uninstall.startFail', '收尾进程未能启动', { error: launched && launched.error }); } catch (e) {}
+    return { ok: false, error: (launched && launched.error) || 'launch' };
+  }
+  setTimeout(() => { isQuitting = true; app.exit(0); }, 800);
+  return { ok: true };
+}
+
+function registerUninstallIpc() {
+  ipcMain.handle('uninstall_info', () => collectUninstallInfo());
+  ipcMain.handle('uninstall_confirm', (e, opts) => startUninstall(opts));
+  ipcMain.handle('uninstall_cancel', () => { isQuitting = true; setTimeout(() => app.exit(0), 100); return { ok: true }; });
+}
+
+// 把「应用和功能」里的卸载入口指向本程序，卸载时先显示询问窗口。
+// 只在安装形态生效；改写失败时保持原入口。
+function ensureUninstallEntryPointsHere() {
+  if (!app.isPackaged || IS_UNINSTALL_PREP) return;
+  const installDir = path.dirname(process.execPath);
+  const want = '"' + process.execPath + '" --uninstall-prep';
+  const lines = [
+    "$ErrorActionPreference = 'SilentlyContinue'",
+    "$root = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall'",
+    '$target = $env:VL_INSTALL_DIR',
+    'Get-ChildItem $root | ForEach-Object {',
+    '  $p = Get-ItemProperty $_.PSPath',
+    "  if ($p.UninstallString -and $p.UninstallString.Contains($target)) {",
+    '    if ($p.UninstallString -ne $env:VL_WANT) {',
+    '      Set-ItemProperty -Path $_.PSPath -Name UninstallString -Value $env:VL_WANT',
+    '    }',
+    '    $_.PSChildName',
+    '  }',
+    '}',
+  ];
+  const f = path.join(os.tmpdir(), 'vl-uninstall-entry-' + Date.now() + '.ps1');
+  try {
+    fs.writeFileSync(f, lines.join('\r\n'), 'utf8');
+    const env = Object.assign({}, process.env, { VL_INSTALL_DIR: installDir, VL_WANT: want });
+    const { execFile } = require('child_process');
+    execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', f],
+      { env: env, timeout: 20000, windowsHide: true },
+      (err, stdout) => {
+        try {
+          const key = String(stdout || '').trim().split(/\r?\n/).filter(Boolean).pop() || '';
+          runLog.sys('uninstall.entry', key ? '卸载入口已指向本程序' : '未找到卸载注册表项（保持原样）', { key });
+        } catch (e) {}
+      });
+  } catch (e) {}
 }
 
 // 启动阶段计时落日志（app.timing）：冷启动排查的数据来源
@@ -2202,14 +2413,24 @@ app.whenReady().then(async () => {
   // 应用身份（AppUserModelID）与 build.appId 统一（com.videolab.manager）：
   // 需配合「开始菜单快捷方式 + 相同 AUMID」一起注册，Windows 才能解析显示名（Video Lab）与图标；
   // 不可移除——缺失时任务管理器会把应用识别为框架名 "Electron"、图标解析失败（乱码）
-  try { app.setAppUserModelId('com.videolab.manager'); } catch (e) {}
+  // AUMID 与 build.appId 必须一致（打包exe.ps1 有对应预检）：预览版用独立 AUMID，
+  // 否则任务栏会把两版归到同一组，图标/窗口聚合也会混在一起。
+  try { app.setAppUserModelId(IS_PREVIEW ? 'com.videolab.preview' : 'com.videolab.manager'); } catch (e) {}
   Menu.setApplicationMenu(null);
+  // 卸载准备：只装载询问窗口所需的能力后返回
+  if (IS_UNINSTALL_PREP) {
+    registerUninstallIpc();
+    openUninstallWindow();
+    return;
+  }
   registerIpc();
   logTiming('whenReady 后 注册 IPC 完成');
   // ── 启动顺序原则：**能在窗口显示后做的，绝不放在窗口显示前** ──
   // 此处只保留窗口必须先有的最小集（createWindow）；ensureConfig / createTray / HTTP / restoreTasks 一律在首帧之后再跑，避免任一环节慢叠加成「点了图标迟迟不出窗口」。
   createWindow();
   logTiming('主窗口已创建（loadFile 已发起）');
+  // 卸载入口接管（窗口就绪后延迟执行）
+  setTimeout(() => { try { ensureUninstallEntryPointsHere(); } catch (e) {} }, 5000);
   // ── 启动期全量扫描：缓存未命中时后台预热（不弹窗、不推迟窗口显示） ──
   (() => {
     if (IS_AUTOSTART) return;                 // 自启形态静默，不打扰

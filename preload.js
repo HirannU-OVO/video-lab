@@ -10,6 +10,17 @@ const invoke = (channel, ...args) => ipcRenderer.invoke(channel, ...args);
 // 也会注入子框架；iframe 内的窗口类操作必须区别对待，见下方 window_* 接口。
 const IN_SUBFRAME = (() => { try { return window.self !== window.top; } catch (e) { return false; } })();
 
+// 构建通道：预览版（Preview）判定。
+// 依据 exe 名（productFilename）—— 预览版打包为 "Video Lab Preview.exe"，正式版为 "Video Lab.exe"，开发态是 electron.exe。
+// 与主进程的 IS_PREVIEW（app.getName()）同源同义：两者都由构建期 productName 派生，不会各说各话。
+// 前端只用它做"可见标识"（标题栏徽标 / 标题后缀），不用于任何能力分支 —— 能力判断属于 VL.host（见双端一致性清单）。
+const IS_PREVIEW_BUILD = (() => {
+  try {
+    if (process.argv.indexOf('--vl-preview') >= 0) return true;
+    return /preview/i.test(String(process.execPath || ''));
+  } catch (e) { return false; }
+})();
+
 contextBridge.exposeInMainWorld('txapi', {
   list_projects: (force) => invoke('list_projects', force),
   list_versions: (project, name, force) => invoke('list_versions', project, name, force),
@@ -32,6 +43,9 @@ contextBridge.exposeInMainWorld('txapi', {
   clean_caches: () => invoke('clean_caches'),
   data_dir_scan: () => invoke('data_dir_scan'),                 // A6 数据目录清理：扫描可清项
   data_dir_clean: (keys) => invoke('data_dir_clean', keys),    // A6 数据目录清理：执行（进回收站）
+  uninstall_info: () => invoke('uninstall_info'),              // 卸载准备：数据位置与体积
+  uninstall_confirm: (opts) => invoke('uninstall_confirm', opts), // 卸载准备：确认卸载（可一并删除个人数据）
+  uninstall_cancel: () => invoke('uninstall_cancel'),           // 卸载准备：取消
   cancel_precheck: () => invoke('cancel_precheck'),
 
   on_reset_progress: (cb) => {
@@ -201,3 +215,6 @@ contextBridge.exposeInMainWorld('txapi', {
   listen_window_max: () => { try { ipcRenderer.send('window_max_changed_listen'); } catch (e) {} },
   on_window_max_changed: (cb) => { ipcRenderer.on('window_max_changed', (e, m) => { try { cb(!!m); } catch (err) {} }); },
 });
+
+// 构建通道标识（预览版）：仅用于可见标识，不参与任何能力判断。
+contextBridge.exposeInMainWorld('vlBuild', { preview: IS_PREVIEW_BUILD });
