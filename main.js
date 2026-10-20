@@ -2154,7 +2154,7 @@ function openUninstallWindow() {
     return;
   }
   uninstallWin = new BrowserWindow({
-    width: 560, height: 320, resizable: false, maximizable: false, minimizable: false,
+    width: 520, height: 232, resizable: false, maximizable: false, minimizable: false,
     frame: false, show: false, alwaysOnTop: true, skipTaskbar: !!process.env.VL_UNINSTALL_HEADLESS,
     title: '卸载 Video Lab',
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false },
@@ -2256,9 +2256,18 @@ async function startUninstall(opts) {
   return { ok: true };
 }
 
+// 已运行的实例被要求打开卸载窗口时（second-instance），这两个通道必须早已注册 —— 否则窗口能显示但点不动
+let uninstallIpcReady = false;
 function registerUninstallIpc() {
+  if (uninstallIpcReady) return;
+  uninstallIpcReady = true;
   ipcMain.handle('uninstall_confirm', (e, opts) => startUninstall(opts));
-  ipcMain.handle('uninstall_cancel', () => { isQuitting = true; setTimeout(() => app.exit(0), 100); return { ok: true }; });
+  // 取消：只有「为卸载而单独启动的进程」才整个退出；已运行的实例只关掉这个窗口
+  ipcMain.handle('uninstall_cancel', () => {
+    if (IS_UNINSTALL_PREP) { isQuitting = true; setTimeout(() => app.exit(0), 100); }
+    else if (uninstallWin && !uninstallWin.isDestroyed()) uninstallWin.close();
+    return { ok: true };
+  });
 }
 
 // 把「应用和功能」里的卸载入口指向本程序，卸载时先显示询问窗口。
@@ -2400,6 +2409,7 @@ app.whenReady().then(async () => {
     return;
   }
   registerIpc();
+  registerUninstallIpc();
   logTiming('whenReady 后 注册 IPC 完成');
   // ── 启动顺序原则：**能在窗口显示后做的，绝不放在窗口显示前** ──
   // 此处只保留窗口必须先有的最小集（createWindow）；ensureConfig / createTray / HTTP / restoreTasks 一律在首帧之后再跑，避免任一环节慢叠加成「点了图标迟迟不出窗口」。

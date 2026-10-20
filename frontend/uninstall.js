@@ -9,22 +9,39 @@
     try { if (typeof api.uninstall_cancel === 'function') api.uninstall_cancel(); } catch (e) {}
   }
 
+  function showErr(msg) {
+    const el = $('errMsg');
+    if (!el) return;
+    el.textContent = msg;
+    el.classList.add('show');
+  }
+
+  function resetBtn() {
+    $('btnGo').disabled = false;
+    $('btnCancel').disabled = false;
+    $('btnConfirm').disabled = false;
+    $('btnGo').textContent = '继续卸载';
+  }
+
   async function run(deleteData) {
     $('btnGo').disabled = true;
     $('btnCancel').disabled = true;
     $('btnConfirm').disabled = true;
     $('btnGo').textContent = '正在卸载…';
     try {
+      if (typeof api.uninstall_confirm !== 'function') {
+        resetBtn();
+        showErr('无法启动卸载（界面与主程序未连通），请关闭后重试');
+        return;
+      }
       const r = await api.uninstall_confirm({ deleteData: deleteData });
       if (r && r.ok === false) {
-        $('btnGo').disabled = false;
-        $('btnCancel').disabled = false;
-        $('btnGo').textContent = '继续卸载';
+        resetBtn();
+        showErr(r.error === 'uninstaller' ? '未找到卸载程序，请重新安装后再卸载' : '启动卸载失败，请关闭后重试');
       }
     } catch (e) {
-      $('btnGo').disabled = false;
-      $('btnCancel').disabled = false;
-      $('btnGo').textContent = '继续卸载';
+      resetBtn();
+      showErr('启动卸载失败：' + ((e && e.message) || '未知错误'));
     }
   }
 
