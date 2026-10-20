@@ -17,6 +17,20 @@ const os = require('os');
 const crypto = require('crypto');
 const { app, BrowserWindow, ipcMain, dialog, shell, Menu, Tray, nativeImage, net, screen } = require('electron');
 const _bootReqElectron = bootMs();
+
+// 预览版标识：按可执行文件名判定（Video Lab Preview.exe / Video Lab.exe / 开发态 electron.exe）
+// ⚠ 不要改用 app.getName()：asar 内 package.json 无顶层 productName 时它回落到 name，两版同值
+// ⚠ 必须在下方 app.setPath('userData') 与 appdataConfigPath() 之前定义（后者在模块顶层即被调用）
+const IS_PREVIEW = (() => {
+  try {
+    if (process.argv.indexOf('--vl-preview') >= 0) return true;
+    return /preview/i.test(String(process.execPath || ''));
+  } catch (e) { return false; }
+})();
+console.log('[BUILD] preview=' + IS_PREVIEW + ' exe=' + path.basename(process.execPath || ''));
+// 默认端口：预览版 9528，正式版 9527（仅在未配置端口时生效）
+const DEFAULT_HTTP_PORT = IS_PREVIEW ? 9528 : 9527;
+
 const { Api, DEFAULT_CONFIG } = require('./backend');
 const { startHttpServer } = require('./server');
 const _bootReqBackend = bootMs();
@@ -28,7 +42,7 @@ function httpUrl() {
   if (httpServerInfo && httpServerInfo.ok) return httpServerInfo.url;
   try {
     if (typeof config !== 'undefined' && config && config.http_token) {
-      const p = parseInt(config.http_port, 10) || 9527;
+      const p = parseInt(config.http_port, 10) || DEFAULT_HTTP_PORT;
       return 'http://localhost:' + p + '/?token=' + config.http_token;
     }
   } catch (e) {}
@@ -51,7 +65,7 @@ function restartHttpServer() {
     api,
     getMainWin: () => mainWin,
     getSettingsWin: () => null,   // 设置已内嵌为主窗口面板，不再有独立窗口
-    httpPort: parseInt(config.http_port, 10) || 9527,
+    httpPort: parseInt(config.http_port, 10) || DEFAULT_HTTP_PORT,
     httpToken: httpToken,
     extraRoutes: buildHttpExtraRoutes(),
     runLog: runLog,
@@ -64,7 +78,8 @@ function restartHttpServer() {
 }
 
 // 单实例锁：统一 userData 到固定全局路径（跨盘 / 开发版与打包版共享同一把锁），使"同一时刻仅允许一个主进程实例"真正生效；重复打开时唤出现有实例主窗口
-app.setPath('userData', path.join(os.homedir(), '.video-lab'));
+// ⚠ 预览版须用独立 userData：锁的标识与浏览器存储（Local Storage）都挂在这个目录下
+app.setPath('userData', path.join(os.homedir(), IS_PREVIEW ? '.video-lab-preview' : '.video-lab'));
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
   app.quit();
@@ -124,7 +139,8 @@ function appdataConfigPath() {
   if (!base) { try { base = process.env.APPDATA || ''; } catch (e) {} }
   if (!base) { try { base = app.getPath('home'); } catch (e) {} }
   if (!base) { try { base = app.getPath('userData'); } catch (e) {} }
-  return path.join(base, 'Video Lab', 'config.json');
+  // 预览版使用独立数据目录（三库 config.json / settings.db / cache.db 同目录）
+  return path.join(base, IS_PREVIEW ? 'Video Lab Preview' : 'Video Lab', 'config.json');
 }
 // 数据目录**恒为 %APPDATA%\Video Lab**（写死，不提供「程序目录」选项）：
 //   程序目录可能在受控环境下不可写，且卸载重装会随目录丢数据；旧版留在程序目录的数据由下方「启动期搬迁」接管。
@@ -731,9 +747,12 @@ const ICON_DIR = path.join(__dirname, 'icon');
 let _trayIcon = null;
 function trayIcon() {
   if (_trayIcon) return _trayIcon;
-  const img = nativeImage.createFromPath(path.join(ICON_DIR, 'tray-icon.png'));
+  // 预览版托盘图标取 icon/preview/（橙色剪影）
+  // ⚠ 托盘图标只有 16px：深灰在深色任务栏上辨识度极低，预览版须用高饱和色
+  const dir = IS_PREVIEW ? path.join(ICON_DIR, 'preview') : ICON_DIR;
+  const img = nativeImage.createFromPath(path.join(dir, 'tray-icon.png'));
   for (const rep of ['tray-icon@1.25x.png', 'tray-icon@1.5x.png', 'tray-icon@2x.png']) {
-    img.addRepresentation(nativeImage.createFromPath(path.join(ICON_DIR, rep)));
+    img.addRepresentation(nativeImage.createFromPath(path.join(dir, rep)));
   }
   _trayIcon = img.isEmpty() ? nativeImage.createEmpty() : img;
   return _trayIcon;
@@ -771,7 +790,8 @@ function showMainWindow() {
 function createTray() {
   if (tray) return; // 已创建：避免重复 new Tray 与重复绑定 click 回调（会触发多次 showMainWindow）
   tray = new Tray(trayIcon());
-  tray.setToolTip('Video Lab');
+  // 托盘悬停提示（预览版带线别）
+  tray.setToolTip(IS_PREVIEW ? 'Video Lab 预览版（与正式版数据互不影响）' : 'Video Lab');
   // 左键直接唤起主窗口；右键唤出自绘托盘菜单
   // ⚠ 点击留痕放在回调**最前**：用于区分两种「图标在、点不动」——① 没有「托盘收到点击」日志 = 事件没送达主进程（托盘对象异常）；
   //   ② 有「托盘收到点击」但没有后续「托盘唤出主窗口」= 回调执行了但卡在 show() 之前。
@@ -861,7 +881,7 @@ function createToolWindow() {
   if (toolWin && !toolWin.isDestroyed()) { try { if (!toolWin.isVisible()) toolWin.show(); } catch (e) {} toolWin.focus(); return toolWin; }
   // 尺寸=主窗口（1360×860）同比例缩小到 0.75：1020×645 —— 一眼看出是同一套界面的小窗
   toolWin = new BrowserWindow({
-    title: 'Video Lab - 视频处理', width: 1020, height: 645, minWidth: 760, minHeight: 520,
+    title: IS_PREVIEW ? 'Video Lab Preview - 视频处理' : 'Video Lab - 视频处理', width: 1020, height: 645, minWidth: 760, minHeight: 520,
     resizable: true, frame: false, show: false,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false },
   });
@@ -890,7 +910,7 @@ let taskWin = null;
 function createTaskWindow() {
   // 复用已有窗口：同工具窗，需显式 show 回前台
   if (taskWin && !taskWin.isDestroyed()) { try { if (!taskWin.isVisible()) taskWin.show(); } catch (e) {} taskWin.focus(); return taskWin; }
-  taskWin = new BrowserWindow({ title: 'Video Lab - 任务', width: 760, height: 620, resizable: false, maximizable: false, minimizable: false, frame: false, show: false, webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false } });
+  taskWin = new BrowserWindow({ title: IS_PREVIEW ? 'Video Lab Preview - 任务' : 'Video Lab - 任务', width: 760, height: 620, resizable: false, maximizable: false, minimizable: false, frame: false, show: false, webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false } });
   // 首帧就绪后再显示：避免「先出现空白窗、再刷出内容」的闪烁观感
   taskWin.once('ready-to-show', async () => { await waitForWindowContent(taskWin); try { if (taskWin && !taskWin.isDestroyed()) { taskWin.show(); taskWin.focus(); } } catch (e) {} });
   taskWin.loadFile(path.join(__dirname, 'frontend', 'task.html'));
@@ -1294,7 +1314,7 @@ function buildHttpExtraRoutes() {
       const env = await api.checkEnvAsync().catch(() => null);
       return {
         ok: true,
-        app: 'Video Lab',
+        app: IS_PREVIEW ? 'Video Lab Preview' : 'Video Lab',
         version: app.getVersion(),
         form: IS_PORTABLE ? 'portable' : 'installed',
         autostart: IS_AUTOSTART,
@@ -1304,7 +1324,7 @@ function buildHttpExtraRoutes() {
         logDir: runLog.getDir(),
         root: api.getRoot(),
         skin: c.skin || '',
-        http: { url: httpUrl(), port: parseInt(c.http_port, 10) || 9527 },
+        http: { url: httpUrl(), port: parseInt(c.http_port, 10) || DEFAULT_HTTP_PORT },
         env: env,
         modules: [
           { id: 'batch', ready: ready(path.join(enginesDir, 'modules', 'batch', 'index.js')) },
@@ -1353,7 +1373,7 @@ function buildHttpExtraRoutes() {
         config_path_appdata: path.dirname(appdataConfigPath()),
         autostart: c.autostart === true,
         close_behavior: c.close_behavior === 'exit' ? 'exit' : 'tray',
-        http_port: parseInt(c.http_port, 10) || 9527,
+        http_port: parseInt(c.http_port, 10) || DEFAULT_HTTP_PORT,
         http_token: String(c.http_token || ''),
         http_url: httpUrl(),
         log_dir: runLog.getDir(),
@@ -1398,7 +1418,7 @@ function buildHttpExtraRoutes() {
       saveConfig(cfg);   // 只写实际变更的键：settings.db（唯一读取来源）+ config.json（旧版本兼容快照）
       Object.assign(config, cfg);
       // 端口/令牌实际变更才重启 HTTP 服务器（重启会断开浏览器既有 SSE 连接）；皮肤等其它设置变更保留连接，settings_saved 广播可即时送达浏览器，无需手动刷新
-      const httpPortWanted = parseInt(cfg.http_port, 10) || 9527;
+      const httpPortWanted = parseInt(cfg.http_port, 10) || DEFAULT_HTTP_PORT;
       const httpTokenWanted = String(cfg.http_token || '').trim();
       if (httpServerInfo && httpServerInfo.close && (httpServerInfo.port !== httpPortWanted || httpServerInfo.token !== httpTokenWanted)) {
         try { httpServerInfo.close(); } catch (e) {}
@@ -1702,7 +1722,7 @@ function registerIpc() {
       backup_root_effective: api.getBackupRoot(),   // 备份实际落盘根（自定义目录时含「Video Lab 备份」层）
       autostart: c.autostart === true,
       close_behavior: c.close_behavior === 'exit' ? 'exit' : 'tray',
-      http_port: parseInt(c.http_port, 10) || 9527,
+      http_port: parseInt(c.http_port, 10) || DEFAULT_HTTP_PORT,
       http_token: String(c.http_token || ''),
       http_url: httpUrl(),
     };
@@ -1735,10 +1755,11 @@ function registerIpc() {
     mergeAppSettings(cfg, s);   // 应用级设置（含 v2.2.1 新增项）
     saveConfig(cfg);   // 只写实际变更的键：settings.db（唯一读取来源）+ config.json（旧版本兼容快照）
     // 应用开机自启动（openAtLogin + --autostart 静默托盘启动）；开发版不注册，避免污染开发环境
-    try { if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: cfg.autostart === true, args: ['--autostart'] }); } catch (e) {}
+    // 开机自启（预览版不注册）
+    try { if (app.isPackaged && !IS_PREVIEW) app.setLoginItemSettings({ openAtLogin: cfg.autostart === true, args: ['--autostart'] }); } catch (e) {}
     Object.assign(config, cfg);
     // 端口/令牌实际变更才重启 HTTP 服务器（重启会断开浏览器既有 SSE 连接）；皮肤等其它设置变更保留连接，settings_saved 广播可即时送达浏览器，无需手动刷新
-    const httpPortWanted = parseInt(cfg.http_port, 10) || 9527;
+    const httpPortWanted = parseInt(cfg.http_port, 10) || DEFAULT_HTTP_PORT;
     const httpTokenWanted = String(cfg.http_token || '').trim();
     if (httpServerInfo && httpServerInfo.close && (httpServerInfo.port !== httpPortWanted || httpServerInfo.token !== httpTokenWanted)) {
       try { httpServerInfo.close(); } catch (e) {}
@@ -2082,7 +2103,7 @@ function createWindow() {
   // nodeIntegrationInSubFrames：让 preload 也注入 iframe。
   // 设置页已内嵌为主窗口面板（iframe），其 settings.js 依赖 preload 暴露的 window.txapi；
   // 不开此项则 iframe 内取不到，设置页所有接口都会失效。
-  mainWin = new BrowserWindow({ title: 'Video Lab', width: 1360, height: 860, minWidth: 1120, minHeight: 700, frame: false, show: false, webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false, nodeIntegrationInSubFrames: true } });
+  mainWin = new BrowserWindow({ title: IS_PREVIEW ? 'Video Lab Preview' : 'Video Lab', width: 1360, height: 860, minWidth: 1120, minHeight: 700, frame: false, show: false, webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false, nodeIntegrationInSubFrames: true } });
   mainWin.loadFile(path.join(__dirname, 'frontend', 'index.html'));
   // 页面加载完成即放行「窗口加载后」初始化。注册必须紧跟 loadFile：
   // ⚠ 若推迟到第一次 runAfterWindowLoad 调用时才注册，那时页面往往已经加载完，
@@ -2202,7 +2223,8 @@ app.whenReady().then(async () => {
   // 应用身份（AppUserModelID）与 build.appId 统一（com.videolab.manager）：
   // 需配合「开始菜单快捷方式 + 相同 AUMID」一起注册，Windows 才能解析显示名（Video Lab）与图标；
   // 不可移除——缺失时任务管理器会把应用识别为框架名 "Electron"、图标解析失败（乱码）
-  try { app.setAppUserModelId('com.videolab.manager'); } catch (e) {}
+  // AppUserModelID（须与 build.appId 一致；预览版用独立 AUMID）
+  try { app.setAppUserModelId(IS_PREVIEW ? 'com.videolab.preview' : 'com.videolab.manager'); } catch (e) {}
   Menu.setApplicationMenu(null);
   registerIpc();
   logTiming('whenReady 后 注册 IPC 完成');

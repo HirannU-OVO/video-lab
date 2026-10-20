@@ -11075,3 +11075,24 @@ button.is-vl-disabled {
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
 }
 .mode-mask__text { font-size: var(--body-sm-font-size, 13px); color: var(--text-default, #222); }
+
+/* 预览版标识（仅预览版构建出现：preload 注入 window.vlBuild.preview → titlebar.js 插入节点） */
+.win-titlebar__preview {
+  flex: 0 0 auto;
+  margin-left: 6px;
+  padding: 0 6px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 4px;
+  background: #f97316;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .5px;
+  line-height: 1;
+  -webkit-app-region: no-drag;
+  user-select: none;
+}
+/* 预览版窗口：标题栏底部橙线（inset 阴影，不占布局） */
+.win-titlebar[data-preview="1"] { box-shadow: inset 0 -2px 0 0 #f97316; }
