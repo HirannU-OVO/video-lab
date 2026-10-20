@@ -84,7 +84,11 @@ const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
   app.quit();
 } else {
-  app.on('second-instance', () => showMainWindow());
+  app.on('second-instance', (e, argv) => {
+    // 卸载请求转交给已有实例处理
+    if (argv && argv.indexOf('--uninstall-prep') >= 0) { openUninstallWindow(); return; }
+    showMainWindow();
+  });
 }
 
 // 版本形态判定：electron-builder portable 运行时注入 PORTABLE_EXECUTABLE_FILE；
@@ -101,6 +105,9 @@ const IS_PORTABLE = (() => {
 
 // 开机自启动形态：由登录项以 --autostart 启动时静默到托盘，不打扰用户
 const IS_AUTOSTART = process.argv.includes('--autostart');
+
+// 卸载准备形态：只显示卸载询问窗口，不进入主界面（不初始化托盘 / HTTP / 扫描 / 任务恢复）
+const IS_UNINSTALL_PREP = process.argv.includes('--uninstall-prep');
 
 function projectDir() {
   if (!app.isPackaged) return __dirname;
@@ -2131,6 +2138,168 @@ function createWindow() {
   mainWin.on('closed', () => { mainWin = null; });
 }
 
+// ═══ 卸载准备 ═══
+// 卸载询问窗口：收集「是否一并删除个人数据」，随后交给原卸载程序收尾。
+let uninstallWin = null;
+
+function openUninstallWindow() {
+  if (uninstallWin && !uninstallWin.isDestroyed()) {
+    try { uninstallWin.show(); uninstallWin.focus(); } catch (e) {}
+    return;
+  }
+  uninstallWin = new BrowserWindow({
+    width: 520, height: 232, resizable: false, maximizable: false, minimizable: false,
+    frame: false, show: false, alwaysOnTop: true, skipTaskbar: !!process.env.VL_UNINSTALL_HEADLESS,
+    title: '卸载 Video Lab',
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false },
+  });
+  uninstallWin.loadFile(path.join(__dirname, 'frontend', 'uninstall.html'));
+  // VL_UNINSTALL_HEADLESS=1：渲染在屏幕外，供自动化验证读取界面
+  const headless = !!process.env.VL_UNINSTALL_HEADLESS;
+  uninstallWin.once('ready-to-show', () => {
+    try {
+      if (headless) { uninstallWin.setPosition(-32000, -32000); uninstallWin.showInactive(); }
+      else { uninstallWin.show(); }
+    } catch (e) {}
+  });
+  uninstallWin.on('closed', () => { uninstallWin = null; });
+}
+
+function resolveUninstallPaths() {
+  const installDir = path.dirname(process.execPath);
+  // 按实际文件名定位卸载器（文件名随产品名变化）
+  let uninstaller = path.join(installDir, 'Uninstall ' + (IS_PREVIEW ? 'Video Lab Preview' : 'Video Lab') + '.exe');
+  if (!fs.existsSync(uninstaller)) {
+    try {
+      const cand = fs.readdirSync(installDir).filter((n) => /^Uninstall .+\.exe$/i.test(n));
+      if (cand.length) uninstaller = path.join(installDir, cand[0]);
+    } catch (e) {}
+  }
+  return {
+    dataDir: storageDir(),
+    markerDir: localAppDir(),
+    installDir, uninstaller,
+    uninstallerExists: fs.existsSync(uninstaller),
+  };
+}
+
+// 启动退出后执行的收尾脚本：（按选择）清理个人数据 → 调原卸载程序静默卸载。
+// ⚠ 清理必须由独立进程执行：本进程持有数据目录里的库文件句柄。
+function launchUninstallHelper(info, deleteData) {
+  const q = (p) => "'" + String(p).replace(/'/g, "''") + "'";
+  const lines = [
+    "$ErrorActionPreference = 'SilentlyContinue'",
+    'Start-Sleep -Seconds 3',
+    "$log = Join-Path $env:TEMP 'vl-uninstall.log'",
+    '(Get-Date -Format o) | Out-File -LiteralPath $log -Encoding UTF8',
+    'if (' + (deleteData ? '$true' : '$false') + ') {',
+    '  foreach ($d in @(' + q(info.dataDir) + ', ' + q(info.markerDir) + ')) {',
+    '    if (-not (Test-Path -LiteralPath $d)) { continue }',
+    '    try { Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue } catch {}',
+    '    $ok = -not (Test-Path -LiteralPath $d)',
+    "    ('data ' + $d + ' removed=' + $ok) | Out-File -LiteralPath $log -Append -Encoding UTF8",
+    '  }',
+    '}',
+    'if (Test-Path -LiteralPath ' + q(info.uninstaller) + ') {',
+    "  'run uninstaller' | Out-File -LiteralPath $log -Append -Encoding UTF8",
+    '  Start-Process -FilePath ' + q(info.uninstaller) + " -ArgumentList '/S' -Wait",
+    "} else { 'uninstaller missing' | Out-File -LiteralPath $log -Append -Encoding UTF8 }",
+  ];
+  const stamp = Date.now();
+  const ps1 = path.join(os.tmpdir(), 'vl-uninstall-' + stamp + '.ps1');
+  // UTF-8 带 BOM：脚本内含数据路径，PowerShell 按 UTF-8 读取
+  fs.writeFileSync(ps1, '\uFEFF' + lines.join('\r\n'), 'utf8');
+  // ⚠ 不能直接 spawn powershell：它会随本进程退出被终止；经 wscript 脱离进程树后再拉起。
+  const vbs = path.join(os.tmpdir(), 'vl-uninstall-' + stamp + '.vbs');
+  const cmd = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + ps1 + '"';
+  const vbsText = 'CreateObject("WScript.Shell").Run "' + cmd.replace(/"/g, '""') + '", 0, False';
+  fs.writeFileSync(vbs, Buffer.concat([Buffer.from([0xFF, 0xFE]), Buffer.from(vbsText, 'utf16le')]));   // UTF-16LE + BOM
+  return new Promise((resolve) => {
+    let settled = false;
+    const child = require('child_process').spawn('wscript.exe', [vbs],
+      { detached: true, stdio: 'ignore', windowsHide: true });
+    child.once('error', (e) => {
+      if (settled) return;
+      settled = true;
+      resolve({ ok: false, error: String((e && e.message) || e) });
+    });
+    child.once('spawn', () => {
+      if (settled) return;
+      settled = true;
+      resolve({ ok: true });
+      child.unref();
+    });
+  });
+}
+
+async function startUninstall(opts) {
+  const deleteData = !!(opts && opts.deleteData);
+  let info = null;
+  try { info = resolveUninstallPaths(); } catch (e) {}
+  try {
+    runLog.sys('uninstall.start', '开始卸载', { deleteData, installDir: info && info.installDir });
+  } catch (e) {}
+  if (!info || !info.uninstallerExists) return { ok: false, error: 'uninstaller' };
+  let launched = null;
+  try { launched = await launchUninstallHelper(info, deleteData); } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+  if (!launched || !launched.ok) {
+    try { runLog.sys('uninstall.startFail', '收尾进程未能启动', { error: launched && launched.error }); } catch (e) {}
+    return { ok: false, error: (launched && launched.error) || 'launch' };
+  }
+  setTimeout(() => { isQuitting = true; app.exit(0); }, 800);
+  return { ok: true };
+}
+
+// 已运行的实例被要求打开卸载窗口时（second-instance），这两个通道必须早已注册 —— 否则窗口能显示但点不动
+let uninstallIpcReady = false;
+function registerUninstallIpc() {
+  if (uninstallIpcReady) return;
+  uninstallIpcReady = true;
+  ipcMain.handle('uninstall_confirm', (e, opts) => startUninstall(opts));
+  // 取消：只有「为卸载而单独启动的进程」才整个退出；已运行的实例只关掉这个窗口
+  ipcMain.handle('uninstall_cancel', () => {
+    if (IS_UNINSTALL_PREP) { isQuitting = true; setTimeout(() => app.exit(0), 100); }
+    else if (uninstallWin && !uninstallWin.isDestroyed()) uninstallWin.close();
+    return { ok: true };
+  });
+}
+
+// 把「应用和功能」里的卸载入口指向本程序，卸载时先显示询问窗口。
+// 只在安装形态生效；改写失败时保持原入口。
+function ensureUninstallEntryPointsHere() {
+  if (!app.isPackaged || IS_UNINSTALL_PREP) return;
+  const installDir = path.dirname(process.execPath);
+  const want = '"' + process.execPath + '" --uninstall-prep';
+  const lines = [
+    "$ErrorActionPreference = 'SilentlyContinue'",
+    "$root = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall'",
+    '$target = $env:VL_INSTALL_DIR',
+    'Get-ChildItem $root | ForEach-Object {',
+    '  $p = Get-ItemProperty $_.PSPath',
+    "  if ($p.UninstallString -and $p.UninstallString.Contains($target)) {",
+    '    if ($p.UninstallString -ne $env:VL_WANT) {',
+    '      Set-ItemProperty -Path $_.PSPath -Name UninstallString -Value $env:VL_WANT',
+    '    }',
+    '    $_.PSChildName',
+    '  }',
+    '}',
+  ];
+  const f = path.join(os.tmpdir(), 'vl-uninstall-entry-' + Date.now() + '.ps1');
+  try {
+    fs.writeFileSync(f, lines.join('\r\n'), 'utf8');
+    const env = Object.assign({}, process.env, { VL_INSTALL_DIR: installDir, VL_WANT: want });
+    const { execFile } = require('child_process');
+    execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', f],
+      { env: env, timeout: 20000, windowsHide: true },
+      (err, stdout) => {
+        try {
+          const key = String(stdout || '').trim().split(/\r?\n/).filter(Boolean).pop() || '';
+          runLog.sys('uninstall.entry', key ? '卸载入口已指向本程序' : '未找到卸载注册表项（保持原样）', { key });
+        } catch (e) {}
+      });
+  } catch (e) {}
+}
+
 // 启动阶段计时落日志（app.timing）：冷启动排查的数据来源
 function logTiming(label) {
   try { runLog.sys('app.timing', '启动阶段 · ' + label, { sinceProcessStart: Math.round(bootMs()) }); } catch (e) {}
@@ -2226,12 +2395,21 @@ app.whenReady().then(async () => {
   // AppUserModelID（须与 build.appId 一致；预览版用独立 AUMID）
   try { app.setAppUserModelId(IS_PREVIEW ? 'com.videolab.preview' : 'com.videolab.manager'); } catch (e) {}
   Menu.setApplicationMenu(null);
+  // 卸载准备：只装载询问窗口所需的能力后返回
+  if (IS_UNINSTALL_PREP) {
+    registerUninstallIpc();
+    openUninstallWindow();
+    return;
+  }
   registerIpc();
+  registerUninstallIpc();
   logTiming('whenReady 后 注册 IPC 完成');
   // ── 启动顺序原则：**能在窗口显示后做的，绝不放在窗口显示前** ──
   // 此处只保留窗口必须先有的最小集（createWindow）；ensureConfig / createTray / HTTP / restoreTasks 一律在首帧之后再跑，避免任一环节慢叠加成「点了图标迟迟不出窗口」。
   createWindow();
   logTiming('主窗口已创建（loadFile 已发起）');
+  // 卸载入口接管（窗口就绪后延迟执行）
+  setTimeout(() => { try { ensureUninstallEntryPointsHere(); } catch (e) {} }, 5000);
   // ── 启动期全量扫描：缓存未命中时后台预热（不弹窗、不推迟窗口显示） ──
   (() => {
     if (IS_AUTOSTART) return;                 // 自启形态静默，不打扰
