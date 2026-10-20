@@ -899,6 +899,8 @@ class Api {
       };
       const _t = Date.now();
       let rebuilt = false;
+      // 收走送站中断留下的 `.deleting` 临时件（独立于重扫成败，失败了也不影响重扫判定）
+      try { await this._sweepDeletingResidue(); } catch (e) {}
       try {
         // 按 truncated 判定成败，不完整不记时间
         try { await this._collectAllTxtAsync({ force: true, shouldStop }); rebuilt = this._txtTreeTruncated !== true; } catch (e) { rebuilt = false; }
@@ -1550,7 +1552,8 @@ class Api {
         if (!dup) continue;
         pending.push(s.full);
         if (commit) {
-          this._recycleFile(s.full);
+          // soft 级：与成片文件夹正本内容 hash 完全一致，但它是用户列表里独立可见的条目，保留可还原性
+          this._recycleFile(s.full, '与正本内容一致的重复外部配置：' + path.basename(s.full));
           deleted.push(s.full);
         }
       }
@@ -1809,8 +1812,8 @@ class Api {
       if (mode === 'folder' && !inChengpian) return { ok: false, error: '该配置不在成片文件夹内（外部配置），不能整体删除；请选「仅移除该配置」' };
       if (mode === 'folder') {
         if (dir.length <= root.length) return { ok: false, error: '不允许删除工作根目录' };
-        // 整个文件夹走回收站（可还原），不递归永久删除
-        if (!this._recycleFile(dir)) return { ok: false, error: '移入回收站失败' };
+        // 用户主动移除：整文件夹（配置 + 成片）一律 soft 级，可还原
+        if (!this._recycleFile(dir, '用户移除整个成片文件夹：' + path.basename(dir))) return { ok: false, error: '移入回收站失败' };
       } else {
         if (mode === 'both') {
           let entries = [];
@@ -1819,11 +1822,11 @@ class Api {
             const full = path.join(dir, String(ent));
             let st;
             try { st = fs.statSync(full); } catch (e) { continue; }
-            if (st.isFile() && String(ent).toLowerCase().endsWith('.txt')) this._recycleFile(full);
+            if (st.isFile() && String(ent).toLowerCase().endsWith('.txt')) this._recycleFile(full, '用户移除配置与日志：' + String(ent));
           }
         } else {
           if (!filePath.toLowerCase().endsWith('.txt')) return { ok: false, error: '仅支持移除 TXT 分支' };
-          this._recycleFile(filePath);
+          this._recycleFile(filePath, '用户移除单个配置：' + path.basename(filePath));
         }
       }
       // 逐级向上删除空目录：任一目录非空即停止；到工作根为止，不会越界
@@ -1924,25 +1927,130 @@ class Api {
     return !!store;
   }
 
-  // 移入系统回收站（可还原）。两步走：① 同步把原路径改名摘除 —— 调用方（如重跑前清旧产物）
-  // 需要原路径立刻空出来，异步送站做不到这一点；② 再异步送回收站。
-  // 送站失败时文件以 .bak 形态保留，绝不静默永久删除。
-  _recycleFile(p) {
+  // ── 删除总入口（集中式：分级 + 统一降级落点 + 统一日志）─────────────
+  // 两级语义：
+  //   hard —— 直接删。用于程序自产、可完全再生的中间产物与缓存（0 字节日志、.tmp、死快照、旧缓存 JSON…）。
+  //   soft —— 送系统回收站。用于用户资产与不可再生内容（配置 TXT、成片 mp4、原始视频备份）。
+  // 删除动作一律经这三个方法，调用处只声明级别与对象，不再各写各的：
+  //   _hardDelete(p, why)   直接删
+  //   _recycleFile(p, why)  送回收站（可还原）
+  //   _deleteMany(ps, lv)   批量
+  // 送站分两步：① 同步改名成 `<名>.<时间戳>.deleting` 摘除原路径（调用方需要立刻空出该路径）；
+  // ② 异步送站。临时名带 .deleting 后缀 —— 命名即归属程序，不会与用户自己的 .bak 备份混淆；
+  // ① 与 ② 之间进程被杀留下的这类文件，由启动清理按后缀自动收走（见 _sweepDeletingResidue）。
+
+  // 送站失败的降级落点：数据目录下的暂存区（不留用户工作目录）
+  _recycleFailDir() {
+    const d = this.storageDir ? path.join(this.storageDir, 'recycle-failed') : '';
+    if (d) { try { fs.mkdirSync(d, { recursive: true }); } catch (e) {} }
+    return d;
+  }
+
+  // 直接删（hard 级）
+  _hardDelete(p) {
+    if (!p) return false;
+    try {
+      if (fs.lstatSync(p).isDirectory()) fs.rmSync(p, { recursive: true, force: true });
+      else fs.unlinkSync(p);
+      return true;
+    } catch (e) { return false; }
+  }
+
+  // 送回收站（soft 级）。why 只进日志，供事后追溯删的是什么东西。
+  _recycleFile(p, why) {
     if (!p || !fs.existsSync(p)) return false;
     let target = p;
     try {
-      const bak = p + '.bak';
-      fs.renameSync(p, bak);
-      target = bak;
-    } catch (e) { /* 改名失败：退回直接送回收站 */ }
+      const staged = p + '.' + Date.now() + '.deleting';
+      fs.renameSync(p, staged);
+      target = staged;
+    } catch (e) { /* 改名失败：直接送站 */ }
     try {
       const { shell } = require('electron');
       if (shell && typeof shell.trashItem === 'function') {
-        shell.trashItem(target).catch(() => {});   // 失败则保留 target，数据不丢
+        shell.trashItem(target).catch(() => { this._stashRecycleFailed(target, why); });
         return true;
       }
     } catch (e) {}
-    return true;   // 非 Electron 环境：已摘除原路径，以 .bak 形态保留
+    this._stashRecycleFailed(target, why);
+    return true;
+  }
+
+  // 送站失败：把临时件移出用户目录，进数据目录暂存区并记日志
+  _stashRecycleFailed(staged, why) {
+    if (!staged || !fs.existsSync(staged)) return false;
+    const dir = this._recycleFailDir();
+    if (!dir) return false;
+    const dest = path.join(dir, path.basename(staged));
+    try {
+      fs.renameSync(staged, dest);
+    } catch (e) {
+      try { fs.copyFileSync(staged, dest); fs.unlinkSync(staged); }   // 跨卷：复制后删除
+      catch (e2) { return false; }
+    }
+    try {
+      this._lg('DEL', 'recycle.failed',
+        '移入回收站失败，已暂存到数据目录 · ' + String(why || path.basename(dest)).slice(0, 80),
+        { to: dest });
+    } catch (e) {}
+    return true;
+  }
+
+  // 批量：level ∈ 'hard' | 'soft'
+  _deleteMany(paths, level, why) {
+    const hard = level === 'hard';
+    const list = (Array.isArray(paths) ? paths : [paths]).filter(Boolean);
+    let n = 0;
+    for (const p of list) {
+      if (hard ? this._hardDelete(p) : this._recycleFile(p, why)) n++;
+    }
+    return n;
+  }
+
+  // 自动收走「改名后、送站前」被进程中断留下的 `.deleting` 临时件。
+  // 该后缀由程序独占（用户文件不会这么命名），因此可直接清空，不需人工介入。
+  // 挂在空闲队列里跑：既避开了启动关键路径，又保证「重启后下一轮空闲必然收干净」。
+  _enqueueDeletingSweep() {
+    try {
+      this._verifyEnqueue('deleting.sweep', this.root, async () => {
+        const n = await this._sweepDeletingResidue();
+        if (!n) return;
+        try { this._lg('DEL', 'recycle.sweep', '自动清理送站中断残留 · ' + n + ' 个临时件', { count: n }); } catch (e) {}
+      });
+    } catch (e) {}
+  }
+
+  // 扫工作根 + 数据根的 `.deleting` 临时件并清空。递归下探到配置所在层级即止（工作根结构是 根\项目\月\日\）。
+  async _sweepDeletingResidue() {
+    let n = 0;
+    const seen = new Set();
+    const DEL_RE = /\.deleting$/;
+    const walk = async (dir, depth) => {
+      let names = [];
+      try { names = await fs.promises.readdir(dir); } catch (e) { return; }
+      for (const nm of names) {
+        const p = path.join(dir, nm);
+        if (DEL_RE.test(nm)) { if (this._hardDelete(p) && !seen.has(p)) { n++; seen.add(p); } continue; }
+        if (depth <= 0) continue;
+        // 不进成片目录（那里本来就可能是用户产物区），也不进明显的缓存子目录
+        if (nm.endsWith('成片') || nm === 'preview' || nm === 'txt-snap') continue;
+        let isDir = false;
+        try { isDir = (await fs.promises.stat(p)).isDirectory(); } catch (e) { continue; }
+        if (!isDir) continue;
+        await walk(p, depth - 1);
+      }
+    };
+    for (const r of [String(this.root || ''), String(this.storageDir || '')]) {
+      if (r) await walk(r, 3);
+    }
+    // 暂存区里的降级件：本次启动再送一次回收站；送不掉就留在数据目录（不污染用户工作目录）
+    const failDir = this._recycleFailDir();
+    if (failDir) {
+      let ns = [];
+      try { ns = await fs.promises.readdir(failDir); } catch (e) { ns = []; }
+      for (const nm of ns) this._recycleFile(path.join(failDir, nm), '暂存区重试送站');
+    }
+    return n;
   }
 
   // 标记缓存变更：记录具体键，据此做增量写（避免每次全量 upsert）
@@ -2473,11 +2581,12 @@ class Api {
     // 旧版独立缓存 JSON（别名表见 engines/base/migrate.js 的 ALIASES），内容已并入 settings.db / cache.db
     const JSON_RE = /^(scan_cache|video_lab_scan_cache|scan-cache|log_cache|video_cache|usage_cache|task_cache|task_snapshot|mask_cache|mask_session|Batch|watermark_cache|Mask|mask_default_dir|clip_cache)\.json(\.bak)?$/i;
     let removed = 0, freed = 0;
+    // hard 级：这些全是程序自产、可完全再生的旧产物，删除不可感知、不进回收站
     const drop = (p) => {
       try {
         if (!fs.existsSync(p)) return;
         const sz = this._ddSize(p);
-        this._recycleFile(p);
+        this._hardDelete(p);
         removed++;
         freed += sz;
       } catch (e) {}
@@ -2499,8 +2608,9 @@ class Api {
             if (!fs.statSync(p).isDirectory()) continue;
             let sub = [];
             try { sub = fs.readdirSync(p); } catch (e) {}
-            for (const q of sub) drop(path.join(p, q));
-            try { if (!fs.readdirSync(p).length) this._recycleFile(p); } catch (e) {}
+            // soft 级：目录名表明内容是原始视频副本，保留回收站
+            for (const q of sub) this._recycleFile(path.join(p, q), '脚本时代备份目录残留');
+            try { if (!fs.readdirSync(p).length) this._recycleFile(p, '脚本时代备份目录残留（空壳）'); } catch (e) {}
           } catch (e) {}
         }
       }
@@ -2662,16 +2772,17 @@ class Api {
     const want = (Array.isArray(keys) ? keys : (keys === undefined || keys === null ? [] : [keys])).map(String);
     const scan = this.dataDirScan();
     const picked = scan.items.filter((it) => want.indexOf(it.key) >= 0 && it.cleanable && it.files.length);
+    // 删除分级：程序自产的可再生件直接删；用户资产与需重新下载的组件走回收站
+    //   hard —— preview / txt-snap（死快照）/ cfgbak / migrated / log（运行日志）
+    //   soft —— ffmpeg（删了要重新下载）/ backup（处理前备份 = 原始视频副本）
+    const HARD_KEYS = new Set(['preview', 'txtsnap', 'cfgbak', 'migrated', 'log']);
     let removed = 0, freed = 0;
     for (const it of picked) {
+      const hard = HARD_KEYS.has(it.key);
       for (const f of it.files) {
         if (!fs.existsSync(f)) continue;
         const sz = this._ddSize(f);
-        let ok = false;
-        try {
-          const el = require('electron');
-          if (el && el.shell && typeof el.shell.trashItem === 'function') { await el.shell.trashItem(f); ok = true; }
-        } catch (e) { ok = false; }   // 送站失败：保留原文件，绝不静默永久删除
+        const ok = hard ? this._hardDelete(f) : this._recycleFile(f, '数据目录清理：' + it.label);
         if (ok) { removed++; freed += sz; }
       }
     }
@@ -4590,17 +4701,8 @@ class Api {
 
   // 清扫成片目录里**确定无价值**的残渣：0 字节拼接日志 + 引擎临时产物。
   // 保守边界（宁可留，不可误删）：日志只删 0 字节（有内容的日志是复刻配对与事后复盘的唯一凭据）；
-  // 临时产物只认 `^[0-9a-z]{6,}\.tmp$` 严格形态（与续跑清理同一判定）；目录只在不剩任何文件时收回；
-  // 删除一律走回收站。
-  async _trash(p) {
-    try {
-      const { shell } = require('electron');
-      await shell.trashItem(p);
-    } catch (e) {
-      if (fs.existsSync(p)) throw e;   // 原路径已不存在视为成功（幂等，重复清理不报错）
-    }
-  }
-
+  // 临时产物只认 `^[0-9a-z]{6,}\.tmp$` 严格形态（与续跑清理同一判定）；目录只在不剩任何文件时收回。
+  // 两者都是程序自产、可再生、0 信息量 → hard 级直接删，不占用回收站。
   async _sweepOutDirResidue(outDir) {
     const out = { logs: [], temps: [], dirRemoved: false };
     const abs = String(outDir || '').trim();
@@ -4612,11 +4714,11 @@ class Api {
       let st = null; try { st = fs.statSync(fp); } catch (e) { continue; }
       if (!st.isFile()) continue;
       if (LOG_NAME_RE.test(f) && st.size === 0) {
-        try { await this._trash(fp); out.logs.push(f); } catch (e) {}
+        if (this._hardDelete(fp)) out.logs.push(f);
         continue;
       }
       if (/^[0-9a-z]{6,}\.tmp$/i.test(f)) {
-        try { await this._trash(fp); out.temps.push(f); } catch (e) {}
+        if (this._hardDelete(fp)) out.temps.push(f);
       }
     }
     // 目录已空（连日志/临时产物都没了）→ 收回空壳，不留「成片文件夹空壳」；父目录若也因此变空，逐级向上收（到项目根为界）——任一层非空即停
@@ -4716,7 +4818,7 @@ class Api {
       Object.assign({ outDir: marker.batchOutDir || '' }, info));
 
     // 一律移入回收站（可还原），不做永久删除
-    const rm = (p) => { try { if (p && fs.existsSync(p)) this._recycleFile(p); } catch (e2) {} };
+    const rm = (p) => { try { if (p && fs.existsSync(p)) this._recycleFile(p, '清除任务产物'); } catch (e2) {} };
     for (const v of (marker.videos || [])) rm(v);
     if (marker.type === 'batch' && marker.batchOutDir) {
       // 正本回迁收敛到共用函数：不依赖 marker.env.REPLICA_TXT（任务标记缺失的孤儿目录也能救回），
@@ -4789,11 +4891,19 @@ class Api {
         const out = [];
         for (let i = 0; i < lines.length; i++) if (!delIdx.has(i)) out.push(lines[i]);
         while (out.length && !(out[out.length - 1] || '').trim()) out.pop();
-        // 仅剩分隔线/空行视为已空 → 移除日志文件（走回收站），否则重写
-        if (!out.some((l) => (l || '').trim() && !/^=+$/.test((l || '').trim()))) this._recycleFile(logPath);
-        else fs.writeFileSync(logPath, out.join('\n'), 'utf-8');
+        this._writeBackOrDropLog(logPath, out);
       } catch (e) {}
     }
+  }
+
+  // 「日志删空才删文件」的统一出口：删掉指定块之后，只剩分隔线/空行即视为空壳，
+  // hard 级直接删（内容已无任何信息，留个空 txt 进回收站纯属噪音）；否则原子写回。
+  // batch / replica / mask 三处日志清理都走这里，避免各写一遍判断。
+  _writeBackOrDropLog(logPath, outLines) {
+    const hasContent = outLines.some((l) => (l || '').trim() && !/^=+$/.test((l || '').trim()));
+    if (!hasContent) { this._hardDelete(logPath); return true; }
+    try { fs.writeFileSync(logPath, outLines.join('\n'), 'utf-8'); } catch (e) { return false; }
+    return false;
   }
 
   // 遮罩任务清除：从项目「遮罩日志」目录（MASK_LOG_DIR）的 *.txt 中移除目标成片的条目块。
@@ -4836,9 +4946,7 @@ class Api {
         const out = [];
         for (let i = 0; i < lines.length; i++) if (!delIdx.has(i)) out.push(lines[i]);
         while (out.length && !(out[out.length - 1] || '').trim()) out.pop();
-        // 仅剩分隔线/空行视为已空 → 移除遮罩日志文件（走回收站），否则重写
-        if (!out.some((l) => (l || '').trim() && !/^=+$/.test((l || '').trim()))) this._recycleFile(lp);
-        else fs.writeFileSync(lp, out.join('\n'), 'utf-8');
+        this._writeBackOrDropLog(lp, out);
       } catch (e) {}
     }
   }
@@ -4851,7 +4959,7 @@ class Api {
     this._invalidateHasOutput(task && task.id);
     // 快照不在此删除，随任务记录回收
     // 一律移入回收站（可还原），不做永久删除
-    const rm = (p) => { try { if (p && fs.existsSync(p)) this._recycleFile(p); } catch (e2) {} };
+    const rm = (p) => { try { if (p && fs.existsSync(p)) this._recycleFile(p, '清除任务产物'); } catch (e2) {} };
     // 1) 日志中列出的成片
     const listed = [];
     for (const line of (task.log || [])) {
@@ -5007,11 +5115,8 @@ class Api {
     for (const { t } of marked) { this.tasks.delete(t.id); this._invalidateHasOutput(t.id); this._removeMarker(t, { silent: true }); }
     const errors = [];
     if (scope && scope !== 'list') {
-      const { shell } = require('electron');
-      const trash = async (p) => {
-        try { await shell.trashItem(p); }
-        catch (e) { if (fs.existsSync(p)) throw e; } // 原路径已不存在视为成功
-      };
+      // 用户主动清除已完成任务：成片属用户资产 → soft 级（走集中式原语，降级自动落数据目录）
+      const trash = async (p) => { this._recycleFile(p, '清除已完成任务产物'); };
       for (const { t, marker } of marked) {
         // ★ 记录马上被删除 → 顺手收走"只剩残渣"的输出目录（回迁配置正本 + 清 0 字节日志与半截
         //   临时产物，目录清空后自动收回）。不做这一步，这些残渣会随记录一起失去归属、永久留存。
@@ -7479,24 +7584,14 @@ class Api {
         const p = path.join(dir, f);
         let size = 0;
         try { size = (await fsp.stat(p)).size; } catch (e) { continue; }
-        const r = await probeOne(f);
         if (r.state === 'ok') continue;
         if (r.state === 'unknown') { out.skipped++; continue; }   // 无法判定 → 绝不替用户下结论
-        // 明确损坏：**移出成片目录**，该序号回到未完成。
-        // 优先移入回收站（项目红线：删除一律可还原）；回收站不可用时才退化为改名 ——
-        // 但绝不把 .bak 留在正式产出目录里（留在目录里等于没清，而且会被误当成本批产物）。
+        // 明确损坏：移出成片目录（该序号回到未完成）。走集中式 soft 级，失败自动落数据目录暂存区。
         let recycled = false;
         if (dryRun) {
           out.broken.push({ name: f, size, recycled: false, dryRun: true });
         } else {
-          try { recycled = !!this._recycleFile(p); } catch (e) { recycled = false; }
-          if (!recycled) {
-            const trashDir = path.join(dir, '..', '_损坏产物');
-            try {
-              fs.mkdirSync(trashDir, { recursive: true });
-              await fsp.rename(p, path.join(trashDir, path.basename(p) + '.broken-' + Date.now() + '.bak'));
-            } catch (e2) {}
-          }
+          try { recycled = !!this._recycleFile(p, '续跑前校验判定损坏成片：' + f); } catch (e) { recycled = false; }
           out.broken.push({ name: f, size, recycled });
         }
         // 让路：逐个校验本身就慢，期间把事件循环交还出去
@@ -8380,12 +8475,11 @@ class Api {
             '删除遮罩成片 · ' + info.count + ' 个文件 · 共 ' + this._humanSize(info.bytes)
             + ' · 日志 ' + path.basename(fp), Object.assign({ project: pdir }, info));
         }
-        for (const op of outs) { this._recycleFile(op); deleted.push(op); }
+        for (const op of outs) { this._recycleFile(op, '删除遮罩成片'); deleted.push(op); }
         // 仅剩分隔线/空行时视为已空，移除日志文件（走回收站）；否则原子写回
         const outText = keep.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd() + '\n';
-        const hasContent = keep.some((l) => (l || '').trim() && !/^=+$/.test((l || '').trim()));
-        if (hasContent) atomicWrite(fp, outText);
-        else this._recycleFile(fp);
+              if (keep.some((l) => (l || '').trim() && !/^=+$/.test((l || '').trim()))) atomicWrite(fp, outText);
+              else this._hardDelete(fp);   // 空壳日志：无信息量，hard 级
       }
     }
     return { ok: true, deleted };
@@ -8411,7 +8505,7 @@ class Api {
       this._lg('DEL', 'mask.log.remove',
         '删除遮罩日志 · ' + path.basename(rl) + ' · ' + this._humanSize(info.bytes),
         Object.assign({ project: pdir }, info));
-      this._recycleFile(rl);
+      this._recycleFile(rl, '遮罩日志条目移除后已空');
       try {
         const rest = fs.readdirSync(rdir);
         if (!rest.length) { try { fs.rmdirSync(rdir); } catch (e) {} }
@@ -8588,12 +8682,11 @@ class Api {
             '删除二次拼接产物 · ' + info.count + ' 个文件 · 共 ' + this._humanSize(info.bytes)
             + ' · 日志 ' + path.basename(fp), Object.assign({ project: pdir }, info));
         }
-        for (const op of outs) { this._recycleFile(op); deleted.push(op); }
+        for (const op of outs) { this._recycleFile(op, '删除遮罩成片'); deleted.push(op); }
         // 仅剩分隔线/空行时视为已空，移除日志文件（走回收站）；否则原子写回
         const outText = keep.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd() + '\n';
-        const hasContent = keep.some((l) => (l || '').trim() && !/^=+$/.test((l || '').trim()));
-        if (hasContent) atomicWrite(fp, outText);
-        else this._recycleFile(fp);
+              if (keep.some((l) => (l || '').trim() && !/^=+$/.test((l || '').trim()))) atomicWrite(fp, outText);
+              else this._hardDelete(fp);   // 空壳日志：无信息量，hard 级
       }
     }
     return { ok: true, deleted, videos: removedVideos };
@@ -8791,20 +8884,22 @@ class Api {
       const { shell } = require('electron');
       const expire = Date.now() - days * 24 * 60 * 60 * 1000;
       let n = 0;
-      const walk = (d) => {
-        for (const name of fs.readdirSync(d)) {
-          const p2 = path.join(d, name);
-          let st = null;
-          try { st = fs.statSync(p2); } catch (e) { continue; }
-          if (st.isDirectory()) { walk(p2); continue; }
-          if (st.mtimeMs < expire) {
-            if (shell && typeof shell.trashItem === 'function') shell.trashItem(p2).catch(() => {});
-            n++;
-          }
-        }
-      };
-      walk(root);
-      if (n) this._lg('DEL', 'backup.cleanup', '清理过期备份 · ' + n + ' 个文件 · 保留 ' + days + ' 天');
+          const gone = [];
+          const walk = (d) => {
+            for (const name of fs.readdirSync(d)) {
+              const p2 = path.join(d, name);
+              let st = null;
+              try { st = fs.statSync(p2); } catch (e) { continue; }
+              if (st.isDirectory()) { walk(p2); continue; }
+              if (st.mtimeMs < expire) {
+                if (this._recycleFile(p2, '过期处理前备份（保留期 ' + days + ' 天）')) { n++; gone.push(p2); }
+              }
+            }
+          };
+          walk(root);
+          // 备份 = 原始视频副本，删了不可再生：日志必须逐条留路径，否则用户事后无从追溯
+          if (n) this._lg('DEL', 'backup.cleanup', '清理过期备份 · ' + n + ' 个文件 · 保留 ' + days + ' 天',
+            { count: n, files: gone.slice(0, 50) });
     } catch (e) {}
   }
 
@@ -8817,10 +8912,9 @@ class Api {
       let exists = false;
       try { exists = (await fs.promises.stat(root)).isDirectory(); } catch (e) { exists = false; }
       if (!exists) return 0;
-      // ⚠ 同上：本文件无模块级 electron 引入，必须在此取 shell，否则只是空转计数。
-      const { shell } = require('electron');
       const expire = Date.now() - days * 24 * 60 * 60 * 1000;
       let n = 0;
+      const gone = [];
       const walk = async (d) => {
         let names = [];
         try { names = await fs.promises.readdir(d); } catch (e) { return; }
@@ -8830,12 +8924,13 @@ class Api {
           try { st = await fs.promises.stat(p2); } catch (e) { continue; }
           if (st.isDirectory()) { await walk(p2); continue; }
           if (st.mtimeMs < expire) {
-            if (shell && typeof shell.trashItem === 'function') { try { await shell.trashItem(p2); n++; } catch (e) {} }
+            if (this._recycleFile(p2, '过期处理前备份（保留期 ' + days + ' 天）')) { n++; gone.push(p2); }
           }
         }
       };
       await walk(root);
-      if (n) this._lg('DEL', 'backup.cleanup', '清理过期备份 · ' + n + ' 个文件 · 保留 ' + days + ' 天');
+      if (n) this._lg('DEL', 'backup.cleanup', '清理过期备份 · ' + n + ' 个文件 · 保留 ' + days + ' 天',
+        { count: n, files: gone.slice(0, 50) });
       return n;
     } catch (e) { return 0; }
   }
@@ -8925,8 +9020,8 @@ class Api {
     try {
       const roots = [String(this.storageDir || '')].concat(this._legacyDirs || []);
       let n = 0, freed = 0;
-      const drop = async (p) => {
-        try { const sz = this._ddSize(p); await this._trash(p); n++; freed += (sz || 0); } catch (e) {}
+      const drop = (p) => {
+        try { const sz = this._ddSize(p); if (this._hardDelete(p)) { n++; freed += (sz || 0); } } catch (e) {}
       };
       for (const r of roots) {
         // ① 预览图（成品文件即删，空壳顺手收回）
@@ -8936,7 +9031,7 @@ class Api {
             for (const f of fs.readdirSync(pv)) {
               if (!/\.(png|jpe?g)$/i.test(f)) continue;
               const p = path.join(pv, f);
-              try { if (fs.statSync(p).isFile()) await drop(p); } catch (e) {}
+              try { if (fs.statSync(p).isFile()) drop(p); } catch (e) {}
             }
             try { if (fs.readdirSync(pv).length === 0) fs.rmdirSync(pv); } catch (e) {}
           }
@@ -8947,7 +9042,7 @@ class Api {
             for (const f of fs.readdirSync(sd)) {
               if (!/\.txt$/i.test(f)) continue;
               const t = this.tasks.get(f.replace(/\.txt$/i, ''));
-              if (!t) await drop(path.join(sd, f));
+              if (!t) drop(path.join(sd, f));
             }
           }
         } catch (e) {}

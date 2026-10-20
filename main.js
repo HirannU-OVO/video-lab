@@ -255,43 +255,6 @@ try {
     // 两侧都有数据：**以 appdata 为准**（单一数据根），程序目录那份不在这里删 ——它属于历史遗留，交给「数据目录清理」清单（可查、可清、进回收站可还原）。
     _migLog('程序目录仍有数据，但 AppData 已有数据 → 以 AppData 为准，原位置留给清理清单：' + _progDir);
   }
-  // 接管标记：安装程序（NSIS，见 build/installer.nsh）在"未搬迁就装 Setup"时写下 pending-takeover.json。
-  // ⚠ 安装程序刻意只写"信号"不解析 JSON（避免两套实现漂移）→ 源目录若不在标记里，回退读线索文件。
-  try {
-    const ldir = localAppDir();
-    const tf = path.join(ldir, 'pending-takeover.json');
-    if (fs.existsSync(tf)) {
-      const tk = JSON.parse(fs.readFileSync(tf, 'utf8').replace(/^\uFEFF/, ''));
-      let src = String((tk && tk.portableDir) || '');
-      if (!src) {
-        try {
-          const og = JSON.parse(fs.readFileSync(path.join(ldir, 'portable-origin.json'), 'utf8').replace(/^\uFEFF/, ''));
-          src = String((og && og.portableDir) || '');
-        } catch (e2) { _migLog('标记无源目录且线索不可读（跳过接管）：' + ((e2 && e2.message) || e2)); }
-      }
-      let attempted = false;
-      if (src && fs.existsSync(path.join(src, 'config.json')) && !fs.existsSync(appdataConfigPath())) {
-        attempted = true;
-        if (_adoptDirAsDataRoot(src)) configFile = appdataConfigPath();
-      }
-      // 标记的删除口径：**只有「目的已达成」或「没什么可接管」才删**。
-      // 复制中途失败（磁盘满 / 权限 / 文件被占用）时保留标记、下次启动重试 —— 否则标记丢失后没有任何入口再触发接管，数据只能人工找。
-      const adopted = fs.existsSync(appdataConfigPath());
-      if (adopted || !attempted) {
-        fs.unlinkSync(tf);   // 一次性：目的达成或本就没得接管
-      } else {
-        // 反复失败则放弃（避免每次启动都白试）：上限 5 次，之后留日志提示可手动迁移
-        const tries = (Number(tk && tk.tries) || 0) + 1;
-        if (tries >= 5) {
-          try { fs.unlinkSync(tf); } catch (e2) {}
-          _migLog('接管连续失败 ' + tries + ' 次，放弃重试（数据仍在原目录，可手动迁移）：' + src);
-        } else {
-          try { fs.writeFileSync(tf, JSON.stringify(Object.assign({}, tk, { tries }), null, 2), 'utf8'); } catch (e2) {}
-          _migLog('接管未完成（第 ' + tries + ' 次），保留标记供下次启动重试：' + src);
-        }
-      }
-    }
-  } catch (e) { _migLog('接管标记处理失败（不影响使用）：' + ((e && e.message) || e)); }
   // 线索目录的空壳回收：portable-origin.json 按设计常驻（供排查与安装包参考，不删）；目录里已经什么都没有时（用户清过 / 从未产生过线索）纯属空壳 —— 收回。
   try {
     const ldir = localAppDir();
@@ -339,23 +302,48 @@ ipcMain.handle = function (channel, fn) {
     }
   });
 };
-// 移入系统回收站（可还原）；Electron 不可用时降级为重命名备份，绝不静默删除
-function recycleFile(p) {
+// 删除总入口（与 backend.js 同构的两级语义）：
+//   hardDelete —— 直接删（程序自产、可再生的残留）；recycleFile —— 送回收站（用户资产 / 需重新下载）。
+// 送站分两步：① 同步改名成 `<名>.<时间戳>.deleting` 摘除原路径；② 异步送站。
+// 降级落点为数据目录的 recycle-failed\ 暂存区，不留在用户目录；① 与 ② 之间被中断的残留，
+// 由后端的 .deleting 清扫按后缀自动收走。
+function hardDelete(p) {
   try {
-    const { shell } = require('electron');
-    if (shell && typeof shell.trashItem === 'function') {
-      shell.trashItem(p).catch(() => { try { fs.renameSync(p, p + '.bak'); } catch (e) {} });
-      return true;
-    }
-  } catch (e) {}
-  try { fs.renameSync(p, p + '.bak'); return true; } catch (e) { return false; }
+    if (!p || !fs.existsSync(p)) return false;
+    if (fs.lstatSync(p).isDirectory()) fs.rmSync(p, { recursive: true, force: true });
+    else fs.unlinkSync(p);
+    return true;
+  } catch (e) { return false; }
 }
-  // 回收「搬空后的对侧空壳目录」：搬迁完成后旧位置若已无任何内容则整个移入回收站（目录非空则保留，不误删用户手放的内容）
-function recycleIfEmpty(dir) {
+function stashRecycleFailed(staged, why) {
   try {
-    if (!dir || !fs.existsSync(dir)) return false;
-    if (fs.readdirSync(dir).length) return false;
-    return recycleFile(dir);
+    if (!staged || !fs.existsSync(staged)) return false;
+    const dest = path.join(storageDir(), 'recycle-failed', path.basename(staged));
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    try { fs.renameSync(staged, dest); }
+    catch (e) { fs.copyFileSync(staged, dest); fs.unlinkSync(staged); }   // 跨卷：复制后删除
+    try { runLog.sys('recycle.failed', '移入回收站失败，已暂存到数据目录 · ' + String(why || ''), { to: dest }); } catch (e2) {}
+    return true;
+  } catch (e) { return false; }
+}
+function recycleFile(p, why) {
+  try {
+    if (!p || !fs.existsSync(p)) return false;
+    let target = p;
+    try {
+      const staged = p + '.' + Date.now() + '.deleting';
+      fs.renameSync(p, staged);
+      target = staged;
+    } catch (e) { /* 改名失败：直接送站 */ }
+    try {
+      const { shell } = require('electron');
+      if (shell && typeof shell.trashItem === 'function') {
+        shell.trashItem(target).catch(() => { stashRecycleFailed(target, why); });
+        return true;
+      }
+    } catch (e) {}
+    stashRecycleFailed(target, why);
+    return true;
   } catch (e) { return false; }
 }
 function defaultRoot() { return path.dirname(projectDir()); }
@@ -557,16 +545,16 @@ try {
   if (mr.migrated && mr.stagingDir) pendingTrashDirs.push(mr.stagingDir);
   if (mr.errors && mr.errors.length) console.error('[migrate] ' + mr.errors.join('；'));
 } catch (e) { console.error('[migrate] 迁移异常：' + ((e && e.message) || e)); }
-// config.json 已退休（设置项全在 settings.db），含明文令牌，移入回收站
+// config.json 已退休（设置项全在 settings.db），含明文令牌 → hard 级直接删：进回收站反而让令牌在磁盘多留一份
 try {
   if (fs.existsSync(configFile)) {
-    if (recycleFile(configFile)) {
-      try { runLog.sys('app.config', '已回收退休的 config.json（设置项全部存于 settings.db）', {}); } catch (e) {}
+    if (hardDelete(configFile)) {
+      try { runLog.sys('app.config', '已删除退休的 config.json（设置项全部存于 settings.db）', {}); } catch (e) {}
     }
   }
 } catch (e) {}
 // ⚠ 跨根收集：暂存目录（.video-lab-legacy-*）可能落在历史数据根里（搬迁前后各产生过一次）。
-//   只扫当前根会让旧根里的暂存永不回收（它非空，recycleIfEmpty 那条路也不适用）。legacyDataDirs 已按当前根去重。
+//   只扫当前根会让旧根里的暂存永不清理。legacyDataDirs 已按当前根去重。
 const _stagingRoots = [path.dirname(configFile)].concat(legacyDataDirs());
 for (const _sr of _stagingRoots) {
   try {
@@ -575,8 +563,9 @@ for (const _sr of _stagingRoots) {
     }
   } catch (e) { /* 单根失败不影响其余 */ }
 }
+// 暂存目录是本次搬迁刚创建、且内容已搬走的中间物 → hard 级直接删
 if (pendingTrashDirs.length) {
-  app.whenReady().then(() => { for (const d of pendingTrashDirs) { try { recycleFile(d); } catch (e) {} } });
+  app.whenReady().then(() => { for (const d of pendingTrashDirs) { try { hardDelete(d); } catch (e) {} } });
 }
 // ── 数据格式版本守卫 ──
 // 开库前用**只读连接**检查数据格式版本：库比程序新即拒绝启动，避免旧程序把新格式数据写坏。
@@ -1920,8 +1909,8 @@ function registerIpc() {
         try { if (!active || path.resolve(active) === path.resolve(legacy)) continue; } catch (e) { continue; }
         let freed = 0;
         try { freed = fs.readdirSync(legacy).reduce((s, n) => s + (fs.statSync(path.join(legacy, n)).size || 0), 0); } catch (e) {}
-        try { shell.trashItem(legacy); } catch (e) { continue; }           // 送站失败：保留现场，下次启动再试
-        try { writeUpdateLog('已自动清理遗留的 FFmpeg 组件（' + Math.round(freed / 1048576) + ' MB，进回收站可还原）：' + legacy); } catch (e) {}
+        try { recycleFile(legacy, '遗留的 FFmpeg 组件（内置已就绪）'); } catch (e) { continue; }   // 需重新下载，保留可还原
+              try { writeUpdateLog('已自动清理遗留的 FFmpeg 组件（' + Math.round(freed / 1048576) + ' MB，进回收站可还原）：' + legacy); } catch (e) {}
       }
     } catch (e) {}
   }
