@@ -38,6 +38,7 @@
       "engines/modules/**/*",
       "engines/tools/**/*",
       "frontend/**/*",
+      "build/uninstall-entry.ps1",
       "icon/**/*",
       "README.md",
       "CHANGELOG.md",
@@ -63,7 +64,12 @@
     "win": {
       "icon": "icon/app-icon.ico",
       "target": [
-        "dir"
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
       ]
     },
     "nsis": {
