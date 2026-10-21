@@ -2316,8 +2316,13 @@ function registerUninstallIpc() {
   ipcMain.handle('uninstall_confirm', (e, opts) => {
     const deleteData = !!(opts && opts.deleteData);
     if (UNINSTALL_CHILD) {
-      // 由卸载器调起：只回传选择（1=删除 / 0=保留），卸载流程由调用方继续
-      try { if (UNINSTALL_RESULT) fs.writeFileSync(UNINSTALL_RESULT, deleteData ? '1' : '0', 'utf8'); } catch (er) {}
+      // 回传：首行是选择（1=删除 / 0=保留 / cancel），其后是待处理的数据目录
+      try {
+        if (UNINSTALL_RESULT) {
+          fs.writeFileSync(UNINSTALL_RESULT,
+            (deleteData ? '1' : '0') + '\n' + storageDir() + '\n' + localAppDir() + '\n', 'utf8');
+        }
+      } catch (er) {}
       setTimeout(() => { isQuitting = true; app.exit(0); }, 200);
       return { ok: true };
     }
@@ -2342,7 +2347,11 @@ function ensureUninstallEntryPointsHere() {
   if (!app.isPackaged || IS_UNINSTALL_PREP || IS_PREVIEW) return;
   try {
     const { applyUninstallEntry } = require('./build/uninstall-entry.js');
-    const key = applyUninstallEntry(path.dirname(process.execPath), process.execPath);
+    // 产品名取主程序 exe 名：asar 内 package.json 不含 productName（构建时被剥离），
+    // 而 exe 名与产品名一致，且不同形态（正式版 / 隔离测试版）天然不同 ——
+    // 常驻启动器据此分目录，避免多个形态共用同一个卸载入口。
+    const productName = path.basename(process.execPath, '.exe');
+    const key = applyUninstallEntry(path.dirname(process.execPath), process.execPath, productName);
     runLog.sys('uninstall.entry', key ? '卸载入口已统一到本程序' : '未找到卸载注册表项（保持原样）', { key });
   } catch (e) {}
 }
