@@ -1,8 +1,7 @@
-; 个人数据默认保留；「是否一并删除」由应用内的卸载询问窗口收集。
+﻿; 个人数据默认保留；「是否一并删除」由应用内的卸载询问窗口收集（--uninstall-prep）。
 ; ⚠ 参数名别用 electron-builder 内置的 --delete-app-data：那个由模板自己删数据，同名会两端同时删。
-; ⚠ 别加自定义卸载页（customUnWelcomePage）：卸载器静默编译，页面与回调都不执行。
-; ⚠ 这里不能拉起询问窗口：升级/重装时安装器会执行本卸载器（/S /KEEP_APP_DATA），
-;   任何阻塞式交互都会让安装报「Failed to uninstall old application files」。
+; ⚠ 卸载器里不做交互（MessageBox / 自定义页）：静默编译 + 宏在 include 文件中展开的老 NSIS 行为不稳，
+;   且升级/重装时安装器会执行本卸载器，任何交互都会卡住安装。
 
 !ifndef VL_DATA_DIR
   !define VL_DATA_DIR "$APPDATA\Video Lab"        ; 改产品名时同步这里
@@ -22,10 +21,10 @@
 
 !ifdef BUILD_UNINSTALLER
 Function un.VlDeletePersonalData
-  DetailPrint "正在删除个人数据：${VL_DATA_DIR}"
-  RMDir /r "${VL_DATA_DIR}"
-  IfFileExists "${VL_MARKER_DIR}\*.*" 0 nomark
-    RMDir /r "${VL_MARKER_DIR}"
-  nomark:
-FunctionEnd
+    DetailPrint "正在删除个人数据：${VL_DATA_DIR}"
+    RMDir /r "${VL_DATA_DIR}"
+    IfFileExists "${VL_MARKER_DIR}\*.*" 0 nomark
+      RMDir /r "${VL_MARKER_DIR}"
+    nomark:
+  FunctionEnd
 !endif

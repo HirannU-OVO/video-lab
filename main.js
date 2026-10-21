@@ -2163,12 +2163,16 @@ function openUninstallWindow() {
   uninstallWin.loadFile(path.join(__dirname, 'frontend', 'uninstall.html'));
   // VL_UNINSTALL_HEADLESS=1：渲染在屏幕外，供自动化验证读取界面
   const headless = !!process.env.VL_UNINSTALL_HEADLESS;
-  uninstallWin.once('ready-to-show', () => {
+  // 显示时机：ready-to-show 为主，did-finish-load 兜底 —— 隐藏方式启动时前者可能不触发，窗口就永远不出现
+  const showWin = () => {
     try {
+      if (!uninstallWin || uninstallWin.isDestroyed()) return;
       if (headless) { uninstallWin.setPosition(-32000, -32000); uninstallWin.showInactive(); }
-      else { uninstallWin.show(); }
+      else { uninstallWin.show(); uninstallWin.focus(); }
     } catch (e) {}
-  });
+  };
+  uninstallWin.once('ready-to-show', showWin);
+  uninstallWin.webContents.once('did-finish-load', () => { setTimeout(showWin, 100); });
   uninstallWin.on('closed', () => { uninstallWin = null; });
 }
 

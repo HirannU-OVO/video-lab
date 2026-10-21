@@ -28,7 +28,8 @@ const VBS = [
   'Else',
   '  args = "--uninstall-prep"',
   'End If',
-  'sh.Run Chr(34) & exePath & Chr(34) & " " & args, 0, False',
+  // ⚠ 窗口样式必须用 1（正常显示）：用 0（隐藏）启动时，Electron 进程虽起来了，窗口却不会显示。
+  'sh.Run Chr(34) & exePath & Chr(34) & " " & args, 1, False',
 ].join('\r\n') + '\r\n';
 
 // 注册表与快捷方式：路径与开关走环境变量，脚本正文保持 ASCII
