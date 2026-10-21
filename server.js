@@ -425,8 +425,11 @@ function startHttpServer(opts) {
     req.on('close', () => { sseClients.delete(res); });
   }
 
-  // PWA manifest
-  const manifest = JSON.stringify({
+  // PWA manifest：优先读应用根目录的静态 manifest.json（前端 <link rel="manifest"> 引同一份）
+  const manifestPath = path.join(__dirname, 'manifest.json');
+  const manifest = fs.existsSync(manifestPath)
+    ? fs.readFileSync(manifestPath, 'utf8')
+    : JSON.stringify({
     name: 'Video Lab',
     short_name: 'Video Lab',
     description: 'Video Lab — 批量成片项目管理',

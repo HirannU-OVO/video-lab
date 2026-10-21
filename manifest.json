@@ -1,0 +1,21 @@
+{
+  "name": "Video Lab",
+  "short_name": "Video Lab",
+  "description": "Video Lab — 批量成片项目管理",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#6a6fff",
+  "icons": [
+    {
+      "src": "./icon/app-icon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "./icon/app-icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
