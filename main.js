@@ -77,10 +77,20 @@ function restartHttpServer() {
   }).catch(function (e) { console.error('[HTTP] 异常: ' + e); });
 }
 
+// 卸载准备形态：只显示卸载询问窗口，不进入主界面（不初始化托盘 / HTTP / 扫描 / 任务恢复）
+// 两种来源：① 系统卸载入口调起（--uninstall-prep，自己收尾）；
+//          ② 卸载器在卸载流程中调起（--uninstall-prep-child <结果文件>，只回传选择，由卸载器继续）
+const UNINSTALL_CHILD_IDX = process.argv.indexOf('--uninstall-prep-child');
+const UNINSTALL_CHILD = UNINSTALL_CHILD_IDX >= 0;
+const UNINSTALL_RESULT = UNINSTALL_CHILD ? (process.argv[UNINSTALL_CHILD_IDX + 1] || '') : '';
+const IS_UNINSTALL_PREP = UNINSTALL_CHILD || process.argv.includes('--uninstall-prep');
+
 // 单实例锁：统一 userData 到固定全局路径（跨盘 / 开发版与打包版共享同一把锁），使"同一时刻仅允许一个主进程实例"真正生效；重复打开时唤出现有实例主窗口
 // ⚠ 预览版须用独立 userData：锁的标识与浏览器存储（Local Storage）都挂在这个目录下
+// ⚠ 卸载准备形态不取锁：安装器会把本程序复制成 old-uninstaller.exe 后执行，
+//   撞上正在运行的实例会被锁挡下秒退，安装器便等不到结果。
 app.setPath('userData', path.join(os.homedir(), IS_PREVIEW ? '.video-lab-preview' : '.video-lab'));
-const gotTheLock = app.requestSingleInstanceLock();
+const gotTheLock = IS_UNINSTALL_PREP ? true : app.requestSingleInstanceLock();
 if (!gotTheLock) {
   app.quit();
 } else {
@@ -105,9 +115,6 @@ const IS_PORTABLE = (() => {
 
 // 开机自启动形态：由登录项以 --autostart 启动时静默到托盘，不打扰用户
 const IS_AUTOSTART = process.argv.includes('--autostart');
-
-// 卸载准备形态：只显示卸载询问窗口，不进入主界面（不初始化托盘 / HTTP / 扫描 / 任务恢复）
-const IS_UNINSTALL_PREP = process.argv.includes('--uninstall-prep');
 
 function projectDir() {
   if (!app.isPackaged) return __dirname;
@@ -2156,24 +2163,36 @@ function openUninstallWindow() {
   uninstallWin.loadFile(path.join(__dirname, 'frontend', 'uninstall.html'));
   // VL_UNINSTALL_HEADLESS=1：渲染在屏幕外，供自动化验证读取界面
   const headless = !!process.env.VL_UNINSTALL_HEADLESS;
-  uninstallWin.once('ready-to-show', () => {
+  // 显示时机：ready-to-show 为主，did-finish-load 兜底 —— 隐藏方式启动时前者可能不触发，窗口就永远不出现
+  const showWin = () => {
     try {
+      if (!uninstallWin || uninstallWin.isDestroyed()) return;
       if (headless) { uninstallWin.setPosition(-32000, -32000); uninstallWin.showInactive(); }
-      else { uninstallWin.show(); }
+      else { uninstallWin.show(); uninstallWin.focus(); }
     } catch (e) {}
-  });
+  };
+  uninstallWin.once('ready-to-show', showWin);
+  uninstallWin.webContents.once('did-finish-load', () => { setTimeout(showWin, 100); });
   uninstallWin.on('closed', () => { uninstallWin = null; });
 }
 
-function resolveUninstallPaths() {
-  const installDir = path.dirname(process.execPath);
-  // 按实际文件名定位卸载器（文件名随产品名变化）
-  let uninstaller = path.join(installDir, 'Uninstall ' + (IS_PREVIEW ? 'Video Lab Preview' : 'Video Lab') + '.exe');
-  if (!fs.existsSync(uninstaller)) {
-    try {
-      const cand = fs.readdirSync(installDir).filter((n) => /^Uninstall .+\.exe$/i.test(n));
-      if (cand.length) uninstaller = path.join(installDir, cand[0]);
-    } catch (e) {}
+function resolveUninstallPaths(installDirOverride) {
+  const installDir = installDirOverride || path.dirname(process.execPath);
+  // 卸载器位置：优先子目录里的 core（入口重定向后框架卸载器在此），否则回退扫描安装目录
+  let uninstaller = '';
+  const coreDir = path.join(installDir, 'uninstaller');
+  try {
+    const c = fs.readdirSync(coreDir).filter((n) => /\.exe$/i.test(n));
+    if (c.length) uninstaller = path.join(coreDir, c[0]);
+  } catch (e) {}
+  if (!uninstaller) {
+    uninstaller = path.join(installDir, 'Uninstall ' + (IS_PREVIEW ? 'Video Lab Preview' : 'Video Lab') + '.exe');
+    if (!fs.existsSync(uninstaller)) {
+      try {
+        const cand = fs.readdirSync(installDir).filter((n) => /^Uninstall .+\.exe$/i.test(n));
+        if (cand.length) uninstaller = path.join(installDir, cand[0]);
+      } catch (e) {}
+    }
   }
   return {
     dataDir: storageDir(),
@@ -2232,10 +2251,10 @@ function launchUninstallHelper(info, deleteData) {
   });
 }
 
-async function startUninstall(opts) {
+async function startUninstall(opts, installDirOverride) {
   const deleteData = !!(opts && opts.deleteData);
   let info = null;
-  try { info = resolveUninstallPaths(); } catch (e) {}
+  try { info = resolveUninstallPaths(installDirOverride); } catch (e) {}
   try {
     runLog.sys('uninstall.start', '开始卸载', { deleteData, installDir: info && info.installDir });
   } catch (e) {}
@@ -2252,51 +2271,88 @@ async function startUninstall(opts) {
 
 // 已运行的实例被要求打开卸载窗口时（second-instance），这两个通道必须早已注册 —— 否则窗口能显示但点不动
 let uninstallIpcReady = false;
+// 带静默参数（/S、--updated）被调起时视为脚本化/安装器调用：直通、不弹询问，
+// 免得无人应答把调用方挂住；此时只结束正在运行的同名实例并以 0 退出，
+// 让调用方（安装器）认为旧版已卸下、继续覆盖安装 —— 卸载动作留给调用方自己完成。
+function installerCallInfo() {
+  let installDir = '';
+  for (const a of process.argv) {
+    const m = /^(?:\/_?|\?)=(.*)$/.exec(a);
+    if (m) { installDir = String(m[1] || '').replace(/^"|"$/g, ''); break; }
+  }
+  for (const a of process.argv) {
+    if (/^\/S$/i.test(a) || /^--updated$/i.test(a) || /KEEP_APP_DATA/i.test(a)) {
+      return { installDir: installDir };
+    }
+  }
+  // 卸载入口脚本判定"自己是被安装器复制到临时目录执行的"时带上的标记
+  if (process.argv.indexOf('--from-installer') >= 0) return { installDir: installDir };
+  return null;
+}
+
+// 结束正在运行的同名实例：安装器随后要覆盖这些文件，被占用会失败。
+// ⚠ 普通 detached 子进程会随本进程退出被终止，必须经 wscript 脱离进程树。
+function killRunningInstances(exeName) {
+  try {
+    const stamp = Date.now();
+    const ps1 = path.join(os.tmpdir(), 'vl-kill-instances-' + stamp + '.ps1');
+    const script = [
+      'Start-Sleep -Seconds 2',
+      "Get-Process -Name '" + String(exeName).replace(/'/g, "''") + "' -ErrorAction SilentlyContinue | Stop-Process -Force",
+    ].join('\r\n');
+    fs.writeFileSync(ps1, '\uFEFF' + script, 'utf8');
+    const vbs = path.join(os.tmpdir(), 'vl-kill-instances-' + stamp + '.vbs');
+    const cmd = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + ps1 + '"';
+    const vbsText = 'CreateObject("WScript.Shell").Run "' + cmd.replace(/"/g, '""') + '", 0, False';
+    fs.writeFileSync(vbs, Buffer.concat([Buffer.from([0xFF, 0xFE]), Buffer.from(vbsText, 'utf16le')]));
+    const child = require('child_process').spawn('wscript.exe', [vbs], { detached: true, stdio: 'ignore', windowsHide: true });
+    child.on('spawn', () => child.unref());
+  } catch (e) {}
+}
+
 function registerUninstallIpc() {
   if (uninstallIpcReady) return;
   uninstallIpcReady = true;
-  ipcMain.handle('uninstall_confirm', (e, opts) => startUninstall(opts));
+  ipcMain.handle('uninstall_confirm', (e, opts) => {
+    const deleteData = !!(opts && opts.deleteData);
+    if (UNINSTALL_CHILD) {
+      // 回传：首行是选择（1=删除 / 0=保留 / cancel），其后是待处理的数据目录
+      try {
+        if (UNINSTALL_RESULT) {
+          fs.writeFileSync(UNINSTALL_RESULT,
+            (deleteData ? '1' : '0') + '\n' + storageDir() + '\n' + localAppDir() + '\n', 'utf8');
+        }
+      } catch (er) {}
+      setTimeout(() => { isQuitting = true; app.exit(0); }, 200);
+      return { ok: true };
+    }
+    return startUninstall(opts);
+  });
   // 取消：只有「为卸载而单独启动的进程」才整个退出；已运行的实例只关掉这个窗口
   ipcMain.handle('uninstall_cancel', () => {
+    if (UNINSTALL_CHILD) {
+      try { if (UNINSTALL_RESULT) fs.writeFileSync(UNINSTALL_RESULT, 'cancel', 'utf8'); } catch (er) {}
+      setTimeout(() => { isQuitting = true; app.exit(0); }, 100);
+      return { ok: true };
+    }
     if (IS_UNINSTALL_PREP) { isQuitting = true; setTimeout(() => app.exit(0), 100); }
     else if (uninstallWin && !uninstallWin.isDestroyed()) uninstallWin.close();
     return { ok: true };
   });
 }
 
-// 把「应用和功能」里的卸载入口指向本程序，卸载时先显示询问窗口。
-// 只在安装形态生效；改写失败时保持原入口。
+// 统一卸载入口（幂等，每次启动校正）：注册表入口 + 开始菜单文件夹 + 安装目录中文入口。
+// 只在安装形态生效；任何一步失败都保持原样，不影响既有卸载能力。
 function ensureUninstallEntryPointsHere() {
-  if (!app.isPackaged || IS_UNINSTALL_PREP) return;
-  const installDir = path.dirname(process.execPath);
-  const want = '"' + process.execPath + '" --uninstall-prep';
-  const lines = [
-    "$ErrorActionPreference = 'SilentlyContinue'",
-    "$root = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall'",
-    '$target = $env:VL_INSTALL_DIR',
-    'Get-ChildItem $root | ForEach-Object {',
-    '  $p = Get-ItemProperty $_.PSPath',
-    "  if ($p.UninstallString -and $p.UninstallString.Contains($target)) {",
-    '    if ($p.UninstallString -ne $env:VL_WANT) {',
-    '      Set-ItemProperty -Path $_.PSPath -Name UninstallString -Value $env:VL_WANT',
-    '    }',
-    '    $_.PSChildName',
-    '  }',
-    '}',
-  ];
-  const f = path.join(os.tmpdir(), 'vl-uninstall-entry-' + Date.now() + '.ps1');
+  if (!app.isPackaged || IS_UNINSTALL_PREP || IS_PREVIEW) return;
   try {
-    fs.writeFileSync(f, lines.join('\r\n'), 'utf8');
-    const env = Object.assign({}, process.env, { VL_INSTALL_DIR: installDir, VL_WANT: want });
-    const { execFile } = require('child_process');
-    execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', f],
-      { env: env, timeout: 20000, windowsHide: true },
-      (err, stdout) => {
-        try {
-          const key = String(stdout || '').trim().split(/\r?\n/).filter(Boolean).pop() || '';
-          runLog.sys('uninstall.entry', key ? '卸载入口已指向本程序' : '未找到卸载注册表项（保持原样）', { key });
-        } catch (e) {}
-      });
+    const { applyUninstallEntry } = require('./build/uninstall-entry.js');
+    // 产品名取主程序 exe 名：asar 内 package.json 不含 productName（构建时被剥离），
+    // 而 exe 名与产品名一致，且不同形态（正式版 / 隔离测试版）天然不同 ——
+    // 常驻启动器据此分目录，避免多个形态共用同一个卸载入口。
+    const productName = path.basename(process.execPath, '.exe');
+    const key = applyUninstallEntry(path.dirname(process.execPath), process.execPath, productName);
+    runLog.sys('uninstall.entry', key ? '卸载入口已统一到本程序' : '未找到卸载注册表项（保持原样）', { key });
   } catch (e) {}
 }
 
@@ -2398,6 +2454,13 @@ app.whenReady().then(async () => {
   // 卸载准备：只装载询问窗口所需的能力后返回
   if (IS_UNINSTALL_PREP) {
     registerUninstallIpc();
+    // 被安装器调起（升级/重装旧版）：结束运行中的实例后以 0 退出，让安装器继续覆盖安装
+    const byInstaller = installerCallInfo();
+    if (byInstaller) {
+      killRunningInstances(path.basename(process.execPath, '.exe'));
+      setTimeout(() => { isQuitting = true; app.exit(0); }, 300);
+      return;
+    }
     openUninstallWindow();
     return;
   }

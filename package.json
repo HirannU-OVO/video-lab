@@ -44,7 +44,8 @@
       "LICENSE",
       "LICENSE-ARTWORK",
       "NOTICE",
-      "package.json"
+      "package.json",
+      "build/uninstall-entry.js"
     ],
     "extraResources": [
       {
@@ -58,12 +59,21 @@
       {
         "from": "../ffmpeg",
         "to": "ffmpeg"
+      },
+      {
+        "from": "build/uninstaller.exe",
+        "to": "uninstaller.exe"
       }
     ],
     "win": {
       "icon": "icon/app-icon.ico",
       "target": [
-        "dir"
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
       ]
     },
     "nsis": {

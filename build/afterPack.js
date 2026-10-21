@@ -48,6 +48,13 @@ module.exports = async function (context) {
   // 版本字符串：版权 + 清空原始文件名
   execFileSync(rcedit, [exePath, '--set-version-string', 'LegalCopyright', 'Copyright (C) Video Lab', '--set-version-string', 'OriginalFilename', ''], { stdio: 'ignore' });
 
+  // 卸载启动器：嵌入同一枚应用图标（桌面/开始菜单的卸载快捷方式指向它，图标必须与程序一致）
+  const uninstallerExe = path.join(appOutDir, 'resources', 'uninstaller.exe');
+  if (fs.existsSync(uninstallerExe)) {
+    execFileSync(rcedit, [uninstallerExe, '--set-icon', ico], { stdio: 'ignore' });
+    console.log('afterPack: 卸载启动器已嵌入应用图标 -> ' + uninstallerExe);
+  }
+
   // 无多语言需求：清理 Electron 自带的语言包（保留 zh-CN / en-US），减小安装包与运行体积
   try {
     const localesDir = path.join(appOutDir, 'locales');
