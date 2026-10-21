@@ -635,7 +635,7 @@ body {
 }
 .about-hero__result:empty { display: none; }
 .about-hero__result--ok { color: var(--text-secondary); }
-.about-hero__result--err { color: var(--danger-500, #c9484a); }
+.about-hero__result--err { color: #c9484a; }
 
 /* 关于页 · 运行环境与组件（版本号 / 来源 / 目录）：键值行，值过长自动换行 */
 .about-info { font-size: var(--body-sm-font-size); }
