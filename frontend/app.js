@@ -2532,7 +2532,7 @@
   function openInShell(p) {
     return call('open_folder_select', p).then(function (r) {
       if (r && r.ok === false) { toast('打开失败：' + (r.error || '路径不存在'), true); return; }
-      if (location.protocol.indexOf('http') === 0) toast('资源管理器已在后台打开，可从任务栏查看', 'info');
+      if (VL.host.isHttp) toast('资源管理器已在后台打开，可从任务栏查看', 'info');
     }).catch(function (e) { toast('打开失败：' + e.message, true); });
   }
   // 用系统默认程序打开文件（用于「打开文件 / 打开成片 / 打开片段 / 打开日志」）——
@@ -2540,7 +2540,7 @@
   function openFileInShell(p) {
     return call('open_path', p).then(function (r) {
       if (r && r.ok === false) { toast('打开失败：' + (r.error || '文件不存在'), true); return; }
-      if (location.protocol.indexOf('http') === 0) toast('已用默认程序打开（若未显示请查看任务栏）', 'info');
+      if (VL.host.isHttp) toast('已用默认程序打开（若未显示请查看任务栏）', 'info');
     }).catch(function (e) { toast('打开失败：' + e.message, true); });
   }
   function setStatusDone(msg) { try { return VL.ui.statusDone(msg); } catch (e) {} }
@@ -3356,7 +3356,7 @@
       if (mob) mob.addEventListener('click', function () {
         closeMenu();
         // 本体 Electron：经主进程打开系统默认浏览器；浏览器侧：新标签打开当前访问地址
-        if (location.protocol.startsWith('http')) {
+        if (VL.host.isHttp) {
           try { window.open(location.href); setStatus('已在新标签页打开浏览器访问地址'); return; } catch (e) {}
         }
         var api2 = getApi();

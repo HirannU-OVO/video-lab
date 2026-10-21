@@ -18,6 +18,7 @@
   --body-lg-font-family: var(--font-family-default);
   --body-lg-font-size: 18px;
   --body-lg-font-weight: 400;
+  --font-weight-regular: 400;
   --body-lg-line-height: 28px;
   --body-lg-letter-spacing: -0.02em;
   --heading-md-font-family: var(--font-family-heading);
@@ -263,6 +264,7 @@
   --spacer-20: 20px;
   --spacer-24: 24px;
   --spacer-32: 32px;
+  --spacer-36: 36px;
   --spacer-40: 40px;
   --spacer-48: 48px;
   --spacer-64: 64px;
@@ -2573,7 +2575,7 @@ body[data-preview-collapsed] .center-global-search .ds-input {
   cursor: pointer;
   flex-shrink: 0;
 }
-.config-path-subheader__refresh:hover { color: var(--text-default); background: var(--bg-base-hover); }
+.config-path-subheader__refresh:hover { color: var(--text-default); background: var(--bg-overlay-l1); }
 .config-path-subheader__refresh:disabled { cursor: default; opacity: .6; }
 .config-path-subheader__refresh.is-spinning svg { animation: vl-refresh-spin 1s linear infinite; }
 @keyframes vl-refresh-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
@@ -3537,7 +3539,7 @@ body[data-preview-collapsed] .center-global-search .ds-input {
   padding: var(--spacer-32) var(--spacer-40);
   background: var(--bg-base-secondary);
   border: 1px solid var(--border-neutral-l1);
-  border-radius: var(--radius-card);
+  border-radius: var(--radius-12);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
 }
 .busy-row {

@@ -258,7 +258,7 @@ body {
   margin-bottom: 4px;
   border: 1px solid var(--border-neutral-l2);
   border-radius: 4px;
-  background: var(--bg-base);
+  background: var(--bg-base-secondary);
   cursor: grab;
   user-select: none;
 }
@@ -275,7 +275,7 @@ body {
   border-radius: 4px;
   line-height: 1;
 }
-.multi-tags__del:hover { color: var(--status-error-default, #E5484D); background: var(--bg-base-hover); }
+.multi-tags__del:hover { color: var(--status-error-default, #E5484D); background: var(--bg-overlay-l1); }
 
 /* 折叠开关：内嵌在输入框右侧的箭头（复用 .field-row 的定位模式）。
    列表默认折叠，点击输入框或箭头展开，点击两者之外折叠。 */
@@ -294,7 +294,7 @@ body {
   cursor: pointer;
   transition: transform .15s ease, color .15s ease;
 }
-.multi-tags__caret:hover { color: var(--text-default); background: var(--bg-base-hover); }
+.multi-tags__caret:hover { color: var(--text-default); background: var(--bg-overlay-l1); }
 .form-group.is-tags-open .multi-tags__caret { transform: translateY(-50%) rotate(180deg); color: var(--text-default); }
 
 /* 输入框行容器（已取消「未保存」星号标记，仅保留基础定位） */

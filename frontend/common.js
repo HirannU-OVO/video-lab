@@ -7,6 +7,13 @@
 (function (root) {
   'use strict';
 
+  // 运行环境能力表：协议与来源判断的唯一实现处，其余代码一律读这里
+  root.VL = root.VL || {};
+  root.VL.host = {
+    isHttp: location.protocol.indexOf('http') === 0,
+    origin: location.origin
+  };
+
   /** 任务状态 → 中文文案。全项目唯一一份，避免两个窗口对同一状态显示不同文字。 */
   var STATUS_TEXT = {
     queued: '排队中',

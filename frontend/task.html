@@ -6,16 +6,11 @@
   <link rel="stylesheet" href="skins/white_blue.css">
   <link rel="stylesheet" href="skins/Black_Orange.css">
   <link rel="stylesheet" href="skins/Maid_Atelier.css">
-  <link rel="manifest" href="/manifest.json">
+  <link rel="manifest" href="../manifest.json">
+  <link rel="icon" href="../icon/preview/app-icon.png">
   <script>
     if (location.protocol.startsWith('http')) {
-      document.addEventListener('DOMContentLoaded', function () {
-        var fav = document.createElement('link');
-        fav.rel = 'icon';
-        fav.href = '/icon/app-icon.png';
-        document.head.appendChild(fav);
-      });
-      var m = new URL(location.href).searchParams.get('token');
+var m = new URL(location.href).searchParams.get('token');
       if (m) localStorage.setItem('tx_token', m);
       if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(function () {});
       // 内嵌模态带 skin 参数：iframe 渲染前同步应用当前皮肤，避免先白后换的闪烁

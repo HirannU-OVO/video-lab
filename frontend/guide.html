@@ -9,7 +9,8 @@
   <link rel="stylesheet" href="skins/Maid_Atelier.css">
   <link rel="stylesheet" href="settings.css">
   <link rel="stylesheet" href="guide.css">
-  <link rel="manifest" href="/manifest.json">
+  <link rel="manifest" href="../manifest.json">
+  <link rel="icon" href="../icon/preview/app-icon.png">
   <script>
     // 皮肤首屏注入：与设置页同理 —— 渲染前同步应用已缓存的皮肤，避免"先白后换"的闪烁。
     // 缓存缺失时再向主进程要一次（iframe 与主窗口同源也能读到，但首次进引导页时可能还没写）。
@@ -29,13 +30,7 @@
       } catch (e) {}
     });
     if (location.protocol.startsWith('http')) {
-      document.addEventListener('DOMContentLoaded', function () {
-        var fav = document.createElement('link');
-        fav.rel = 'icon';
-        fav.href = '/icon/app-icon.png';
-        document.head.appendChild(fav);
-      });
-      var m = new URL(location.href).searchParams.get('token');
+var m = new URL(location.href).searchParams.get('token');
       if (m) localStorage.setItem('tx_token', m);
       if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(function () {});
     }
