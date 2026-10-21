@@ -9,164 +9,17 @@
   src: url('fonts/JetBrainsMono-Regular.ttf') format('truetype');
 }
 
-:root{--bg-input-default:#FFFFFF;}
-
-/* 品牌字体 Cinzel（SIL OFL 1.1，可商用分发，见 fonts/OFL-Cinzel.txt）：
-   品牌名片与主窗口标题栏共用，确保全局一致。
-   与 JetBrains Mono 同处 frontend\fonts\ —— 两者都是应用级字体、不随皮肤启停
-   （此前在 skins/assets/fonts/ 下，会让主窗口标题栏反向依赖皮肤目录）。 */
-@font-face {
-  font-family: 'Cinzel';
-  font-style: normal;
-  font-weight: 400;
-  src: url('fonts/Cinzel-Regular.ttf') format('truetype');
-}
-@font-face {
-  font-family: 'Cinzel';
-  font-style: normal;
-  font-weight: 700;
-  src: url('fonts/Cinzel-Bold.ttf') format('truetype');
-}
-
-/**
- * TraeWork design library tokens
- * Light-mode canonical tokens in parser-friendly standard structure.
- *
- * Notes:
- * - Token values are preserved from the current TraeWork Light system.
- * - Added numeric tokens use direct values, e.g. --radius-12: 12px.
- * - Component HTML should reference these canonical token names.
- */
-
-/* @light-only */
-/* @group-priority: radius, spacers, font, body, heading, code, bg, bg-brand, text, icon, border, accent, status, brand */
-
 :root {
-  /* radius */
-  --radius-0: 0px;
-  --radius-2: 2px;
-  --radius-4: 4px;
-  --radius-6: 6px;
-  --radius-8: 8px;
-  --radius-10: 10px;
-  --radius-12: 12px;
-  --radius-16: 16px;
-  --radius-20: 20px;
-  --radius-24: 24px;
-  --radius-32: 32px;
-  --radius-full: 999px;
-  --radius-xs: var(--radius-2);
-  --radius-sm: var(--radius-4);
-  --radius-md: var(--radius-6);
-  --radius-lg: var(--radius-8);
-  --radius-xl: var(--radius-10);
-  --border-width-default: 1px;
-
-  /* spacers */
-  --spacer-0: 0px;
-  --spacer-2: 2px;
-  --spacer-3: 3px;
-  --spacer-4: 4px;
-  --spacer-6: 6px;
-  --spacer-8: 8px;
-  --spacer-10: 10px;
-  --spacer-12: 12px;
-  --spacer-16: 16px;
-  --spacer-20: 20px;
-  --spacer-24: 24px;
-  --spacer-32: 32px;
-  --spacer-40: 40px;
-  --spacer-48: 48px;
-  --spacer-64: 64px;
-
-  /* icon sizes */
-  --icon-size-12: 12px;
-  --icon-size-14: 14px;
-  --icon-size-16: 16px;
-  --icon-size-20: 20px;
-  --icon-size-24: 24px;
-
-  /* font */
-  --font-family-default: "SF Pro Text", "PingFang SC", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-family-heading: "SF Pro", "PingFang SC", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-family-metric: "Inter", "SF Pro Text", "PingFang SC", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-family-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  --font-weight-default: 400;
-  --font-weight-code: 450;
-  --font-weight-medium: 500;
-  --font-weight-strong: 600;
+  /* ── 旧主令牌块独有项（合并前定义在文件前段，收敛时并入本块） ── */
+  --bg-input-default: #FFFFFF;
   --font-family-base: var(--font-family-default);
   --font-family-heading-alias: var(--font-family-heading);
   --font-family-mono-alias: var(--font-family-mono);
-
-  /* body */
-  --body-xs-font-family: var(--font-family-default);
-  --body-xs-font-size: 10px;
-  --body-xs-font-weight: 400;
-  --body-xs-line-height: 14px;
-  --body-xs-letter-spacing: 0;
-  --body-xs-strong-font-family: var(--font-family-default);
-  --body-xs-strong-font-size: 10px;
-  --body-xs-strong-font-weight: 500;
-  --body-xs-strong-line-height: 14px;
-  --body-xs-strong-letter-spacing: 0;
-  --body-sm-font-family: var(--font-family-default);
-  --body-sm-font-size: 11px;
-  --body-sm-font-weight: 400;
-  --body-sm-line-height: 16px;
-  --body-sm-letter-spacing: 0;
-  --body-sm-strong-font-family: var(--font-family-default);
-  --body-sm-strong-font-size: 11px;
-  --body-sm-strong-font-weight: 500;
-  --body-sm-strong-line-height: 16px;
-  --body-sm-strong-letter-spacing: 0;
-  --body-md-font-family: var(--font-family-default);
-  --body-md-font-size: 12px;
-  --body-md-font-weight: 400;
-  --body-md-line-height: 18px;
-  --body-md-letter-spacing: 0;
-  --body-md-strong-font-family: var(--font-family-default);
-  --body-md-strong-font-size: 12px;
-  --body-md-strong-font-weight: 500;
-  --body-md-strong-line-height: 18px;
-  --body-md-strong-letter-spacing: 0;
-  --body-base-font-family: var(--font-family-default);
-  --body-base-font-size: 14px;
-  --body-base-font-weight: 400;
-  --body-base-line-height: 20px;
-  --body-base-letter-spacing: -0.02em;
-  --body-base-strong-font-family: var(--font-family-default);
-  --body-base-strong-font-size: 14px;
-  --body-base-strong-font-weight: 500;
-  --body-base-strong-line-height: 20px;
-  --body-base-strong-letter-spacing: -0.02em;
   --body-lg-font-family: var(--font-family-default);
   --body-lg-font-size: 18px;
   --body-lg-font-weight: 400;
   --body-lg-line-height: 28px;
   --body-lg-letter-spacing: -0.02em;
-
-  /* heading */
-  --heading-3xs-font-family: var(--font-family-default);
-  --heading-3xs-font-size: 11px;
-  --heading-3xs-font-weight: 600;
-  --heading-3xs-line-height: 16px;
-  --heading-3xs-letter-spacing: 0;
-  --heading-2xs-font-family: var(--font-family-default);
-  --heading-2xs-font-size: 12px;
-  --heading-2xs-font-weight: 600;
-  --heading-2xs-line-height: 18px;
-  --heading-2xs-letter-spacing: 0;
-  --heading-xs-font-family: var(--font-family-default);
-  --heading-xs-font-size: 13px;
-  --heading-xs-font-weight: 600;
-  --heading-xs-line-height: 20px;
-  --heading-xs-letter-spacing: 0;
-  --heading-sm-font-family: var(--font-family-default);
-  --heading-sm-font-size: 16px;
-  --heading-sm-font-weight: 600;
-  --heading-sm-line-height: 24px;
-  --heading-sm-letter-spacing: 0;
   --heading-md-font-family: var(--font-family-heading);
   --heading-md-font-size: 20px;
   --heading-md-font-weight: 600;
@@ -202,16 +55,6 @@
   --heading-display-sm-font-weight: 600;
   --heading-display-sm-line-height: 48px;
   --heading-display-sm-letter-spacing: -0.02em;
-
-  /* code */
-  --code-editor-font-family: var(--font-family-mono);
-  --code-editor-font-size: 13px;
-  --code-editor-font-weight: 450;
-  --code-editor-line-height: 20px;
-  --code-terminal-font-family: var(--font-family-mono);
-  --code-terminal-font-size: 12px;
-  --code-terminal-font-weight: 450;
-  --code-terminal-line-height: 18px;
   --code-text: #17181A;
   --code-doc: #8393A3;
   --code-link: #2F74FF;
@@ -223,22 +66,7 @@
   --code-parameter: #4DA621;
   --code-attribute: #C99100;
   --code-tag: #E24864;
-
-  /* bg */
-  --bg-base-default: #FFFFFF;
-  --bg-base-secondary: #F5F5F5;
-  --bg-base-tertiary: #E5E5E5;
-  --bg-overlay-l1: rgba(115, 115, 115, 0.08);
-  --bg-overlay-l2: rgba(115, 115, 115, 0.12);
-  --bg-overlay-l3: rgba(115, 115, 115, 0.16);
-  --bg-overlay-l4: rgba(115, 115, 115, 0.20);
   --bg-white: #FFFFFF;
-  --bg-menu: #FFFFFF;
-  --bg-tooltip: #FFFFFF;
-  --bg-invert: #262626;
-  --bg-invert-hover: #404040;
-  --bg-invert-active: #171717;
-  --bg-invert-disabled: rgba(115, 115, 115, 0.20);
   --color-background: var(--bg-base-default);
   --color-surface: var(--bg-base-secondary);
   --color-surface-variant: var(--bg-base-tertiary);
@@ -249,31 +77,11 @@
   --color-card: var(--bg-base-secondary);
   --color-tooltip: var(--bg-tooltip);
   --color-menu: var(--bg-menu);
-
-  /* bg-brand */
-  --bg-brand: #4B3FE3;
-  --bg-brand-hover: #6A6FFF;
-  --bg-brand-active: #3F31C6;
-  --bg-brand-disabled: rgba(75, 63, 227, 0.22);
-  --bg-brand-popup: rgba(170, 183, 255, 0.36);
   --color-primary: var(--bg-brand);
   --color-primary-hover: var(--bg-brand-hover);
   --color-primary-disabled: var(--bg-brand-disabled);
   --color-primary-soft: var(--bg-brand-popup);
   --color-accent: var(--bg-brand);
-
-  /* text */
-  --text-default: #171717;
-  --text-default-hover: #262626;
-  --text-default-active: #262626;
-  --text-secondary: #404040;
-  --text-secondary-hover: #171717;
-  --text-secondary-active: #171717;
-  --text-tertiary: #737373;
-  --text-disabled: #A1A1A1;
-  --text-onbrand: #FFFFFF;
-  --text-onaccent: #FFFFFF;
-  --text-white: #FFFFFF;
   --color-foreground: var(--text-default);
   --color-foreground-hover: var(--text-default-hover);
   --color-on-surface: var(--text-default);
@@ -285,37 +93,12 @@
   --color-radius-sm: var(--radius-4);
   --color-radius-md: var(--radius-6);
   --color-radius-lg: var(--radius-8);
-  --text-brand: #4B3FE3;
-  --text-brand-hover: #6A6FFF;
-
-  /* icon */
-  --icon-default: #262626;
-  --icon-default-hover: #171717;
-  --icon-default-active: #171717;
-  --icon-secondary: #404040;
-  --icon-secondary-hover: #262626;
-  --icon-secondary-active: #262626;
-  --icon-tertiary: #737373;
-  --icon-disabled: #A1A1A1;
-  --icon-onbrand: #FFFFFF;
-  --icon-onaccent: #FFFFFF;
   --icon-white: #FFFFFF;
-  --icon-brand: #4B3FE3;
-  --icon-brand-hover: #6A6FFF;
-
-  /* border */
-  --border-neutral-l1: rgba(115, 115, 115, 0.12);
-  --border-neutral-l2: rgba(115, 115, 115, 0.18);
-  --border-neutral-l3: rgba(115, 115, 115, 0.36);
-  --border-contrast: #000000;
-  --border-brand: #4B3FE3;
   --color-border: var(--border-neutral-l1);
   --color-border-strong: var(--border-neutral-l2);
   --color-border-stronger: var(--border-neutral-l3);
   --color-border-contrast: var(--border-contrast);
   --color-outline: var(--border-neutral-l1);
-
-  /* accent */
   --accent-teal: #00B983;
   --accent-coral: #FF6B45;
   --accent-amber: #F2A90C;
@@ -325,67 +108,11 @@
   --accent-magenta: #F53CFF;
   --accent-violet: #9570FF;
   --accent-slate: #747E94;
-
-  /* status */
-  --status-primary-default: #2F74FF;
-  --status-primary-hover: #4C88FF;
-  --status-primary-active: #1759DD;
-  --status-primary-surface-l1: rgba(47, 116, 255, 0.12);
-  --status-primary-surface-l2: rgba(47, 116, 255, 0.18);
-  --status-primary-surface-l3: rgba(47, 116, 255, 0.36);
-  --status-success-default: #15A877;
-  --status-success-hover: #2FB287;
-  --status-success-active: #1E8B56;
-  --status-success-surface-l1: rgba(64, 176, 139, 0.12);
-  --status-success-surface-l2: rgba(64, 176, 139, 0.18);
-  --status-success-surface-l3: rgba(64, 176, 139, 0.36);
-  --status-alert-default: #FEA900;
-  --status-alert-hover: #FFB700;
-  --status-alert-active: #E59100;
-  --status-alert-surface-l1: rgba(254, 169, 0, 0.14);
-  --status-alert-surface-l2: rgba(254, 169, 0, 0.20);
-  --status-alert-surface-l3: rgba(254, 169, 0, 0.36);
-  --status-warning-default: #E27900;
-  --status-warning-hover: #F39A35;
-  --status-warning-active: #C46F11;
-  --status-warning-surface-l1: rgba(226, 121, 0, 0.12);
-  --status-warning-surface-l2: rgba(226, 121, 0, 0.16);
-  --status-warning-surface-l3: rgba(226, 121, 0, 0.36);
-  --status-error-default: #E8463A;
-  --status-error-hover: #EA574C;
-  --status-error-active: #C9382F;
-  --status-error-surface-l1: rgba(232, 70, 58, 0.12);
-  --status-error-surface-l2: rgba(232, 70, 58, 0.16);
-  --status-error-surface-l3: rgba(232, 70, 58, 0.36);
   --color-info: var(--status-primary-default);
   --color-success: var(--status-success-default);
   --color-warning: var(--status-warning-default);
   --color-error: var(--status-error-default);
   --color-error-soft: var(--status-error-surface-l1);
-
-  /* brand */
-  --brand-50: #F2F7FF;
-  --brand-100: #E5EAFF;
-  --brand-200: #CFD8FF;
-  --brand-300: #AAB7FF;
-  --brand-400: #8894FF;
-  --brand-500: #6A6FFF;
-  --brand-600: #4B3FE3;
-  --brand-700: #3F31C6;
-  --brand-800: #2C2290;
-  --brand-900: #1A1759;
-  --brand-950: #010109;
-  --brand-grey-50: #FAFAFA;
-  --brand-grey-100: #F5F5F5;
-  --brand-grey-200: #E5E5E5;
-  --brand-grey-300: #D4D4D4;
-  --brand-grey-400: #A1A1A1;
-  --brand-grey-500: #737373;
-  --brand-grey-600: #525252;
-  --brand-grey-700: #404040;
-  --brand-grey-800: #262626;
-  --brand-grey-900: #171717;
-  --brand-grey-950: #0A0A0A;
   --brand-green-100: var(--brand-50);
   --brand-green-200: var(--brand-100);
   --brand-green-300: var(--brand-200);
@@ -466,14 +193,10 @@
   --brand-green-grey-800: #5E6E6E;
   --brand-green-grey-900: #404F4F;
   --brand-green-grey-1000: #212B2B;
-
-  /* generic fallback */
   --font-family: var(--font-family-default);
   --font-size: var(--body-xs-font-size);
   --font-weight: var(--body-xs-font-weight);
   --line-height: var(--body-xs-line-height);
-
-  /* viz */
   --viz-series-brand: var(--bg-brand);
   --viz-series-brand-soft: var(--brand-300);
   --viz-series-brand-mid: var(--brand-500);
@@ -497,14 +220,8 @@
   --viz-ui-chart-tick: var(--text-secondary);
   --viz-ui-legend-label: var(--text-secondary);
   --viz-ui-legend-value: var(--text-default);
-
-  /* special */
-  --special-white: #FFFFFF;
-  --special-black: #000000;
   --special-bgtabsoverlay: rgba(255, 255, 255, 0.12);
   --special-bggoldoverlay: rgba(210, 181, 19, 0.12);
-
-  /* layout aliases */
   --brand-1: var(--brand-600);
   --brand-2: var(--brand-500);
   --brand-3: var(--brand-300);
@@ -513,6 +230,256 @@
   --bg-layout-1: var(--bg-base-secondary);
   --bg-layout-2: var(--bg-overlay-l1);
   --border-1: var(--border-neutral-l1);
+  /* radius */
+  --radius-0: 0px;
+  --radius-2: 2px;
+  --radius-4: 4px;
+  --radius-6: 6px;
+  --radius-8: 8px;
+  --radius-10: 10px;
+  --radius-12: 12px;
+  --radius-16: 16px;
+  --radius-20: 20px;
+  --radius-24: 24px;
+  --radius-32: 32px;
+  --radius-full: 999px;
+  --radius-xs: var(--radius-2);
+  --radius-sm: var(--radius-4);
+  --radius-md: var(--radius-6);
+  --radius-lg: var(--radius-8);
+  --radius-xl: var(--radius-10);
+  --border-width-default: 1px;
+
+  /* spacers */
+  --spacer-0: 0px;
+  --spacer-2: 2px;
+  --spacer-3: 3px;
+  --spacer-4: 4px;
+  --spacer-6: 6px;
+  --spacer-8: 8px;
+  --spacer-10: 10px;
+  --spacer-12: 12px;
+  --spacer-16: 16px;
+  --spacer-20: 20px;
+  --spacer-24: 24px;
+  --spacer-32: 32px;
+  --spacer-40: 40px;
+  --spacer-48: 48px;
+  --spacer-64: 64px;
+
+  /* icon sizes */
+  --icon-size-12: 12px;
+  --icon-size-14: 14px;
+  --icon-size-16: 16px;
+  --icon-size-20: 20px;
+  --icon-size-24: 24px;
+
+  /* font */
+  --font-family-default: "SF Pro Text", "PingFang SC", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-family-heading: "SF Pro", "PingFang SC", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-family-metric: "Inter", "SF Pro Text", "PingFang SC", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-family-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font-weight-default: 400;
+  --font-weight-code: 450;
+  --font-weight-medium: 500;
+  --font-weight-strong: 600;
+
+  /* body */
+  --body-xs-font-family: var(--font-family-default);
+  --body-xs-font-size: 10px;
+  --body-xs-font-weight: 400;
+  --body-xs-line-height: 14px;
+  --body-xs-letter-spacing: 0;
+  --body-xs-strong-font-family: var(--font-family-default);
+  --body-xs-strong-font-size: 10px;
+  --body-xs-strong-font-weight: 500;
+  --body-xs-strong-line-height: 14px;
+  --body-xs-strong-letter-spacing: 0;
+  --body-sm-font-family: var(--font-family-default);
+  --body-sm-font-size: 11px;
+  --body-sm-font-weight: 400;
+  --body-sm-line-height: 16px;
+  --body-sm-letter-spacing: 0;
+  --body-sm-strong-font-family: var(--font-family-default);
+  --body-sm-strong-font-size: 11px;
+  --body-sm-strong-font-weight: 500;
+  --body-sm-strong-line-height: 16px;
+  --body-sm-strong-letter-spacing: 0;
+  --body-md-font-family: var(--font-family-default);
+  --body-md-font-size: 12px;
+  --body-md-font-weight: 400;
+  --body-md-line-height: 18px;
+  --body-md-letter-spacing: 0;
+  --body-md-strong-font-family: var(--font-family-default);
+  --body-md-strong-font-size: 12px;
+  --body-md-strong-font-weight: 500;
+  --body-md-strong-line-height: 18px;
+  --body-md-strong-letter-spacing: 0;
+  --body-base-font-family: var(--font-family-default);
+  --body-base-font-size: 14px;
+  --body-base-font-weight: 400;
+  --body-base-line-height: 20px;
+  --body-base-letter-spacing: -0.02em;
+  --body-base-strong-font-family: var(--font-family-default);
+  --body-base-strong-font-size: 14px;
+  --body-base-strong-font-weight: 500;
+  --body-base-strong-line-height: 20px;
+  --body-base-strong-letter-spacing: -0.02em;
+
+  /* heading */
+  --heading-3xs-font-family: var(--font-family-default);
+  --heading-3xs-font-size: 11px;
+  --heading-3xs-font-weight: 600;
+  --heading-3xs-line-height: 16px;
+  --heading-3xs-letter-spacing: 0;
+  --heading-2xs-font-family: var(--font-family-default);
+  --heading-2xs-font-size: 12px;
+  --heading-2xs-font-weight: 600;
+  --heading-2xs-line-height: 18px;
+  --heading-2xs-letter-spacing: 0;
+  --heading-xs-font-family: var(--font-family-default);
+  --heading-xs-font-size: 13px;
+  --heading-xs-font-weight: 600;
+  --heading-xs-line-height: 20px;
+  --heading-xs-letter-spacing: 0;
+  --heading-sm-font-family: var(--font-family-default);
+  --heading-sm-font-size: 16px;
+  --heading-sm-font-weight: 600;
+  --heading-sm-line-height: 24px;
+  --heading-sm-letter-spacing: 0;
+
+  /* code */
+  --code-editor-font-family: var(--font-family-mono);
+  --code-editor-font-size: 13px;
+  --code-editor-font-weight: 450;
+  --code-editor-line-height: 20px;
+  --code-terminal-font-family: var(--font-family-mono);
+  --code-terminal-font-size: 12px;
+  --code-terminal-font-weight: 450;
+  --code-terminal-line-height: 18px;
+
+  /* bg */
+  --bg-base-default: #FFFFFF;
+  --bg-base-secondary: #F5F5F5;
+  --bg-base-tertiary: #E5E5E5;
+  --bg-overlay-l1: rgba(115, 115, 115, 0.08);
+  --bg-overlay-l2: rgba(115, 115, 115, 0.12);
+  --bg-overlay-l3: rgba(115, 115, 115, 0.16);
+  --bg-overlay-l4: rgba(115, 115, 115, 0.20);
+  --bg-menu: #FFFFFF;
+  --bg-tooltip: #FFFFFF;
+  --bg-invert: #262626;
+  --bg-invert-hover: #404040;
+  --bg-invert-active: #171717;
+  --bg-invert-disabled: rgba(115, 115, 115, 0.20);
+
+  /* bg-brand */
+  --bg-brand: #4B3FE3;
+  --bg-brand-hover: #6A6FFF;
+  --bg-brand-active: #3F31C6;
+  --bg-brand-disabled: rgba(75, 63, 227, 0.22);
+  --bg-brand-popup: rgba(170, 183, 255, 0.36);
+
+  /* text */
+  --text-default: #171717;
+  --text-default-hover: #262626;
+  --text-default-active: #262626;
+  --text-secondary: #404040;
+  --text-secondary-hover: #171717;
+  --text-secondary-active: #171717;
+  --text-tertiary: #737373;
+  --text-disabled: #A1A1A1;
+  --text-onbrand: #FFFFFF;
+  --text-onaccent: #FFFFFF;
+  --text-white: #FFFFFF;
+  --text-brand: #4B3FE3;
+  --text-brand-hover: #6A6FFF;
+
+  /* icon */
+  --icon-default: #262626;
+  --icon-default-hover: #171717;
+  --icon-default-active: #171717;
+  --icon-secondary: #404040;
+  --icon-secondary-hover: #262626;
+  --icon-secondary-active: #262626;
+  --icon-tertiary: #737373;
+  --icon-disabled: #A1A1A1;
+  --icon-onbrand: #FFFFFF;
+  --icon-onaccent: #FFFFFF;
+  --icon-brand: #4B3FE3;
+  --icon-brand-hover: #6A6FFF;
+
+  /* border */
+  --border-neutral-l1: rgba(115, 115, 115, 0.12);
+  --border-neutral-l2: rgba(115, 115, 115, 0.18);
+  --border-neutral-l3: rgba(115, 115, 115, 0.36);
+  --border-contrast: #000000;
+  --border-brand: #4B3FE3;
+
+  /* status */
+  --status-primary-default: #2F74FF;
+  --status-primary-hover: #4C88FF;
+  --status-primary-active: #1759DD;
+  --status-primary-surface-l1: rgba(47, 116, 255, 0.12);
+  --status-primary-surface-l2: rgba(47, 116, 255, 0.18);
+  --status-primary-surface-l3: rgba(47, 116, 255, 0.36);
+  --status-success-default: #15A877;
+  --status-success-hover: #2FB287;
+  --status-success-active: #1E8B56;
+  --status-success-surface-l1: rgba(64, 176, 139, 0.12);
+  --status-success-surface-l2: rgba(64, 176, 139, 0.18);
+  --status-success-surface-l3: rgba(64, 176, 139, 0.36);
+  --status-alert-default: #FEA900;
+  --status-alert-hover: #FFB700;
+  --status-alert-active: #E59100;
+  --status-alert-surface-l1: rgba(254, 169, 0, 0.14);
+  --status-alert-surface-l2: rgba(254, 169, 0, 0.20);
+  --status-alert-surface-l3: rgba(254, 169, 0, 0.36);
+  --status-warning-default: #E27900;
+  --status-warning-hover: #F39A35;
+  --status-warning-active: #C46F11;
+  --status-warning-surface-l1: rgba(226, 121, 0, 0.12);
+  --status-warning-surface-l2: rgba(226, 121, 0, 0.16);
+  --status-warning-surface-l3: rgba(226, 121, 0, 0.36);
+  --status-error-default: #E8463A;
+  --status-error-hover: #EA574C;
+  --status-error-active: #C9382F;
+  --status-error-surface-l1: rgba(232, 70, 58, 0.12);
+  --status-error-surface-l2: rgba(232, 70, 58, 0.16);
+  --status-error-surface-l3: rgba(232, 70, 58, 0.36);
+
+  /* brand */
+  --brand-50: #F2F7FF;
+  --brand-100: #E5EAFF;
+  --brand-200: #CFD8FF;
+  --brand-300: #AAB7FF;
+  --brand-400: #8894FF;
+  --brand-500: #6A6FFF;
+  --brand-600: #4B3FE3;
+  --brand-700: #3F31C6;
+  --brand-800: #2C2290;
+  --brand-900: #1A1759;
+  --brand-950: #010109;
+  --brand-grey-50: #FAFAFA;
+  --brand-grey-100: #F5F5F5;
+  --brand-grey-200: #E5E5E5;
+  --brand-grey-300: #D4D4D4;
+  --brand-grey-400: #A1A1A1;
+  --brand-grey-500: #737373;
+  --brand-grey-600: #525252;
+  --brand-grey-700: #404040;
+  --brand-grey-800: #262626;
+  --brand-grey-900: #171717;
+  --brand-grey-950: #0A0A0A;
+
+  /* special */
+  --special-white: #FFFFFF;
+  --special-black: #000000;
+
+  /* ── 语义色与遮罩（皮肤可覆盖） ── */
+  --bg-overlay: rgba(0, 0, 0, 0.35);
+  --text-muted: #999;
+  --success-500: #16a34a;
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -1050,253 +1017,6 @@ pre {
 /* ═══════════════════════════════════════════════════════════════
    TraeWork Design Library Tokens (Light)
    ═══════════════════════════════════════════════════════════════ */
-:root {
-  /* radius */
-  --radius-0: 0px;
-  --radius-2: 2px;
-  --radius-4: 4px;
-  --radius-6: 6px;
-  --radius-8: 8px;
-  --radius-10: 10px;
-  --radius-12: 12px;
-  --radius-16: 16px;
-  --radius-20: 20px;
-  --radius-24: 24px;
-  --radius-32: 32px;
-  --radius-full: 999px;
-  --radius-xs: var(--radius-2);
-  --radius-sm: var(--radius-4);
-  --radius-md: var(--radius-6);
-  --radius-lg: var(--radius-8);
-  --radius-xl: var(--radius-10);
-  --border-width-default: 1px;
-
-  /* spacers */
-  --spacer-0: 0px;
-  --spacer-2: 2px;
-  --spacer-3: 3px;
-  --spacer-4: 4px;
-  --spacer-6: 6px;
-  --spacer-8: 8px;
-  --spacer-10: 10px;
-  --spacer-12: 12px;
-  --spacer-16: 16px;
-  --spacer-20: 20px;
-  --spacer-24: 24px;
-  --spacer-32: 32px;
-  --spacer-40: 40px;
-  --spacer-48: 48px;
-  --spacer-64: 64px;
-
-  /* icon sizes */
-  --icon-size-12: 12px;
-  --icon-size-14: 14px;
-  --icon-size-16: 16px;
-  --icon-size-20: 20px;
-  --icon-size-24: 24px;
-
-  /* font */
-  --font-family-default: "SF Pro Text", "PingFang SC", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-family-heading: "SF Pro", "PingFang SC", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-family-metric: "Inter", "SF Pro Text", "PingFang SC", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-family-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  --font-weight-default: 400;
-  --font-weight-code: 450;
-  --font-weight-medium: 500;
-  --font-weight-strong: 600;
-
-  /* body */
-  --body-xs-font-family: var(--font-family-default);
-  --body-xs-font-size: 10px;
-  --body-xs-font-weight: 400;
-  --body-xs-line-height: 14px;
-  --body-xs-letter-spacing: 0;
-  --body-xs-strong-font-family: var(--font-family-default);
-  --body-xs-strong-font-size: 10px;
-  --body-xs-strong-font-weight: 500;
-  --body-xs-strong-line-height: 14px;
-  --body-xs-strong-letter-spacing: 0;
-  --body-sm-font-family: var(--font-family-default);
-  --body-sm-font-size: 11px;
-  --body-sm-font-weight: 400;
-  --body-sm-line-height: 16px;
-  --body-sm-letter-spacing: 0;
-  --body-sm-strong-font-family: var(--font-family-default);
-  --body-sm-strong-font-size: 11px;
-  --body-sm-strong-font-weight: 500;
-  --body-sm-strong-line-height: 16px;
-  --body-sm-strong-letter-spacing: 0;
-  --body-md-font-family: var(--font-family-default);
-  --body-md-font-size: 12px;
-  --body-md-font-weight: 400;
-  --body-md-line-height: 18px;
-  --body-md-letter-spacing: 0;
-  --body-md-strong-font-family: var(--font-family-default);
-  --body-md-strong-font-size: 12px;
-  --body-md-strong-font-weight: 500;
-  --body-md-strong-line-height: 18px;
-  --body-md-strong-letter-spacing: 0;
-  --body-base-font-family: var(--font-family-default);
-  --body-base-font-size: 14px;
-  --body-base-font-weight: 400;
-  --body-base-line-height: 20px;
-  --body-base-letter-spacing: -0.02em;
-  --body-base-strong-font-family: var(--font-family-default);
-  --body-base-strong-font-size: 14px;
-  --body-base-strong-font-weight: 500;
-  --body-base-strong-line-height: 20px;
-  --body-base-strong-letter-spacing: -0.02em;
-
-  /* heading */
-  --heading-3xs-font-family: var(--font-family-default);
-  --heading-3xs-font-size: 11px;
-  --heading-3xs-font-weight: 600;
-  --heading-3xs-line-height: 16px;
-  --heading-3xs-letter-spacing: 0;
-  --heading-2xs-font-family: var(--font-family-default);
-  --heading-2xs-font-size: 12px;
-  --heading-2xs-font-weight: 600;
-  --heading-2xs-line-height: 18px;
-  --heading-2xs-letter-spacing: 0;
-  --heading-xs-font-family: var(--font-family-default);
-  --heading-xs-font-size: 13px;
-  --heading-xs-font-weight: 600;
-  --heading-xs-line-height: 20px;
-  --heading-xs-letter-spacing: 0;
-  --heading-sm-font-family: var(--font-family-default);
-  --heading-sm-font-size: 16px;
-  --heading-sm-font-weight: 600;
-  --heading-sm-line-height: 24px;
-  --heading-sm-letter-spacing: 0;
-
-  /* code */
-  --code-editor-font-family: var(--font-family-mono);
-  --code-editor-font-size: 13px;
-  --code-editor-font-weight: 450;
-  --code-editor-line-height: 20px;
-  --code-terminal-font-family: var(--font-family-mono);
-  --code-terminal-font-size: 12px;
-  --code-terminal-font-weight: 450;
-  --code-terminal-line-height: 18px;
-
-  /* bg */
-  --bg-base-default: #FFFFFF;
-  --bg-base-secondary: #F5F5F5;
-  --bg-base-tertiary: #E5E5E5;
-  --bg-overlay-l1: rgba(115, 115, 115, 0.08);
-  --bg-overlay-l2: rgba(115, 115, 115, 0.12);
-  --bg-overlay-l3: rgba(115, 115, 115, 0.16);
-  --bg-overlay-l4: rgba(115, 115, 115, 0.20);
-  --bg-menu: #FFFFFF;
-  --bg-tooltip: #FFFFFF;
-  --bg-invert: #262626;
-  --bg-invert-hover: #404040;
-  --bg-invert-active: #171717;
-  --bg-invert-disabled: rgba(115, 115, 115, 0.20);
-
-  /* bg-brand */
-  --bg-brand: #4B3FE3;
-  --bg-brand-hover: #6A6FFF;
-  --bg-brand-active: #3F31C6;
-  --bg-brand-disabled: rgba(75, 63, 227, 0.22);
-  --bg-brand-popup: rgba(170, 183, 255, 0.36);
-
-  /* text */
-  --text-default: #171717;
-  --text-default-hover: #262626;
-  --text-default-active: #262626;
-  --text-secondary: #404040;
-  --text-secondary-hover: #171717;
-  --text-secondary-active: #171717;
-  --text-tertiary: #737373;
-  --text-disabled: #A1A1A1;
-  --text-onbrand: #FFFFFF;
-  --text-onaccent: #FFFFFF;
-  --text-white: #FFFFFF;
-  --text-brand: #4B3FE3;
-  --text-brand-hover: #6A6FFF;
-
-  /* icon */
-  --icon-default: #262626;
-  --icon-default-hover: #171717;
-  --icon-default-active: #171717;
-  --icon-secondary: #404040;
-  --icon-secondary-hover: #262626;
-  --icon-secondary-active: #262626;
-  --icon-tertiary: #737373;
-  --icon-disabled: #A1A1A1;
-  --icon-onbrand: #FFFFFF;
-  --icon-onaccent: #FFFFFF;
-  --icon-brand: #4B3FE3;
-  --icon-brand-hover: #6A6FFF;
-
-  /* border */
-  --border-neutral-l1: rgba(115, 115, 115, 0.12);
-  --border-neutral-l2: rgba(115, 115, 115, 0.18);
-  --border-neutral-l3: rgba(115, 115, 115, 0.36);
-  --border-contrast: #000000;
-  --border-brand: #4B3FE3;
-
-  /* status */
-  --status-primary-default: #2F74FF;
-  --status-primary-hover: #4C88FF;
-  --status-primary-active: #1759DD;
-  --status-primary-surface-l1: rgba(47, 116, 255, 0.12);
-  --status-primary-surface-l2: rgba(47, 116, 255, 0.18);
-  --status-primary-surface-l3: rgba(47, 116, 255, 0.36);
-  --status-success-default: #15A877;
-  --status-success-hover: #2FB287;
-  --status-success-active: #1E8B56;
-  --status-success-surface-l1: rgba(64, 176, 139, 0.12);
-  --status-success-surface-l2: rgba(64, 176, 139, 0.18);
-  --status-success-surface-l3: rgba(64, 176, 139, 0.36);
-  --status-alert-default: #FEA900;
-  --status-alert-hover: #FFB700;
-  --status-alert-active: #E59100;
-  --status-alert-surface-l1: rgba(254, 169, 0, 0.14);
-  --status-alert-surface-l2: rgba(254, 169, 0, 0.20);
-  --status-alert-surface-l3: rgba(254, 169, 0, 0.36);
-  --status-warning-default: #E27900;
-  --status-warning-hover: #F39A35;
-  --status-warning-active: #C46F11;
-  --status-warning-surface-l1: rgba(226, 121, 0, 0.12);
-  --status-warning-surface-l2: rgba(226, 121, 0, 0.16);
-  --status-warning-surface-l3: rgba(226, 121, 0, 0.36);
-  --status-error-default: #E8463A;
-  --status-error-hover: #EA574C;
-  --status-error-active: #C9382F;
-  --status-error-surface-l1: rgba(232, 70, 58, 0.12);
-  --status-error-surface-l2: rgba(232, 70, 58, 0.16);
-  --status-error-surface-l3: rgba(232, 70, 58, 0.36);
-
-  /* brand */
-  --brand-50: #F2F7FF;
-  --brand-100: #E5EAFF;
-  --brand-200: #CFD8FF;
-  --brand-300: #AAB7FF;
-  --brand-400: #8894FF;
-  --brand-500: #6A6FFF;
-  --brand-600: #4B3FE3;
-  --brand-700: #3F31C6;
-  --brand-800: #2C2290;
-  --brand-900: #1A1759;
-  --brand-950: #010109;
-  --brand-grey-50: #FAFAFA;
-  --brand-grey-100: #F5F5F5;
-  --brand-grey-200: #E5E5E5;
-  --brand-grey-300: #D4D4D4;
-  --brand-grey-400: #A1A1A1;
-  --brand-grey-500: #737373;
-  --brand-grey-600: #525252;
-  --brand-grey-700: #404040;
-  --brand-grey-800: #262626;
-  --brand-grey-900: #171717;
-  --brand-grey-950: #0A0A0A;
-
-  /* special */
-  --special-white: #FFFFFF;
-  --special-black: #000000;
-}
 
 /* ═══════════════════════════════════════════════════════════════
    Components CSS (shared atoms)
@@ -5558,8 +5278,8 @@ button.is-vl-disabled {
   font-size: 17px; font-weight: 700; color: #fff;
   background: var(--brand-500, #3b82f6);
 }
-.update-result__icon--ok { background: var(--success-500, #16a34a); }
-.update-result__icon--err { background: var(--danger-500, #dc2626); }
+.update-result__icon--ok { background: var(--success-500); }
+.update-result__icon--err { background: #dc2626; }
 .update-result__icon--wait { background: var(--text-tertiary, #8a8a8a); }
 .update-result__body { flex: 1 1 0; min-width: 0; }
 .update-result__title { font-size: 15px; font-weight: 600; color: var(--text-default, #222); }
