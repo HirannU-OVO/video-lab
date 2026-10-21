@@ -426,7 +426,7 @@ function startHttpServer(opts) {
   }
 
   // PWA manifest：优先读应用根目录的静态 manifest.json（前端 <link rel="manifest"> 引同一份）
-  const manifestPath = path.join(__dirname, 'manifest.json');
+  const manifestPath = path.join(__dirname, 'frontend', 'manifest.json');
   const manifest = fs.existsSync(manifestPath)
     ? fs.readFileSync(manifestPath, 'utf8')
     : JSON.stringify({
