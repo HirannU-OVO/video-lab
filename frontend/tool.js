@@ -630,8 +630,6 @@
       if (!api || !api.open_folder_select) { toast('当前环境不支持打开文件夹', 'error'); return; }
       api.open_folder_select($('outBackupDir').value.trim() || state.defaultBackupDir).then(function (r) {
         if (r && r.ok === false) { toast('打开备份文件夹失败：' + (r.error || '未知错误'), 'error'); return; }
-        // 浏览器端由本体代开：explorer 可能被 Windows 前台锁压到后台，只在任务栏出现 —— 明确告知去哪看
-        if (VL.host.isHttp) toast('资源管理器已在后台打开，可从任务栏查看', 'info');
       }).catch(function (e) { toast('打开备份文件夹失败：' + e.message, 'error'); });
     });
     $('logHead').addEventListener('click', function () { $('logBox').classList.toggle('tl-log--open'); });

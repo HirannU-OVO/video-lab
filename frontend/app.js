@@ -2526,13 +2526,11 @@
     try { setStatus(m); } catch (e2) {}
   }
 
-  // 「打开文件夹 / 在文件夹中显示」统一入口：失败 toast；浏览器端由本体代开（explorer 可能被前台锁压到后台，
-  // 只在任务栏出现）→ 成功后提示去任务栏查看。全项目所有打开目录调用都走这里，文案与行为一致。
+  // 「打开文件夹 / 在文件夹中显示」统一入口：失败 toast。全项目所有打开目录调用都走这里，文案与行为一致。
   // 打开「路径 / 文件夹 / 所在位置」类操作：后端按目标类型分流 ——
   function openInShell(p) {
     return call('open_folder_select', p).then(function (r) {
       if (r && r.ok === false) { toast('打开失败：' + (r.error || '路径不存在'), true); return; }
-      if (VL.host.isHttp) toast('资源管理器已在后台打开，可从任务栏查看', 'info');
     }).catch(function (e) { toast('打开失败：' + e.message, true); });
   }
   // 用系统默认程序打开文件（用于「打开文件 / 打开成片 / 打开片段 / 打开日志」）——
@@ -2540,7 +2538,6 @@
   function openFileInShell(p) {
     return call('open_path', p).then(function (r) {
       if (r && r.ok === false) { toast('打开失败：' + (r.error || '文件不存在'), true); return; }
-      if (VL.host.isHttp) toast('已用默认程序打开（若未显示请查看任务栏）', 'info');
     }).catch(function (e) { toast('打开失败：' + e.message, true); });
   }
   function setStatusDone(msg) { try { return VL.ui.statusDone(msg); } catch (e) {} }

@@ -8,26 +8,87 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
-const { dialog, shell } = require('electron');
+const { app, dialog, shell } = require('electron');
 
 const FRONTEND_DIR = path.join(__dirname, 'frontend');
 const ICON_DIR = path.join(__dirname, 'icon');
 // 前端资源版本指纹：每次进程启动都会变化 —— 注入 HTML 里 JS/CSS 引用 URL（?v=），URL 变化后浏览器必然重新拉取、避免强缓存。
 const FRONTEND_VER = Date.now().toString(36);
 
-// 前台打开目录：浏览器请求到达的是后台主进程（焦点在浏览器侧），shell.openPath 会使 explorer 新窗口
-// 被 Windows 前台锁压制、后台冒出；改用 cmd /c start（ShellExecute）让 explorer 获得前台激活权。
+// 打开目录后把资源管理器窗口前置：浏览器发起时同样会被前台锁压到后台。
+// ⚠ 不给资源管理器设持久置顶（会一直压着其它窗口），只做一次前置。
+const RAISE_EXPLORER_PS = [
+  'Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes',
+  "Add-Type -MemberDefinition @'",
+  '[DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();',
+  '[DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);',
+  '[DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();',
+  '[DllImport("user32.dll")] public static extern bool AttachThreadInput(uint a, uint b, bool f);',
+  '[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);',
+  '[DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr h);',
+  "'@ -Name R -Namespace W",
+  '$r = [System.Windows.Automation.AutomationElement]::RootElement',
+  '$c = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ClassNameProperty, "CabinetWClass")',
+  '$t = $env:VL_FOLDER_TITLE',
+  '$h = [IntPtr]::Zero',
+  'for ($i = 0; $i -lt 40; $i++) {',
+  '  Start-Sleep -Milliseconds 100',
+  '  $all = @($r.FindAll([System.Windows.Automation.TreeScope]::Children, $c))',
+  '  if ($all.Count -eq 0) { continue }',
+  '  $pick = $null',
+  '  if ($t) { foreach ($w in $all) { if ($w.Current.Name -eq $t) { $pick = $w; break } } }',
+  '  if (-not $pick) { $pick = $all[0] }',
+  '  $h = [IntPtr]$pick.Current.NativeWindowHandle',
+  '  break',
+  '}',
+  'if ($h -ne [IntPtr]::Zero) {',
+  '  $fg = [W.R]::GetForegroundWindow()',
+  '  $p = 0',
+  '  $tid = [W.R]::GetWindowThreadProcessId($fg, [ref]$p)',
+  '  $my = [W.R]::GetCurrentThreadId()',
+  '  [W.R]::AttachThreadInput($my, $tid, $true) | Out-Null',
+  '  [W.R]::BringWindowToTop($h) | Out-Null',
+  '  [W.R]::SetForegroundWindow($h) | Out-Null',
+  '  [W.R]::AttachThreadInput($my, $tid, $false) | Out-Null',
+  '}'
+].join('\r\n');
+const RAISE_EXPLORER_PATH = path.join(require('os').tmpdir(), 'vl-raise-explorer.ps1');
+function raiseExplorerWindow(folderName) {
+  try {
+    fs.writeFileSync(RAISE_EXPLORER_PATH, '\ufeff' + RAISE_EXPLORER_PS, 'utf8');
+    const cp = spawn('powershell.exe', ['-NoProfile', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', RAISE_EXPLORER_PATH], {
+      windowsHide: true, stdio: 'ignore',
+      env: Object.assign({}, process.env, { VL_FOLDER_TITLE: String(folderName || '') })
+    });
+    cp.on('error', () => {});
+    cp.unref();
+  } catch (e) {}
+}
+
+// 打开目录 / 文件：先用 Electron 的 shell.openPath（有真实错误串），失败再回退 cmd /c start。
+// ⚠ 回退时整个命令行必须作为**一个参数**传给 cmd：拆成多个参数时 Node 会给含引号的参数再加一层
+//   转义，start 的「标题 + 目标」会错位并静默失败（表现为调用返回成功但窗口不出现）。
+// ⚠ 回退不能用等待进程退出的方式：start 拉起的 explorer 会继承管道句柄，回调要等到窗口关闭才触发。
 function openDirForeground(target) {
   return new Promise((resolve) => {
-    // cmd /c start "" "path"：start 首个参数为窗口标题（空），第二个为目标目录。
-    // ⚠ 不能用 execFile 等退出：start 拉起的 explorer 会继承 cmd 的管道句柄，Node 回调要等到「管道 EOF」
-    //   = explorer 窗口关闭才触发 → 浏览器端 open_path 表现为挂起 / 无响应。
-    try {
-      const cp = spawn('cmd.exe', ['/c', 'start', '""', '"' + target + '"'], { windowsHide: true, detached: true, stdio: 'ignore' });
-      cp.unref();
-      cp.on('error', (err) => resolve({ ok: false, error: String(err && err.message || err) }));
-      setTimeout(() => resolve({ ok: true }), 150);
-    } catch (e) { resolve({ ok: false, error: String(e && e.message || e) }); }
+    let done = false;
+    const finish = (r) => { if (!done) { done = true; resolve(r); } };
+    Promise.resolve()
+      .then(() => shell.openPath(target))
+      .then((err) => {
+        if (!err) {
+          raiseExplorerWindow(path.basename(target));
+          finish({ ok: true });
+          return;
+        }
+        try {
+          const cp = spawn('cmd.exe', ['/c', 'start "" "' + target + '"'], { windowsHide: true, detached: true, stdio: 'ignore' });
+          cp.unref();
+          cp.on('error', (e) => finish({ ok: false, error: String(e && e.message || e) }));
+          setTimeout(() => { raiseExplorerWindow(path.basename(target)); finish({ ok: true }); }, 300);
+        } catch (e) { finish({ ok: false, error: String(e && e.message || e) }); }
+      })
+      .catch((e) => finish({ ok: false, error: String(e && e.message || e) }));
   });
 }
 
@@ -158,13 +219,13 @@ function startHttpServer(opts) {
   const dialogRoutes = {
     choose_mask_file: async (args) => {
       const prev = args[0] || (api.getRoot() || '');
-      const r = await dialog.showOpenDialog({ title: '选择水印文件', defaultPath: prev, properties: ['openFile'], filters: [{ name: '视频水印', extensions: ['mov', 'mp4'] }] });
+      const r = await showOpen({ title: '选择水印文件', defaultPath: prev, properties: ['openFile'], filters: [{ name: '视频水印', extensions: ['mov', 'mp4'] }] });
       if (r.canceled || !r.filePaths || !r.filePaths.length) return { ok: false };
       return { ok: true, path: r.filePaths[0] };
     },
     pick_directory: async (args) => {
       const win = getMainWin() || getSettingsWin();
-      const result = await dialog.showOpenDialog({ title: args[0] || '选择目录', defaultPath: args[1] || api.getRoot() || '', properties: ['openDirectory'] });
+      const result = await showOpen({ title: args[0] || '选择目录', defaultPath: args[1] || api.getRoot() || '', properties: ['openDirectory'] });
       return result.canceled || !result.filePaths || result.filePaths.length === 0 ? '' : result.filePaths[0];
     },
     pick_save_file: async (args) => {
@@ -174,45 +235,45 @@ function startHttpServer(opts) {
         defaultPath: args[1] || 'VideoLab.zip',
         filters: [{ name: '压缩包', extensions: ['zip'] }]
       };
-      const result = win ? await dialog.showSaveDialog(win, opts) : await dialog.showSaveDialog(opts);
+      const result = await showSave(opts);
       return result.canceled || !result.filePath ? '' : result.filePath;
     },
     choose_workdir: async () => {
-      const result = await dialog.showOpenDialog({ title: '选择工作路径', defaultPath: api.getRoot(), properties: ['openDirectory'] });
+      const result = await showOpen({ title: '选择工作路径', defaultPath: api.getRoot(), properties: ['openDirectory'] });
       if (result.canceled || !result.filePaths || result.filePaths.length === 0) return { ok: false, canceled: true };
       const dir = result.filePaths[0];
       return { ok: true, root: dir, projects: await api.listProjectsAsync() };
     },
     pick_watermark: async (args) => {
       const defaultPath = String(args[0] || '').trim();
-      const result = await dialog.showOpenDialog({ title: '选择水印 PNG', defaultPath, properties: ['openFile'], filters: [{ name: 'PNG 图片', extensions: ['png'] }] });
+      const result = await showOpen({ title: '选择水印 PNG', defaultPath, properties: ['openFile'], filters: [{ name: 'PNG 图片', extensions: ['png'] }] });
       return result.canceled || !result.filePaths || result.filePaths.length === 0 ? '' : result.filePaths[0];
     },
     pick_image: async (args) => {
       const defaultPath = String(args[0] || '').trim() || api.getRoot();
-      const result = await dialog.showOpenDialog({ title: '选择要叠加的图片', defaultPath, properties: ['openFile'], filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp'] }] });
+      const result = await showOpen({ title: '选择要叠加的图片', defaultPath, properties: ['openFile'], filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp'] }] });
       return result.canceled || !result.filePaths || result.filePaths.length === 0 ? '' : result.filePaths[0];
     },
     pick_exclude: async () => {
-      const result = await dialog.showOpenDialog({ title: '选择要排除的路径（文件夹或视频文件）', defaultPath: api.getRoot(), properties: ['openFile', 'openDirectory', 'multiSelections'] });
+      const result = await showOpen({ title: '选择要排除的路径（文件夹或视频文件）', defaultPath: api.getRoot(), properties: ['openFile', 'openDirectory', 'multiSelections'] });
       return result.canceled || !result.filePaths || result.filePaths.length === 0 ? [] : result.filePaths;
     },
     pick_paths: async () => {
-      const result = await dialog.showOpenDialog({ title: '选择要添加的文件夹', defaultPath: api.getRoot(), properties: ['openDirectory', 'multiSelections'] });
+      const result = await showOpen({ title: '选择要添加的文件夹', defaultPath: api.getRoot(), properties: ['openDirectory', 'multiSelections'] });
       return result.canceled || !result.filePaths || result.filePaths.length === 0 ? [] : result.filePaths;
     },
     pick_paths_files: async () => {
-      const result = await dialog.showOpenDialog({ title: '选择视频文件（支持 mp4/mov/avi/mkv 等 / .lnk 快捷方式）', defaultPath: api.getRoot(), properties: ['openFile', 'multiSelections'], filters: [{ name: '视频文件', extensions: ['mp4', 'mov', 'avi', 'mkv', 'm4v', 'webm', 'flv', 'lnk'] }] });
+      const result = await showOpen({ title: '选择视频文件（支持 mp4/mov/avi/mkv 等 / .lnk 快捷方式）', defaultPath: api.getRoot(), properties: ['openFile', 'multiSelections'], filters: [{ name: '视频文件', extensions: ['mp4', 'mov', 'avi', 'mkv', 'm4v', 'webm', 'flv', 'lnk'] }] });
       return result.canceled || !result.filePaths || result.filePaths.length === 0 ? [] : result.filePaths;
     },
     pick_paths_dirs: async () => {
-      const result = await dialog.showOpenDialog({ title: '选择文件夹（将递归扫描其中视频）', defaultPath: api.getRoot(), properties: ['openDirectory', 'multiSelections'] });
+      const result = await showOpen({ title: '选择文件夹（将递归扫描其中视频）', defaultPath: api.getRoot(), properties: ['openDirectory', 'multiSelections'] });
       return result.canceled || !result.filePaths || result.filePaths.length === 0 ? [] : result.filePaths;
     },
     resolve_shortcut: async (args) => api.resolveShortcut(args[0]),
     mask_add_source: async (args) => api.maskAddSource(args[0], args[1]),
     pick_single_folder: async () => {
-      const result = await dialog.showOpenDialog({ title: '选择要修改为的文件夹', defaultPath: api.getRoot(), properties: ['openDirectory'] });
+      const result = await showOpen({ title: '选择要修改为的文件夹', defaultPath: api.getRoot(), properties: ['openDirectory'] });
       return result.canceled || !result.filePaths || result.filePaths.length === 0 ? '' : result.filePaths[0];
     },
   };
@@ -256,6 +317,7 @@ function startHttpServer(opts) {
         if (fs.statSync(target).isDirectory()) return openDirForeground(target);
       } catch (e) { /* stat 失败按文件处理 */ }
       shell.showItemInFolder(target);
+      raiseExplorerWindow(path.basename(path.dirname(target)));
       return { ok: true };
     },
     open_project_dir: async (args) => {
@@ -290,6 +352,88 @@ function startHttpServer(opts) {
       return info;
     },
   };
+
+  // 浏览器侧的系统对话框一律**不挂父窗口**：独立对话框。
+  // ⚠ 隐藏窗口（静默常驻在托盘）作父会让系统模态对话框卡住主进程，HTTP 请求全部超时。
+  // ⚠ 也不能为了靠前就把本体窗口 show 出来，那等于凭空多一个窗口。
+  //
+  // 独立对话框在浏览器发起时会被系统放到后台（只在任务栏闪烁）。弹窗后用一次性隐藏进程
+  // 按标题定位该对话框，借 AttachThreadInput 拿到前台权限再 SetForegroundWindow 前置。
+  // ⚠ 直接 SetForegroundWindow 会被前台锁拒绝（本进程没有可见窗口），必须先附着输入线程。
+  const RAISE_DIALOG_PS = [
+    'Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes',
+    "Add-Type -MemberDefinition @'",
+    '[DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();',
+    '[DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);',
+    '[DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();',
+    '[DllImport("user32.dll")] public static extern bool AttachThreadInput(uint a, uint b, bool f);',
+    '[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);',
+    '[DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr h);',
+    '[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);',
+    '[DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);',
+    "'@ -Name R -Namespace W",
+    '$r = [System.Windows.Automation.AutomationElement]::RootElement',
+    '$c = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ClassNameProperty, "#32770")',
+    '$t = $env:VL_DLG_TITLE',
+    '$h = [IntPtr]::Zero',
+    'for ($i = 0; $i -lt 40; $i++) {',
+    '  Start-Sleep -Milliseconds 100',
+    '  foreach ($d in @($r.FindAll([System.Windows.Automation.TreeScope]::Children, $c))) {',
+    '    if ((-not $t) -or ($d.Current.Name -eq $t)) { $h = [IntPtr]$d.Current.NativeWindowHandle; break }',
+    '  }',
+    '  if ($h -ne [IntPtr]::Zero) { break }',
+    '}',
+    'if ($h -ne [IntPtr]::Zero) {',
+    '  $fg = [W.R]::GetForegroundWindow()',
+    '  $p = 0',
+    '  $tid = [W.R]::GetWindowThreadProcessId($fg, [ref]$p)',
+    '  $my = [W.R]::GetCurrentThreadId()',
+    '  [W.R]::AttachThreadInput($my, $tid, $true) | Out-Null',
+    '  [W.R]::ShowWindow($h, 9) | Out-Null',
+    '  [W.R]::BringWindowToTop($h) | Out-Null',
+    '  $ok = [W.R]::SetForegroundWindow($h)',
+    '  [W.R]::AttachThreadInput($my, $tid, $false) | Out-Null',
+    // 置顶：前台锁可能拒绝 SetForegroundWindow，置顶不依赖前台权限，保证对话框在最上层可见
+    '  [W.R]::SetWindowPos($h, [IntPtr](-1), 0, 0, 0, 0, 0x0003) | Out-Null',
+    '  try { [IO.File]::AppendAllText((Join-Path $env:TEMP "vl-raise.log"), ("h=" + $h + " ok=" + $ok + " at=" + (Get-Date -Format "HH:mm:ss.fff") + "`r`n")) } catch { }',
+    '} else {',
+    '  try { [IO.File]::AppendAllText((Join-Path $env:TEMP "vl-raise.log"), ("no-dialog at=" + (Get-Date -Format "HH:mm:ss.fff") + "`r`n")) } catch { }',
+    '}'
+  ].join('\r\n');
+  const RAISE_SCRIPT_PATH = path.join(require('os').tmpdir(), 'vl-raise-dialog.ps1');
+  const RAISE_NODE_LOG = path.join(require('os').tmpdir(), 'vl-raise-node.log');
+  function raiseDialog(title) {
+    try {
+      // 落成脚本文件再执行：-EncodedCommand 传长脚本时静默失效，且出错时无从排查
+      fs.writeFileSync(RAISE_SCRIPT_PATH, '\ufeff' + RAISE_DIALOG_PS, 'utf8');
+      const cp = spawn('powershell.exe', ['-NoProfile', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', RAISE_SCRIPT_PATH], {
+        windowsHide: true, stdio: 'ignore',
+        env: Object.assign({}, process.env, { VL_DLG_TITLE: String(title || '') })
+      });
+      cp.on('error', (e) => { try { fs.appendFileSync(RAISE_NODE_LOG, 'ERR ' + String(e && e.message || e) + '\n'); } catch (x) {} });
+      cp.unref();
+    } catch (e) {
+      try { fs.appendFileSync(RAISE_NODE_LOG, 'THROW ' + String(e && e.message || e) + '\n'); } catch (x) {}
+    }
+  }
+  // 在途对话框复用：浏览器侧连点会连发请求，每次各弹一个会堆成一排窗口；
+  // 这里让重复请求共享同一个结果（第一个选择对全部生效）。
+  let inflightOpen = null;
+  let inflightSave = null;
+  function showOpen(opts) {
+    if (inflightOpen) return inflightOpen;
+    const p = dialog.showOpenDialog(opts).finally(() => { inflightOpen = null; });
+    inflightOpen = p;
+    raiseDialog(opts && opts.title);
+    return p;
+  }
+  function showSave(opts) {
+    if (inflightSave) return inflightSave;
+    const p = dialog.showSaveDialog(opts).finally(() => { inflightSave = null; });
+    inflightSave = p;
+    raiseDialog(opts && opts.title);
+    return p;
+  }
 
   // 浏览器侧降级路由：返回不支持
   const unsupportedRoutes = {
