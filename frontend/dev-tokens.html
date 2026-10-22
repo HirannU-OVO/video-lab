@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-skin="white_blue">
+<head>
+<meta charset="utf-8">
+<title>设计令牌 · 开发者工具</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="skins/white_blue.css">
+<link rel="stylesheet" href="skins/Black_Orange.css">
+<link rel="stylesheet" href="skins/Maid_Atelier.css">
+<link rel="stylesheet" href="dev-tokens.css">
+</head>
+<body class="dt-body">
+  <header class="dt-head">
+    <div class="dt-head__title">
+      <span class="dt-badge">开发者工具</span>
+      <h1>设计令牌</h1>
+    </div>
+    <div class="dt-head__note">试值只在本次会话内生效，不写入任何配置；关闭面板或重启应用即全部还原。</div>
+    <div class="dt-head__actions">
+      <button id="dtExport" class="dt-btn">导出 JSON</button>
+      <button id="dtReset" class="dt-btn dt-btn--warn">全部还原</button>
+    </div>
+  </header>
+
+  <div id="dtLocked" class="dt-locked" hidden>
+    <h2>未启用开发者工具</h2>
+    <p>当前实例不是以开发者工具模式启动，调试能力未开启。</p>
+    <p class="dt-locked__hint">启动应用时带上 <code>--dev-tools</code> 参数即可开启；本页面不提供任何自启入口。</p>
+  </div>
+
+  <main id="dtMain" class="dt-main" hidden>
+    <div class="dt-bar">
+      <input id="dtSearch" class="dt-input dt-input--search" type="search" placeholder="按名称或值筛选…">
+      <div id="dtGroups" class="dt-groups"></div>
+      <span id="dtCount" class="dt-count"></span>
+    </div>
+    <div class="dt-table-wrap">
+      <table class="dt-table">
+        <thead>
+          <tr><th>令牌</th><th>当前值</th><th>试值</th><th>层</th><th>引用</th></tr>
+        </thead>
+        <tbody id="dtRows"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <script src="dev-tokens.js"></script>
+</body>
+</html>

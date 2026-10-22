@@ -19,7 +19,11 @@ const IS_PREVIEW_BUILD = (() => {
   } catch (e) { return false; }
 })();
 
-contextBridge.exposeInMainWorld('txapi', {
+// 开发者工具能力（A-09）：只有以 --dev-tools 启动时才存在。
+// 无该参数时**连键都不挂**（不是挂一个 null）—— 普通用户的运行环境里不留任何痕迹。
+const DEV_TOOLS = process.argv.includes('--dev-tools');
+
+const api = {
   list_projects: (force) => invoke('list_projects', force),
   list_versions: (project, name, force) => invoke('list_versions', project, name, force),
   read_config: (p) => invoke('read_config', p),
@@ -211,7 +215,24 @@ contextBridge.exposeInMainWorld('txapi', {
   window_close: () => (IN_SUBFRAME ? invoke('close_embed_panel') : invoke('window_close')),
   listen_window_max: () => { try { ipcRenderer.send('window_max_changed_listen'); } catch (e) {} },
   on_window_max_changed: (cb) => { ipcRenderer.on('window_max_changed', (e, m) => { try { cb(!!m); } catch (err) {} }); },
-});
+};
+
+// 开发者工具接口：仅在 --dev-tools 启动时挂载（无参数时运行环境里完全没有这些能力）
+if (DEV_TOOLS) {
+  api.devTools = {
+    // 会话内临时试值：只改内存里的 CSS 变量，不写任何配置，退出即还原
+    applyToken: (name, value) => { try { ipcRenderer.send('vl-devtools:apply-token', { name: name, value: value }); } catch (e) {} },
+    resetTokens: () => { try { ipcRenderer.send('vl-devtools:reset-tokens'); } catch (e) {} },
+    // 其他窗口的试值变化（主窗口与面板窗口互相同步）
+    onTokenChange: (cb) => {
+      const h = (e, p) => { try { cb(p); } catch (err) {} };
+      ipcRenderer.on('vl-devtools:token-changed', h);
+      return () => { try { ipcRenderer.removeListener('vl-devtools:token-changed', h); } catch (e) {} };
+    }
+  };
+}
+
+contextBridge.exposeInMainWorld('txapi', api);
 
 // 构建标识（预览版）供界面读取
 contextBridge.exposeInMainWorld('vlBuild', { preview: IS_PREVIEW_BUILD });

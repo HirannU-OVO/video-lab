@@ -1,0 +1,124 @@
+/* 开发者工具面板样式：刻意独立成文件（不混进产品样式表），
+   但刻意复用产品令牌（--vl-alias-*），顺带证明令牌体系可用。 */
+.dt-body {
+  margin: 0;
+  font-family: var(--vl-type-body-base-family, system-ui, sans-serif);
+  font-size: 13px;
+  color: var(--vl-alias-text-default);
+  background: var(--vl-alias-bg-base-default);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+.dt-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--vl-alias-border-neutral-l1);
+  background: var(--vl-alias-color-surface);
+}
+.dt-head__title { display: flex; align-items: baseline; gap: 10px; }
+.dt-head h1 { margin: 0; font-size: 16px; font-weight: 600; }
+.dt-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: var(--vl-alias-status-warning-default);
+  border: 1px solid var(--vl-alias-status-warning-default);
+  white-space: nowrap;
+}
+.dt-head__note { flex: 1; font-size: 12px; color: var(--vl-alias-text-tertiary); }
+.dt-head__actions { display: flex; gap: 8px; }
+.dt-btn {
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--vl-alias-text-default);
+  background: var(--vl-alias-color-surface);
+  border: 1px solid var(--vl-alias-border-neutral-l1);
+}
+.dt-btn:hover { border-color: var(--vl-alias-color-primary); }
+.dt-btn--warn { color: var(--vl-alias-status-error-default); border-color: var(--vl-alias-status-error-default); }
+.dt-locked { margin: auto; text-align: center; padding: 40px; }
+.dt-locked h2 { font-size: 17px; margin: 0 0 10px; }
+.dt-locked p { margin: 6px 0; color: var(--vl-alias-text-secondary); }
+.dt-locked__hint code {
+  font-family: var(--vl-type-code-editor-family, monospace);
+  background: var(--vl-alias-color-surface);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.dt-main { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.dt-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 18px;
+  border-bottom: 1px solid var(--vl-alias-border-neutral-l1);
+}
+.dt-input {
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  color: var(--vl-alias-text-default);
+  background: var(--vl-alias-bg-input-default);
+  border: 1px solid var(--vl-alias-border-neutral-l1);
+}
+.dt-input--search { width: 260px; }
+.dt-groups { display: flex; gap: 6px; flex: 1; flex-wrap: wrap; }
+.dt-chip {
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  color: var(--vl-alias-text-secondary);
+  border: 1px solid var(--vl-alias-border-neutral-l1);
+}
+.dt-chip.is-on { color: var(--vl-alias-text-onbrand); background: var(--vl-alias-color-primary); border-color: var(--vl-alias-color-primary); }
+.dt-count { font-size: 12px; color: var(--vl-alias-text-tertiary); white-space: nowrap; }
+.dt-table-wrap { flex: 1; overflow: auto; min-height: 0; }
+.dt-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.dt-table th {
+  position: sticky;
+  top: 0;
+  text-align: left;
+  font-weight: 600;
+  padding: 8px 18px;
+  background: var(--vl-alias-color-surface);
+  border-bottom: 1px solid var(--vl-alias-border-neutral-l1);
+  color: var(--vl-alias-text-secondary);
+}
+.dt-table td {
+  padding: 5px 18px;
+  border-bottom: 1px solid var(--vl-alias-border-neutral-l2);
+  vertical-align: middle;
+}
+.dt-table tr:hover td { background: var(--vl-alias-bg-base-secondary); }
+.dt-name { font-family: var(--vl-type-code-editor-family, monospace); color: var(--vl-alias-color-primary); }
+.dt-value {
+  font-family: var(--vl-type-code-editor-family, monospace);
+  color: var(--vl-alias-text-secondary);
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dt-value.is-tried { color: var(--vl-alias-status-warning-default); }
+.dt-try { width: 220px; }
+.dt-try input {
+  font: inherit;
+  font-size: 12px;
+  width: 100%;
+  padding: 3px 8px;
+  border-radius: 5px;
+  color: var(--vl-alias-text-default);
+  background: var(--vl-alias-bg-input-default);
+  border: 1px solid var(--vl-alias-border-neutral-l1);
+}
+.dt-layer { color: var(--vl-alias-text-tertiary); white-space: nowrap; }
+.dt-refs { color: var(--vl-alias-text-tertiary); text-align: right; }

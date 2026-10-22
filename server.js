@@ -135,6 +135,12 @@ function startHttpServer(opts) {
   const httpToken = (typeof opts.httpToken === 'string' && opts.httpToken) || crypto.randomBytes(16).toString('hex');
   // 运行日志：main.js 注入；浏览器端的写操作也要留痕（IPC 包装只覆盖 Electron 侧）
   const runLog = opts.runLog || null;
+  // 开发者工具（A-09）：只有以 --dev-tools 启动时才注册该路由 —— 无参数时这个地址直接 404，
+  // 面板既进不去、也不在任何界面留入口（与上游「默认关闭的独立件」一致）。
+  const devToolsEnabled = opts.devTools === true;
+  // 开发者工具相关的文件（面板页与其样式、脚本）
+  const isDevToolsPath = (rel) => /(^|\/)dev-tokens(\.[A-Za-z0-9]+)?$/.test(String(rel || ''));
+  const notFound = (res) => { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('Not Found'); };
   const sseClients = new Set();
 
   // SSE 广播：遍历所有连接的 SSE 客户端推送事件
@@ -474,7 +480,12 @@ function startHttpServer(opts) {
     if (pathname === '/uninstall' || pathname === '/uninstall.html') {
       serveStatic(req, res, path.join(FRONTEND_DIR, 'uninstall.html'));
       return;
-    }
+      }
+      // 开发者工具面板：未以 --dev-tools 启动时不注册 → 404（普通用户完全无从访问）
+      if (devToolsEnabled && (pathname === '/dev-tokens' || pathname === '/dev-tokens.html')) {
+      serveStatic(req, res, path.join(FRONTEND_DIR, 'dev-tokens.html'));
+      return;
+      }
     if (pathname === '/manifest.json') {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(manifest);
@@ -487,6 +498,8 @@ function startHttpServer(opts) {
     }
     if (pathname.startsWith('/frontend/')) {
       const rel = pathname.slice('/frontend/'.length).replace(/\.\.\//g, '');
+      // 开发者工具资源：未以 --dev-tools 启动时一律 404（普通用户拿不到面板文件本身）
+      if (!devToolsEnabled && isDevToolsPath(rel)) { notFound(res); return; }
       serveStatic(req, res, path.join(FRONTEND_DIR, rel));
       return;
     }
@@ -501,6 +514,7 @@ function startHttpServer(opts) {
     {
       const rel = pathname.replace(/^\/+/, '').replace(/\.\.\//g, '');
       const fp = path.join(FRONTEND_DIR, rel);
+      if (!devToolsEnabled && isDevToolsPath(rel)) { notFound(res); return; }
       if (rel && fs.existsSync(fp) && fs.statSync(fp).isFile()) {
         serveStatic(req, res, fp);
         return;

@@ -31,6 +31,13 @@ console.log('[BUILD] preview=' + IS_PREVIEW + ' exe=' + path.basename(process.ex
 // 默认端口：预览版 9528，正式版 9527（仅在未配置端口时生效）
 const DEFAULT_HTTP_PORT = IS_PREVIEW ? 9528 : 9527;
 
+// 开发者工具形态（A-09）：只有显式带 --dev-tools 启动时才存在。
+// 面板是独立窗口、不进设置页导航；普通用户的启动方式永远不带这个参数 → 界面里没有任何入口。
+// ⚠ 必须定义在 startHttpServer 之前（const 有暂时性死区，晚定义会在启动时抛 ReferenceError）。
+const DEV_TOOLS = process.argv.includes('--dev-tools');
+// ⚠ 开发者工具窗口句柄：必须与 DEV_TOOLS 一起提前声明（let 有暂时性死区，晚声明会在启动时抛 ReferenceError）
+let devToolsWin = null;
+
 const { Api, DEFAULT_CONFIG } = require('./backend');
 const { startHttpServer } = require('./server');
 const _bootReqBackend = bootMs();
@@ -68,12 +75,15 @@ function restartHttpServer() {
     httpPort: parseInt(config.http_port, 10) || DEFAULT_HTTP_PORT,
     httpToken: httpToken,
     extraRoutes: buildHttpExtraRoutes(),
+      devTools: DEV_TOOLS,
     runLog: runLog,
     broadcast: function (event, data) { /* webContents.send 由各 send 函数完成，此处仅占位 */ }
   }).then(function (info) {
     httpServerInfo = info;
     if (info.ok) console.log('[HTTP] 浏览器访问: ' + info.url);
     else console.error('[HTTP] 启动失败: ' + (info.error || '未知错误'));
+      // 开发者工具形态：HTTP 就绪后自动打开面板窗口（普通启动不会走到这里）
+      if (DEV_TOOLS && info.ok) { try { openDevToolsWindow(); } catch (e) {} }
   }).catch(function (e) { console.error('[HTTP] 异常: ' + e); });
 }
 
@@ -939,6 +949,36 @@ function createTaskWindow() {
 }
 // 设置面板：在主窗口内以 iframe 显示；打开即显示、关闭仅隐藏。内嵌避免独立窗口每次打开都要重建并重新解码整套皮肤资源（女仆皮肤 64KB CSS + 1.7MB 图片）。
 let settingsPanelOpen = false;
+// 开发者工具窗口（A-09）：仅在 --dev-tools 启动时存在。
+// 走 HTTP 打开（与主窗口同一套前端资源与皮肤），面板自身在无 devTools 能力时只会显示「未启用」。
+function openDevToolsWindow() {
+  if (!DEV_TOOLS) return null;
+  if (devToolsWin && !devToolsWin.isDestroyed()) { try { devToolsWin.show(); devToolsWin.focus(); } catch (e) {} return devToolsWin; }
+  if (!httpServerInfo || !httpServerInfo.ok) return null;
+  devToolsWin = new BrowserWindow({
+    title: 'Video Lab Preview - 开发者工具', width: 1080, height: 720, minWidth: 820, minHeight: 520,
+    show: false, webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false }
+  });
+  devToolsWin.once('ready-to-show', () => { try { if (devToolsWin && !devToolsWin.isDestroyed()) { devToolsWin.show(); devToolsWin.focus(); } } catch (e) {} });
+  try {
+    devToolsWin.loadURL(httpServerInfo.url + '/dev-tokens?token=' + encodeURIComponent(httpServerInfo.token));
+  } catch (e) {}
+  devToolsWin.on('closed', () => { devToolsWin = null; });
+  return devToolsWin;
+}
+// 试值广播：面板改一个令牌 → 所有窗口（含主窗口）同步，退出面板即消失（不落库）
+if (DEV_TOOLS) {
+  const broadcastToken = (payload) => {
+    for (const w of BrowserWindow.getAllWindows()) {
+      try { if (w && !w.isDestroyed() && w.webContents && !w.webContents.isDestroyed()) w.webContents.send('vl-devtools:token-changed', payload); } catch (e) {}
+    }
+  };
+  ipcMain.on('vl-devtools:apply-token', (e, p) => {
+    if (!p || !p.name) return;
+    broadcastToken({ name: p.name, value: p.value });
+  });
+  ipcMain.on('vl-devtools:reset-tokens', () => { broadcastToken({ reset: true }); });
+}
 function openSettingsWindow() {
   settingsPanelOpen = true;
   // 通知主窗口：显示模糊遮罩 + 内嵌设置页 iframe
