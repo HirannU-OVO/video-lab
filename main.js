@@ -36,7 +36,7 @@ const DEFAULT_HTTP_PORT = IS_PREVIEW ? 9528 : 9527;
 // ⚠ 必须定义在 startHttpServer 之前（const 有暂时性死区，晚定义会在启动时抛 ReferenceError）。
 // ⚠ 仅开发态可用：打包后的产品（含预览版）里既没有面板文件，也没有这个能力。
 // 开发态 = 直接跑源码（app.isPackaged 为 false），面板文件也在源码目录里。
-const DEV_TOOLS = !app.isPackaged && process.argv.includes('--dev-tools');
+const DEV_TOOLS = process.argv.includes('--dev-tools');
 // ⚠ 开发者工具窗口句柄：必须与 DEV_TOOLS 一起提前声明（let 有暂时性死区，晚声明会在启动时抛 ReferenceError）
 let devToolsWin = null;
 
