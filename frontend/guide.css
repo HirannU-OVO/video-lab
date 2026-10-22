@@ -32,7 +32,7 @@
 }
 .guide-hero__text { min-width: 0; }
 .guide-hero__title {
-  font-family: var(--vl-font-font-family-default);
+  font-family: var(--vl-font-family-base);
   font-size: 15px;
   font-weight: var(--vl-font-font-weight-strong, 600);
   color: var(--vl-alias-text-default);
@@ -40,7 +40,7 @@
 }
 .guide-hero__sub {
   margin-top: 1px;
-  font-family: var(--vl-font-font-family-default);
+  font-family: var(--vl-font-family-base);
   font-size: 12px;
   line-height: 1.45;
   color: var(--vl-alias-text-secondary);
@@ -59,15 +59,15 @@
 }
 .guide-field { display: flex; flex-direction: column; gap: 6px; }
 .guide-field__label {
-  font-family: var(--vl-font-font-family-default);
-  font-size: var(--vl-font-body-base-font-size, 13px);
+  font-family: var(--vl-font-family-base);
+  font-size: var(--vl-type-body-base-size, 13px);
   font-weight: var(--vl-font-font-weight-strong, 600);
   color: var(--vl-alias-text-default);
 }
 /* 提示文字：宽度按"本句不换行"预留，故不折行 */
 .guide-hint {
   margin-top: 7px;
-  font-family: var(--vl-font-font-family-default);
+  font-family: var(--vl-font-family-base);
   font-size: 11.5px;
   line-height: 1.5;
   color: var(--vl-alias-text-tertiary, var(--vl-alias-text-secondary));
@@ -89,7 +89,7 @@
   min-width: 0;
   flex: 1 1 auto;
   text-align: right;
-  font-family: var(--vl-font-font-family-default);
+  font-family: var(--vl-font-family-base);
   font-size: 12px;
   line-height: 1.4;
   color: var(--vl-alias-text-secondary);

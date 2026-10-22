@@ -567,7 +567,7 @@ body {
   background: var(--vl-alias-bg-base-secondary);
   border: 1px solid var(--vl-alias-border-neutral-l1);
   border-radius: var(--vl-static-radius-4, 6px);
-  font-family: var(--vl-font-font-family-mono), Consolas, monospace;
+  font-family: var(--vl-font-family-mono), Consolas, monospace;
   font-size: 12px;
   overflow-x: auto;
   color: var(--vl-alias-text-default);
@@ -581,7 +581,7 @@ body {
 .changelog-box table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 13px; }
 .changelog-box th, .changelog-box td { border: 1px solid var(--vl-alias-border-neutral-l2); padding: 6px 10px; text-align: left; color: var(--vl-alias-text-secondary); }
 .changelog-box th { background: var(--vl-alias-bg-overlay-l2); color: var(--vl-alias-text-default); font-weight: 600; }
-.changelog-box code { background: var(--vl-alias-bg-base-secondary); border: 1px solid var(--vl-alias-border-neutral-l1); border-radius: 4px; padding: 1px 5px; font-family: var(--vl-font-font-family-mono), Consolas, monospace; font-size: 12px; color: var(--vl-alias-text-default); }
+.changelog-box code { background: var(--vl-alias-bg-base-secondary); border: 1px solid var(--vl-alias-border-neutral-l1); border-radius: 4px; padding: 1px 5px; font-family: var(--vl-font-family-mono), Consolas, monospace; font-size: 12px; color: var(--vl-alias-text-default); }
 .changelog-box a { color: var(--vl-alias-text-brand, var(--vl-alias-brand-500)); text-decoration: none; }
 .changelog-box a:hover { text-decoration: underline; }
 .changelog-box blockquote { margin: 8px 0; padding: 6px 12px; border-left: 3px solid var(--vl-alias-brand-500); background: var(--vl-alias-bg-overlay-l1); border-radius: 0 6px 6px 0; }
@@ -638,7 +638,7 @@ body {
 .about-hero__result--err { color: #c9484a; }
 
 /* 关于页 · 运行环境与组件（版本号 / 来源 / 目录）：键值行，值过长自动换行 */
-.about-info { font-size: var(--vl-font-body-sm-font-size); }
+.about-info { font-size: var(--vl-type-body-sm-size); }
 .about-info__row { display: flex; gap: 10px; padding: 4px 0;
                    border-bottom: 1px dashed var(--vl-alias-border-neutral-l1); }
 .about-info__row:last-child { border-bottom: none; }

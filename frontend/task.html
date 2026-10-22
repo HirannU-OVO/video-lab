@@ -28,9 +28,9 @@ var m = new URL(location.href).searchParams.get('token');
       border-bottom: 1px solid var(--vl-alias-border-neutral-l1);
       background: var(--vl-alias-bg-base-secondary);
     }
-    .task-header__title { font-size: var(--vl-font-body-base-font-size); font-weight: var(--vl-font-font-weight-strong); color: var(--vl-alias-text-default); }
+    .task-header__title { font-size: var(--vl-type-body-base-size); font-weight: var(--vl-font-font-weight-strong); color: var(--vl-alias-text-default); }
     .task-list { flex: 1; overflow-y: auto; padding: 8px 12px; display: flex; flex-direction: column; gap: 8px; }
-    .task-empty { color: var(--vl-alias-text-tertiary); font-size: var(--vl-font-body-sm-font-size); text-align: center; margin-top: 40px; }
+    .task-empty { color: var(--vl-alias-text-tertiary); font-size: var(--vl-type-body-sm-size); text-align: center; margin-top: 40px; }
     /* 顶部模式切换：正在运行 / 已完成 / 已停止 */
     .task-main { flex: 1; position: relative; display: flex; flex-direction: column; min-height: 0; }
     .task-tabs { display: flex; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--vl-alias-border-neutral-l1); background: var(--vl-alias-bg-base-secondary); flex-shrink: 0; }
@@ -38,7 +38,7 @@ var m = new URL(location.href).searchParams.get('token');
       flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
       height: 34px; border: 1px solid var(--vl-alias-border-neutral-l2); border-radius: 6px;
       background: transparent; color: var(--vl-alias-text-secondary); cursor: pointer;
-      font-family: var(--vl-font-font-family-default); font-size: 16px;
+      font-family: var(--vl-font-family-base); font-size: 16px;
       transition: background .15s ease, color .15s ease, border-color .15s ease;
     }
     .task-tab:hover { background: var(--vl-alias-bg-overlay-l1); color: var(--vl-alias-text-default-hover); }
@@ -160,11 +160,11 @@ var m = new URL(location.href).searchParams.get('token');
     }
     .task-card__failreason {
       flex-shrink: 0; max-width: 42%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-      font-size: var(--vl-font-body-xs-font-size); font-weight: var(--vl-font-font-weight-strong);
+      font-size: var(--vl-type-body-xs-size); font-weight: var(--vl-font-font-weight-strong);
       color: var(--vl-alias-status-error-default);
     }
-    .task-card__status-text { font-size: var(--vl-font-body-xs-font-size); color: var(--vl-alias-text-tertiary); flex-shrink: 0; }
-    .task-card__title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--vl-font-body-sm-font-size); color: var(--vl-alias-text-default); }
+    .task-card__status-text { font-size: var(--vl-type-body-xs-size); color: var(--vl-alias-text-tertiary); flex-shrink: 0; }
+    .task-card__title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--vl-type-body-sm-size); color: var(--vl-alias-text-default); }
     /* 成片已不在磁盘：置灰 + 删除线提示，任务行本身保留（明暗主题均适用） */
     .task-card__title--missing { color: var(--vl-alias-text-tertiary); opacity: 0.65; text-decoration: line-through; }
     /* 成片已删除：状态文字（原「已完成」）由 status-text 换为警示色红色「已删除」 */
@@ -183,15 +183,15 @@ var m = new URL(location.href).searchParams.get('token');
     .task-card__tag--tool { background: var(--vl-alias-accent-amber); color: var(--vl-alias-text-onaccent); }
     html[data-skin="Maid_Atelier"] .task-card__tag--tool { background: var(--vl-alias-accent-violet); }
     html[data-skin="Black_Orange"] .task-card__tag--tool { background: var(--vl-alias-accent-blue); }
-    .task-card__lock { flex-shrink: 0; font-size: var(--vl-font-body-xs-font-size); }
+    .task-card__lock { flex-shrink: 0; font-size: var(--vl-type-body-xs-size); }
     .task-card__lock--waiting { color: var(--vl-alias-status-warning-default); }
     .task-card__lock--locked { color: var(--vl-alias-status-primary-default); }
     .task-card__lock--released { color: var(--vl-alias-status-success-default); }
-    .task-card__time { flex-shrink: 0; font-size: var(--vl-font-body-xs-font-size); color: var(--vl-alias-text-tertiary); }
+    .task-card__time { flex-shrink: 0; font-size: var(--vl-type-body-xs-size); color: var(--vl-alias-text-tertiary); }
     .task-card__pause, .task-card__stop {
       flex-shrink: 0; height: 20px; padding: 0 8px; border-radius: 4px;
       display: inline-flex; align-items: center; gap: 4px;
-      font-family: var(--vl-font-font-family-default); font-size: var(--vl-font-body-xs-font-size); cursor: pointer;
+      font-family: var(--vl-font-family-base); font-size: var(--vl-type-body-xs-size); cursor: pointer;
     }
     .task-card__pause svg, .task-card__stop svg { flex-shrink: 0; }
     .task-card__pause { border: 1px solid var(--vl-alias-status-warning-default); background: transparent; color: var(--vl-alias-status-warning-default); }
@@ -206,7 +206,7 @@ var m = new URL(location.href).searchParams.get('token');
     .task-card__rerun {
       flex-shrink: 0; height: 20px; padding: 0 8px; border-radius: 4px;
       display: inline-flex; align-items: center; gap: 4px;
-      font-family: var(--vl-font-font-family-default); font-size: var(--vl-font-body-xs-font-size); cursor: pointer;
+      font-family: var(--vl-font-family-base); font-size: var(--vl-type-body-xs-size); cursor: pointer;
       border: 1px solid var(--vl-alias-brand-500); background: var(--vl-alias-brand-500); color: var(--vl-alias-text-onbrand);
     }
     .task-card__rerun:hover { background: var(--vl-alias-brand-400); border-color: var(--vl-alias-brand-400); }
@@ -215,7 +215,7 @@ var m = new URL(location.href).searchParams.get('token');
     .task-card__continue {
       flex-shrink: 0; height: 20px; padding: 0 8px; border-radius: 4px;
       display: inline-flex; align-items: center; gap: 4px;
-      font-family: var(--vl-font-font-family-default); font-size: var(--vl-font-body-xs-font-size); cursor: pointer;
+      font-family: var(--vl-font-family-base); font-size: var(--vl-type-body-xs-size); cursor: pointer;
       border: 1px solid var(--vl-alias-brand-500); background: transparent; color: var(--vl-alias-brand-500);
     }
     .task-card__continue:hover { background: var(--vl-alias-brand-500); color: var(--vl-alias-text-onbrand); }
@@ -237,7 +237,7 @@ var m = new URL(location.href).searchParams.get('token');
     }
     .task-card__progress-text {
       display: flex; justify-content: flex-start; align-items: center; gap: 8px;
-      font-size: var(--vl-font-body-sm-font-size); color: var(--vl-alias-text-default);
+      font-size: var(--vl-type-body-sm-size); color: var(--vl-alias-text-default);
       font-variant-numeric: tabular-nums; line-height: 1.4;
     }
     .task-card__progress-pct { flex-shrink: 0; min-width: 36px; text-align: right; color: var(--vl-alias-text-secondary); margin-left: auto; }

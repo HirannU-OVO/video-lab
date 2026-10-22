@@ -895,7 +895,7 @@
     }
     if (state.mode === 'log') { buildLogDateBranches(c, silent); return; }
     if (!state.activeTxt || state.versions.length === 0) {
-      c.innerHTML = '<div class="center-empty" style="padding:var(--vl-static-spacer-16)">' + icon('arrow-left', 24, 'center-empty__icon') + '<span style="font-size:var(--vl-font-body-sm-font-size)">从左侧选择一个 TXT</span></div>';
+      c.innerHTML = '<div class="center-empty" style="padding:var(--vl-static-spacer-16)">' + icon('arrow-left', 24, 'center-empty__icon') + '<span class="center-empty__text">从左侧选择一个 TXT</span></div>';
       updateModeToggle();
       return;
     }
@@ -952,13 +952,13 @@
     var cb = $('centerBottom');
     if (!cb) return; // 容器缺失时安全忽略（遮罩/恢复切换的窗口期）
     if (!state.activeTxt || !state.activeVersion) {
-      cb.innerHTML = '<div class="center-empty">' + icon('file-text', 24, 'center-empty__icon') + '<span style="font-size:var(--vl-font-body-sm-font-size)">请选择一个日期分支查看内容</span></div>';
+      cb.innerHTML = '<div class="center-empty">' + icon('file-text', 24, 'center-empty__icon') + '<span class="center-empty__text">请选择一个日期分支查看内容</span></div>';
       return;
     }
     if (state.mode === 'log') { buildLogConfigBar(); buildLogList(); return; }
     var container = cb;
     var data = state.configData;
-    if (!data) { container.innerHTML = '<div class="center-empty">' + icon('file-text', 24, 'center-empty__icon') + '<span style="font-size:var(--vl-font-body-sm-font-size)">正在加载配置…</span></div>'; return; }
+    if (!data) { container.innerHTML = '<div class="center-empty">' + icon('file-text', 24, 'center-empty__icon') + '<span class="center-empty__text">正在加载配置…</span></div>'; return; }
     var folders = data.folders || [];
     var excludes = data.excludes || [];
     var watermark = data.watermark || '';
@@ -1940,7 +1940,7 @@
   }
   function buildLogList() {
     var container = $('centerBottom');
-    container.innerHTML = '<div class="center-empty">' + icon('scroll-text', 24, 'center-empty__icon') + '<span style="font-size:var(--vl-font-body-sm-font-size)">正在加载日志…</span></div>';
+    container.innerHTML = '<div class="center-empty">' + icon('scroll-text', 24, 'center-empty__icon') + '<span class="center-empty__text">正在加载日志…</span></div>';
     // 按当前选中的日志分支（精确到日志文件）定位查询目录，切换分支后取对应日志成片
     var probeLog = null;
     if (state.activeProject === REPLICA_PROJECT) {
@@ -1963,7 +1963,7 @@
       var q = state.logSearchQuery.trim().toLowerCase();
       if (q) entries = entries.filter(function (en) { return (en.video || '').toLowerCase().indexOf(q) >= 0; });
       if (entries.length === 0) {
-        container.innerHTML = '<div class="center-empty">' + icon('scroll-text', 24, 'center-empty__icon') + '<span style="font-size:var(--vl-font-body-sm-font-size)">' + (q ? '未找到匹配 "' + escapeHtml(state.logSearchQuery) + '" 的成片' : '暂无日志数据') + '</span></div>';
+        container.innerHTML = '<div class="center-empty">' + icon('scroll-text', 24, 'center-empty__icon') + '<span class="center-empty__text">' + (q ? '未找到匹配 "' + escapeHtml(state.logSearchQuery) + '" 的成片' : '暂无日志数据') + '</span></div>';
         return;
       }
       var sel = !!state.selectMode;
@@ -1994,7 +1994,7 @@
         if (tries > 1) setTimeout(function () { retryFocus(cont, tries - 1); }, 300);
         else state.focusVideo = null;
       })(container, 8);
-    }).catch(function (e) { container.innerHTML = '<div class="center-empty">' + icon('search-x', 24, 'center-empty__icon') + '<span style="font-size:var(--vl-font-body-sm-font-size)">加载日志失败：' + escapeHtml(e.message) + '</span></div>'; });
+    }).catch(function (e) { container.innerHTML = '<div class="center-empty">' + icon('search-x', 24, 'center-empty__icon') + '<span class="center-empty__text">加载日志失败：' + escapeHtml(e.message) + '</span></div>'; });
     container.oncontextmenu = function (e) {
       var clip = e.target.closest('.log-entry__clip');
       if (clip) {
@@ -4688,9 +4688,9 @@
     if (!maskState.project) {
       if (!maskState.projects.length) {
         panel.innerHTML = '<div class="center-empty">' + icon('layers', 24, 'center-empty__icon') +
-          '<span style="font-size:var(--vl-font-body-sm-font-size)">暂无遮罩叠加项目<br>请在 菜单-设置-遮罩叠加 配置工作路径后重试</span></div>';
+          '<span class="center-empty__text">暂无遮罩叠加项目<br>请在 菜单-设置-遮罩叠加 配置工作路径后重试</span></div>';
       } else {
-        panel.innerHTML = '<div class="center-empty">' + icon('layers', 24, 'center-empty__icon') + '<span style="font-size:var(--vl-font-body-sm-font-size)">请在左侧选择一个遮罩叠加项目</span></div>';
+        panel.innerHTML = '<div class="center-empty">' + icon('layers', 24, 'center-empty__icon') + '<span class="center-empty__text">请在左侧选择一个遮罩叠加项目</span></div>';
       }
       return;
     }
@@ -5207,7 +5207,7 @@
     var box = $('centerBottom');
     if (!box) return;
     if (!maskState.project) {
-      box.innerHTML = '<div class="center-empty">' + icon('layers', 24, 'center-empty__icon') + '<span style="font-size:var(--vl-font-body-sm-font-size)">请在左侧选择一个遮罩叠加项目</span></div>';
+      box.innerHTML = '<div class="center-empty">' + icon('layers', 24, 'center-empty__icon') + '<span class="center-empty__text">请在左侧选择一个遮罩叠加项目</span></div>';
       return;
     }
     var q = (maskState.search || '').toLowerCase();

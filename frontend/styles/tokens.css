@@ -2,53 +2,247 @@
    产品令牌分四层：--vl-static-*（原始值与固定尺度） / --vl-alias-*（语义别名，皮肤唯一可覆盖层）
    / --vl-font-*（排版） / --vl-comp-*（组件）。皮肤私有令牌用 --vl-skin-* 前缀，定义在各自的皮肤包里。
    改令牌值只改这里；styles.css 通过 @import 引入本文件。 */
+  /* ── @property 类型注册（值类型明确的令牌） ── */
+  @property --vl-alias-bg-input-default { syntax: '<color>'; inherits: true; initial-value: #FFFFFF; }
+  @property --vl-font-size-10 { syntax: '<length>'; inherits: true; initial-value: 10px; }
+  @property --vl-font-size-11 { syntax: '<length>'; inherits: true; initial-value: 11px; }
+  @property --vl-font-size-12 { syntax: '<length>'; inherits: true; initial-value: 12px; }
+  @property --vl-font-size-13 { syntax: '<length>'; inherits: true; initial-value: 13px; }
+  @property --vl-font-size-14 { syntax: '<length>'; inherits: true; initial-value: 14px; }
+  @property --vl-font-size-16 { syntax: '<length>'; inherits: true; initial-value: 16px; }
+  @property --vl-font-size-18 { syntax: '<length>'; inherits: true; initial-value: 18px; }
+  @property --vl-font-size-20 { syntax: '<length>'; inherits: true; initial-value: 20px; }
+  @property --vl-font-size-22 { syntax: '<length>'; inherits: true; initial-value: 22px; }
+  @property --vl-font-size-24 { syntax: '<length>'; inherits: true; initial-value: 24px; }
+  @property --vl-font-size-28 { syntax: '<length>'; inherits: true; initial-value: 28px; }
+  @property --vl-font-size-32 { syntax: '<length>'; inherits: true; initial-value: 32px; }
+  @property --vl-font-size-40 { syntax: '<length>'; inherits: true; initial-value: 40px; }
+  @property --vl-font-size-52 { syntax: '<length>'; inherits: true; initial-value: 52px; }
+  @property --vl-line-height-14 { syntax: '<length>'; inherits: true; initial-value: 14px; }
+  @property --vl-line-height-16 { syntax: '<length>'; inherits: true; initial-value: 16px; }
+  @property --vl-line-height-18 { syntax: '<length>'; inherits: true; initial-value: 18px; }
+  @property --vl-line-height-20 { syntax: '<length>'; inherits: true; initial-value: 20px; }
+  @property --vl-line-height-24 { syntax: '<length>'; inherits: true; initial-value: 24px; }
+  @property --vl-line-height-28 { syntax: '<length>'; inherits: true; initial-value: 28px; }
+  @property --vl-line-height-30 { syntax: '<length>'; inherits: true; initial-value: 30px; }
+  @property --vl-line-height-32 { syntax: '<length>'; inherits: true; initial-value: 32px; }
+  @property --vl-line-height-36 { syntax: '<length>'; inherits: true; initial-value: 36px; }
+  @property --vl-line-height-40 { syntax: '<length>'; inherits: true; initial-value: 40px; }
+  @property --vl-line-height-48 { syntax: '<length>'; inherits: true; initial-value: 48px; }
+  @property --vl-line-height-60 { syntax: '<length>'; inherits: true; initial-value: 60px; }
+  @property --vl-font-weight-400 { syntax: '<number>'; inherits: true; initial-value: 400; }
+  @property --vl-font-weight-450 { syntax: '<number>'; inherits: true; initial-value: 450; }
+  @property --vl-font-weight-500 { syntax: '<number>'; inherits: true; initial-value: 500; }
+  @property --vl-font-weight-600 { syntax: '<number>'; inherits: true; initial-value: 600; }
+  @property --vl-font-font-weight-regular { syntax: '<number>'; inherits: true; initial-value: 400; }
+  @property --vl-alias-accent-amber { syntax: '<color>'; inherits: true; initial-value: #F2A90C; }
+  @property --vl-alias-accent-blue { syntax: '<color>'; inherits: true; initial-value: #3F85FF; }
+  @property --vl-alias-accent-magenta { syntax: '<color>'; inherits: true; initial-value: #F53CFF; }
+  @property --vl-alias-accent-violet { syntax: '<color>'; inherits: true; initial-value: #9570FF; }
+  @property --vl-static-radius-0 { syntax: '<length>'; inherits: true; initial-value: 0px; }
+  @property --vl-static-radius-2 { syntax: '<length>'; inherits: true; initial-value: 2px; }
+  @property --vl-static-radius-4 { syntax: '<length>'; inherits: true; initial-value: 4px; }
+  @property --vl-static-radius-6 { syntax: '<length>'; inherits: true; initial-value: 6px; }
+  @property --vl-static-radius-8 { syntax: '<length>'; inherits: true; initial-value: 8px; }
+  @property --vl-static-radius-10 { syntax: '<length>'; inherits: true; initial-value: 10px; }
+  @property --vl-static-radius-12 { syntax: '<length>'; inherits: true; initial-value: 12px; }
+  @property --vl-static-radius-16 { syntax: '<length>'; inherits: true; initial-value: 16px; }
+  @property --vl-static-radius-full { syntax: '<length>'; inherits: true; initial-value: 999px; }
+  @property --vl-static-border-width-default { syntax: '<length>'; inherits: true; initial-value: 1px; }
+  @property --vl-static-spacer-2 { syntax: '<length>'; inherits: true; initial-value: 2px; }
+  @property --vl-static-spacer-4 { syntax: '<length>'; inherits: true; initial-value: 4px; }
+  @property --vl-static-spacer-6 { syntax: '<length>'; inherits: true; initial-value: 6px; }
+  @property --vl-static-spacer-8 { syntax: '<length>'; inherits: true; initial-value: 8px; }
+  @property --vl-static-spacer-10 { syntax: '<length>'; inherits: true; initial-value: 10px; }
+  @property --vl-static-spacer-12 { syntax: '<length>'; inherits: true; initial-value: 12px; }
+  @property --vl-static-spacer-16 { syntax: '<length>'; inherits: true; initial-value: 16px; }
+  @property --vl-static-spacer-20 { syntax: '<length>'; inherits: true; initial-value: 20px; }
+  @property --vl-static-spacer-24 { syntax: '<length>'; inherits: true; initial-value: 24px; }
+  @property --vl-static-spacer-32 { syntax: '<length>'; inherits: true; initial-value: 32px; }
+  @property --vl-static-spacer-36 { syntax: '<length>'; inherits: true; initial-value: 36px; }
+  @property --vl-static-spacer-40 { syntax: '<length>'; inherits: true; initial-value: 40px; }
+  @property --vl-static-icon-size-12 { syntax: '<length>'; inherits: true; initial-value: 12px; }
+  @property --vl-static-icon-size-14 { syntax: '<length>'; inherits: true; initial-value: 14px; }
+  @property --vl-static-icon-size-16 { syntax: '<length>'; inherits: true; initial-value: 16px; }
+  @property --vl-static-icon-size-20 { syntax: '<length>'; inherits: true; initial-value: 20px; }
+  @property --vl-static-icon-size-24 { syntax: '<length>'; inherits: true; initial-value: 24px; }
+  @property --vl-font-font-weight-default { syntax: '<number>'; inherits: true; initial-value: 400; }
+  @property --vl-font-font-weight-medium { syntax: '<number>'; inherits: true; initial-value: 500; }
+  @property --vl-font-font-weight-strong { syntax: '<number>'; inherits: true; initial-value: 600; }
+  @property --vl-type-body-sm-tracking { syntax: '<number>'; inherits: true; initial-value: 0; }
+  @property --vl-type-body-md-tracking { syntax: '<number>'; inherits: true; initial-value: 0; }
+  @property --vl-type-body-md-strong-tracking { syntax: '<number>'; inherits: true; initial-value: 0; }
+  @property --vl-type-body-base-tracking { syntax: '<length>'; inherits: true; initial-value: -0.02em; }
+  @property --vl-type-body-base-strong-tracking { syntax: '<length>'; inherits: true; initial-value: -0.02em; }
+  @property --vl-static-code-terminal-font-size { syntax: '<length>'; inherits: true; initial-value: 12px; }
+  @property --vl-static-code-terminal-line-height { syntax: '<length>'; inherits: true; initial-value: 18px; }
+  @property --vl-alias-bg-base-default { syntax: '<color>'; inherits: true; initial-value: #FFFFFF; }
+  @property --vl-alias-bg-base-secondary { syntax: '<color>'; inherits: true; initial-value: #F5F5F5; }
+  @property --vl-alias-bg-base-tertiary { syntax: '<color>'; inherits: true; initial-value: #E5E5E5; }
+  @property --vl-alias-bg-overlay-l1 { syntax: '<color>'; inherits: true; initial-value: rgba(115, 115, 115, 0.08); }
+  @property --vl-alias-bg-overlay-l2 { syntax: '<color>'; inherits: true; initial-value: rgba(115, 115, 115, 0.12); }
+  @property --vl-alias-bg-overlay-l3 { syntax: '<color>'; inherits: true; initial-value: rgba(115, 115, 115, 0.16); }
+  @property --vl-alias-bg-overlay-l4 { syntax: '<color>'; inherits: true; initial-value: rgba(115, 115, 115, 0.20); }
+  @property --vl-alias-bg-menu { syntax: '<color>'; inherits: true; initial-value: #FFFFFF; }
+  @property --vl-alias-bg-tooltip { syntax: '<color>'; inherits: true; initial-value: #FFFFFF; }
+  @property --vl-alias-bg-invert { syntax: '<color>'; inherits: true; initial-value: #262626; }
+  @property --vl-alias-bg-invert-hover { syntax: '<color>'; inherits: true; initial-value: #404040; }
+  @property --vl-alias-bg-invert-active { syntax: '<color>'; inherits: true; initial-value: #171717; }
+  @property --vl-alias-bg-invert-disabled { syntax: '<color>'; inherits: true; initial-value: rgba(115, 115, 115, 0.20); }
+  @property --vl-alias-bg-brand { syntax: '<color>'; inherits: true; initial-value: #4B3FE3; }
+  @property --vl-alias-bg-brand-hover { syntax: '<color>'; inherits: true; initial-value: #6A6FFF; }
+  @property --vl-alias-bg-brand-active { syntax: '<color>'; inherits: true; initial-value: #3F31C6; }
+  @property --vl-alias-bg-brand-disabled { syntax: '<color>'; inherits: true; initial-value: rgba(75, 63, 227, 0.22); }
+  @property --vl-alias-bg-brand-popup { syntax: '<color>'; inherits: true; initial-value: rgba(170, 183, 255, 0.36); }
+  @property --vl-alias-text-default { syntax: '<color>'; inherits: true; initial-value: #171717; }
+  @property --vl-alias-text-default-hover { syntax: '<color>'; inherits: true; initial-value: #262626; }
+  @property --vl-alias-text-secondary { syntax: '<color>'; inherits: true; initial-value: #404040; }
+  @property --vl-alias-text-tertiary { syntax: '<color>'; inherits: true; initial-value: #737373; }
+  @property --vl-alias-text-disabled { syntax: '<color>'; inherits: true; initial-value: #A1A1A1; }
+  @property --vl-alias-text-onbrand { syntax: '<color>'; inherits: true; initial-value: #FFFFFF; }
+  @property --vl-alias-text-onaccent { syntax: '<color>'; inherits: true; initial-value: #FFFFFF; }
+  @property --vl-alias-text-white { syntax: '<color>'; inherits: true; initial-value: #FFFFFF; }
+  @property --vl-alias-text-brand { syntax: '<color>'; inherits: true; initial-value: #4B3FE3; }
+  @property --vl-alias-icon-default { syntax: '<color>'; inherits: true; initial-value: #262626; }
+  @property --vl-alias-icon-secondary { syntax: '<color>'; inherits: true; initial-value: #404040; }
+  @property --vl-alias-icon-tertiary { syntax: '<color>'; inherits: true; initial-value: #737373; }
+  @property --vl-alias-icon-onbrand { syntax: '<color>'; inherits: true; initial-value: #FFFFFF; }
+  @property --vl-alias-border-neutral-l1 { syntax: '<color>'; inherits: true; initial-value: rgba(115, 115, 115, 0.12); }
+  @property --vl-alias-border-neutral-l2 { syntax: '<color>'; inherits: true; initial-value: rgba(115, 115, 115, 0.18); }
+  @property --vl-alias-border-neutral-l3 { syntax: '<color>'; inherits: true; initial-value: rgba(115, 115, 115, 0.36); }
+  @property --vl-alias-border-contrast { syntax: '<color>'; inherits: true; initial-value: #000000; }
+  @property --vl-alias-border-brand { syntax: '<color>'; inherits: true; initial-value: #4B3FE3; }
+  @property --vl-alias-status-primary-default { syntax: '<color>'; inherits: true; initial-value: #2F74FF; }
+  @property --vl-alias-status-primary-surface-l1 { syntax: '<color>'; inherits: true; initial-value: rgba(47, 116, 255, 0.12); }
+  @property --vl-alias-status-primary-surface-l2 { syntax: '<color>'; inherits: true; initial-value: rgba(47, 116, 255, 0.18); }
+  @property --vl-alias-status-success-default { syntax: '<color>'; inherits: true; initial-value: #15A877; }
+  @property --vl-alias-status-success-hover { syntax: '<color>'; inherits: true; initial-value: #2FB287; }
+  @property --vl-alias-status-success-surface-l1 { syntax: '<color>'; inherits: true; initial-value: rgba(64, 176, 139, 0.12); }
+  @property --vl-alias-status-success-surface-l2 { syntax: '<color>'; inherits: true; initial-value: rgba(64, 176, 139, 0.18); }
+  @property --vl-alias-status-alert-default { syntax: '<color>'; inherits: true; initial-value: #FEA900; }
+  @property --vl-alias-status-alert-surface-l1 { syntax: '<color>'; inherits: true; initial-value: rgba(254, 169, 0, 0.14); }
+  @property --vl-alias-status-alert-surface-l2 { syntax: '<color>'; inherits: true; initial-value: rgba(254, 169, 0, 0.20); }
+  @property --vl-alias-status-warning-default { syntax: '<color>'; inherits: true; initial-value: #E27900; }
+  @property --vl-alias-status-warning-hover { syntax: '<color>'; inherits: true; initial-value: #F39A35; }
+  @property --vl-alias-status-warning-active { syntax: '<color>'; inherits: true; initial-value: #C46F11; }
+  @property --vl-alias-status-warning-surface-l1 { syntax: '<color>'; inherits: true; initial-value: rgba(226, 121, 0, 0.12); }
+  @property --vl-alias-status-warning-surface-l2 { syntax: '<color>'; inherits: true; initial-value: rgba(226, 121, 0, 0.16); }
+  @property --vl-alias-status-error-default { syntax: '<color>'; inherits: true; initial-value: #E8463A; }
+  @property --vl-alias-status-error-hover { syntax: '<color>'; inherits: true; initial-value: #EA574C; }
+  @property --vl-alias-status-error-active { syntax: '<color>'; inherits: true; initial-value: #C9382F; }
+  @property --vl-alias-status-error-surface-l1 { syntax: '<color>'; inherits: true; initial-value: rgba(232, 70, 58, 0.12); }
+  @property --vl-alias-status-error-surface-l2 { syntax: '<color>'; inherits: true; initial-value: rgba(232, 70, 58, 0.16); }
+  @property --vl-alias-status-error-surface-l3 { syntax: '<color>'; inherits: true; initial-value: rgba(232, 70, 58, 0.36); }
+  @property --vl-alias-brand-50 { syntax: '<color>'; inherits: true; initial-value: #F2F7FF; }
+  @property --vl-alias-brand-100 { syntax: '<color>'; inherits: true; initial-value: #E5EAFF; }
+  @property --vl-alias-brand-200 { syntax: '<color>'; inherits: true; initial-value: #CFD8FF; }
+  @property --vl-alias-brand-300 { syntax: '<color>'; inherits: true; initial-value: #AAB7FF; }
+  @property --vl-alias-brand-400 { syntax: '<color>'; inherits: true; initial-value: #8894FF; }
+  @property --vl-alias-brand-500 { syntax: '<color>'; inherits: true; initial-value: #6A6FFF; }
+  @property --vl-alias-brand-600 { syntax: '<color>'; inherits: true; initial-value: #4B3FE3; }
+  @property --vl-alias-brand-700 { syntax: '<color>'; inherits: true; initial-value: #3F31C6; }
+  @property --vl-alias-brand-800 { syntax: '<color>'; inherits: true; initial-value: #2C2290; }
+  @property --vl-alias-brand-900 { syntax: '<color>'; inherits: true; initial-value: #1A1759; }
+  @property --vl-alias-brand-950 { syntax: '<color>'; inherits: true; initial-value: #010109; }
+  @property --vl-alias-brand-grey-500 { syntax: '<color>'; inherits: true; initial-value: #737373; }
+  @property --vl-static-bg-overlay { syntax: '<color>'; inherits: true; initial-value: rgba(0, 0, 0, 0.35); }
+  @property --vl-static-text-muted { syntax: '<color>'; inherits: true; initial-value: #999; }
+  @property --vl-static-success-500 { syntax: '<color>'; inherits: true; initial-value: #16a34a; }
+
 :root {
   /* ── 旧主令牌块独有项（合并前定义在文件前段，收敛时并入本块） ── */
   --vl-alias-bg-input-default: #FFFFFF;
-  --vl-font-font-family-base: var(--vl-font-font-family-default);
-  --vl-font-font-family-heading-alias: var(--vl-font-font-family-heading);
-  --vl-font-font-family-mono-alias: var(--vl-font-font-family-mono);
-  --vl-font-body-lg-font-family: var(--vl-font-font-family-default);
-  --vl-font-body-lg-font-size: 18px;
-  --vl-font-body-lg-font-weight: 400;
+  --vl-font-family-base: var(--vl-font-family-base);
+  --vl-font-family-heading: var(--vl-font-family-heading);
+  --vl-font-family-mono: var(--vl-font-family-mono);
+  /* ── 排版刻度与语义档名 ── */
+  /* 刻度：按实际取值建档 */
+  --vl-font-size-10: 10px;
+  --vl-font-size-11: 11px;
+  --vl-font-size-12: 12px;
+  --vl-font-size-13: 13px;
+  --vl-font-size-14: 14px;
+  --vl-font-size-16: 16px;
+  --vl-font-size-18: 18px;
+  --vl-font-size-20: 20px;
+  --vl-font-size-22: 22px;
+  --vl-font-size-24: 24px;
+  --vl-font-size-28: 28px;
+  --vl-font-size-32: 32px;
+  --vl-font-size-40: 40px;
+  --vl-font-size-52: 52px;
+  --vl-line-height-14: 14px;
+  --vl-line-height-16: 16px;
+  --vl-line-height-18: 18px;
+  --vl-line-height-20: 20px;
+  --vl-line-height-24: 24px;
+  --vl-line-height-28: 28px;
+  --vl-line-height-30: 30px;
+  --vl-line-height-32: 32px;
+  --vl-line-height-36: 36px;
+  --vl-line-height-40: 40px;
+  --vl-line-height-48: 48px;
+  --vl-line-height-60: 60px;
+  --vl-font-weight-400: 400;
+  --vl-font-weight-450: 450;
+  --vl-font-weight-500: 500;
+  --vl-font-weight-600: 600;
+  /* 语义档名：别名，指向刻度 */
+  --vl-font-size-xs: --vl-font-size-11;
+  --vl-font-size-sm: --vl-font-size-12;
+  --vl-font-size-md: --vl-font-size-14;
+  --vl-font-size-lg: --vl-font-size-18;
+  --vl-font-size-xl: --vl-font-size-24;
+  --vl-font-size-2xl: --vl-font-size-32;
+  --vl-line-height-tight: --vl-line-height-14;
+  --vl-line-height-snug: --vl-line-height-16;
+  --vl-line-height-normal: --vl-line-height-20;
+  --vl-line-height-relaxed: --vl-line-height-28;
+  --vl-font-weight-regular: --vl-font-weight-400;
+  --vl-font-weight-medium: --vl-font-weight-450;
+  --vl-font-weight-semibold: --vl-font-weight-500;
+  --vl-font-weight-bold: --vl-font-weight-600;
+  --vl-type-body-lg-family: var(--vl-font-family-base);
+  --vl-type-body-lg-size: var(--vl-font-size-18);
+  --vl-type-body-lg-weight: var(--vl-font-weight-400);
   --vl-font-font-weight-regular: 400;
-  --vl-font-body-lg-line-height: 28px;
-  --vl-font-body-lg-letter-spacing: -0.02em;
-  --vl-font-heading-md-font-family: var(--vl-font-font-family-heading);
-  --vl-font-heading-md-font-size: 20px;
-  --vl-font-heading-md-font-weight: 600;
-  --vl-font-heading-md-line-height: 28px;
-  --vl-font-heading-md-letter-spacing: 0;
-  --vl-font-heading-lg-font-family: var(--vl-font-font-family-heading);
-  --vl-font-heading-lg-font-size: 22px;
-  --vl-font-heading-lg-font-weight: 600;
-  --vl-font-heading-lg-line-height: 30px;
-  --vl-font-heading-lg-letter-spacing: 0;
-  --vl-font-heading-xl-font-family: var(--vl-font-font-family-heading);
-  --vl-font-heading-xl-font-size: 24px;
-  --vl-font-heading-xl-font-weight: 600;
-  --vl-font-heading-xl-line-height: 32px;
-  --vl-font-heading-xl-letter-spacing: 0;
-  --vl-font-heading-2xl-font-family: var(--vl-font-font-family-heading);
-  --vl-font-heading-2xl-font-size: 28px;
-  --vl-font-heading-2xl-font-weight: 600;
-  --vl-font-heading-2xl-line-height: 36px;
-  --vl-font-heading-2xl-letter-spacing: 0;
-  --vl-font-heading-3xl-font-family: var(--vl-font-font-family-heading);
-  --vl-font-heading-3xl-font-size: 32px;
-  --vl-font-heading-3xl-font-weight: 600;
-  --vl-font-heading-3xl-line-height: 40px;
-  --vl-font-heading-3xl-letter-spacing: 0;
-  --vl-font-heading-display-font-family: var(--vl-font-font-family-heading);
-  --vl-font-heading-display-font-size: 52px;
-  --vl-font-heading-display-font-weight: 600;
-  --vl-font-heading-display-line-height: 60px;
-  --vl-font-heading-display-letter-spacing: -0.03em;
-  --vl-font-heading-display-sm-font-family: var(--vl-font-font-family-heading);
-  --vl-font-heading-display-sm-font-size: 40px;
-  --vl-font-heading-display-sm-font-weight: 600;
-  --vl-font-heading-display-sm-line-height: 48px;
-  --vl-font-heading-display-sm-letter-spacing: -0.02em;
+  --vl-type-body-lg-line-height: var(--vl-line-height-28);
+  --vl-type-body-lg-tracking: -0.02em;
+  --vl-type-heading-md-family: var(--vl-font-family-heading);
+  --vl-type-heading-md-size: var(--vl-font-size-20);
+  --vl-type-heading-md-weight: var(--vl-font-weight-600);
+  --vl-type-heading-md-line-height: var(--vl-line-height-28);
+  --vl-type-heading-md-tracking: 0;
+  --vl-type-heading-lg-family: var(--vl-font-family-heading);
+  --vl-type-heading-lg-size: var(--vl-font-size-22);
+  --vl-type-heading-lg-weight: var(--vl-font-weight-600);
+  --vl-type-heading-lg-line-height: var(--vl-line-height-30);
+  --vl-type-heading-lg-tracking: 0;
+  --vl-type-heading-xl-family: var(--vl-font-family-heading);
+  --vl-type-heading-xl-size: var(--vl-font-size-24);
+  --vl-type-heading-xl-weight: var(--vl-font-weight-600);
+  --vl-type-heading-xl-line-height: var(--vl-line-height-32);
+  --vl-type-heading-xl-tracking: 0;
+  --vl-type-heading-2xl-family: var(--vl-font-family-heading);
+  --vl-type-heading-2xl-size: var(--vl-font-size-28);
+  --vl-type-heading-2xl-weight: var(--vl-font-weight-600);
+  --vl-type-heading-2xl-line-height: var(--vl-line-height-36);
+  --vl-type-heading-2xl-tracking: 0;
+  --vl-type-heading-3xl-family: var(--vl-font-family-heading);
+  --vl-type-heading-3xl-size: var(--vl-font-size-32);
+  --vl-type-heading-3xl-weight: var(--vl-font-weight-600);
+  --vl-type-heading-3xl-line-height: var(--vl-line-height-40);
+  --vl-type-heading-3xl-tracking: 0;
+  --vl-type-heading-display-family: var(--vl-font-family-heading);
+  --vl-type-heading-display-size: var(--vl-font-size-52);
+  --vl-type-heading-display-weight: var(--vl-font-weight-600);
+  --vl-type-heading-display-line-height: var(--vl-line-height-60);
+  --vl-type-heading-display-tracking: -0.03em;
+  --vl-type-heading-display-sm-family: var(--vl-font-family-heading);
+  --vl-type-heading-display-sm-size: var(--vl-font-size-40);
+  --vl-type-heading-display-sm-weight: var(--vl-font-weight-600);
+  --vl-type-heading-display-sm-line-height: var(--vl-line-height-48);
+  --vl-type-heading-display-sm-tracking: -0.02em;
   --vl-alias-code-text: #17181A;
   --vl-alias-code-doc: #8393A3;
   --vl-alias-code-link: #2F74FF;
@@ -187,10 +381,10 @@
   --vl-static-brand-green-grey-800: #5E6E6E;
   --vl-static-brand-green-grey-900: #404F4F;
   --vl-static-brand-green-grey-1000: #212B2B;
-  --vl-font-font-family: var(--vl-font-font-family-default);
-  --vl-font-font-size: var(--vl-font-body-xs-font-size);
-  --vl-font-font-weight: var(--vl-font-body-xs-font-weight);
-  --vl-comp-line-height: var(--vl-font-body-xs-line-height);
+  --vl-font-family-base: var(--vl-font-family-base);
+  --vl-font-font-size: var(--vl-type-body-xs-size);
+  --vl-font-font-weight: var(--vl-type-body-xs-weight);
+  --vl-comp-line-height: var(--vl-type-body-xs-line-height);
   --vl-alias-viz-series-brand: var(--vl-alias-bg-brand);
   --vl-alias-viz-series-brand-soft: var(--vl-alias-brand-300);
   --vl-alias-viz-series-brand-mid: var(--vl-alias-brand-500);
@@ -270,85 +464,85 @@
   --vl-static-icon-size-24: 24px;
 
   /* font */
-  --vl-font-font-family-default: "SF Pro Text", "PingFang SC", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --vl-font-font-family-heading: "SF Pro", "PingFang SC", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --vl-font-family-base: "SF Pro Text", "PingFang SC", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --vl-font-family-heading: "SF Pro", "PingFang SC", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --vl-font-font-family-metric: "Inter", "SF Pro Text", "PingFang SC", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --vl-font-font-family-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --vl-font-family-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --vl-font-font-weight-default: 400;
   --vl-font-font-weight-code: 450;
   --vl-font-font-weight-medium: 500;
   --vl-font-font-weight-strong: 600;
 
   /* body */
-  --vl-font-body-xs-font-family: var(--vl-font-font-family-default);
-  --vl-font-body-xs-font-size: 10px;
-  --vl-font-body-xs-font-weight: 400;
-  --vl-font-body-xs-line-height: 14px;
-  --vl-font-body-xs-letter-spacing: 0;
-  --vl-font-body-xs-strong-font-family: var(--vl-font-font-family-default);
-  --vl-font-body-xs-strong-font-size: 10px;
-  --vl-font-body-xs-strong-font-weight: 500;
-  --vl-font-body-xs-strong-line-height: 14px;
-  --vl-font-body-xs-strong-letter-spacing: 0;
-  --vl-font-body-sm-font-family: var(--vl-font-font-family-default);
-  --vl-font-body-sm-font-size: 11px;
-  --vl-font-body-sm-font-weight: 400;
-  --vl-font-body-sm-line-height: 16px;
-  --vl-font-body-sm-letter-spacing: 0;
-  --vl-font-body-sm-strong-font-family: var(--vl-font-font-family-default);
-  --vl-font-body-sm-strong-font-size: 11px;
-  --vl-font-body-sm-strong-font-weight: 500;
-  --vl-font-body-sm-strong-line-height: 16px;
-  --vl-font-body-sm-strong-letter-spacing: 0;
-  --vl-font-body-md-font-family: var(--vl-font-font-family-default);
-  --vl-font-body-md-font-size: 12px;
-  --vl-font-body-md-font-weight: 400;
-  --vl-font-body-md-line-height: 18px;
-  --vl-font-body-md-letter-spacing: 0;
-  --vl-font-body-md-strong-font-family: var(--vl-font-font-family-default);
-  --vl-font-body-md-strong-font-size: 12px;
-  --vl-font-body-md-strong-font-weight: 500;
-  --vl-font-body-md-strong-line-height: 18px;
-  --vl-font-body-md-strong-letter-spacing: 0;
-  --vl-font-body-base-font-family: var(--vl-font-font-family-default);
-  --vl-font-body-base-font-size: 14px;
-  --vl-font-body-base-font-weight: 400;
-  --vl-font-body-base-line-height: 20px;
-  --vl-font-body-base-letter-spacing: -0.02em;
-  --vl-font-body-base-strong-font-family: var(--vl-font-font-family-default);
-  --vl-font-body-base-strong-font-size: 14px;
-  --vl-font-body-base-strong-font-weight: 500;
-  --vl-font-body-base-strong-line-height: 20px;
-  --vl-font-body-base-strong-letter-spacing: -0.02em;
+  --vl-type-body-xs-family: var(--vl-font-family-base);
+  --vl-type-body-xs-size: var(--vl-font-size-10);
+  --vl-type-body-xs-weight: var(--vl-font-weight-400);
+  --vl-type-body-xs-line-height: var(--vl-line-height-14);
+  --vl-type-body-xs-tracking: 0;
+  --vl-type-body-xs-strong-family: var(--vl-font-family-base);
+  --vl-type-body-xs-strong-size: var(--vl-font-size-10);
+  --vl-type-body-xs-strong-weight: var(--vl-font-weight-500);
+  --vl-type-body-xs-strong-line-height: var(--vl-line-height-14);
+  --vl-type-body-xs-strong-tracking: 0;
+  --vl-type-body-sm-family: var(--vl-font-family-base);
+  --vl-type-body-sm-size: var(--vl-font-size-11);
+  --vl-type-body-sm-weight: var(--vl-font-weight-400);
+  --vl-type-body-sm-line-height: var(--vl-line-height-16);
+  --vl-type-body-sm-tracking: 0;
+  --vl-type-body-sm-strong-family: var(--vl-font-family-base);
+  --vl-type-body-sm-strong-size: var(--vl-font-size-11);
+  --vl-type-body-sm-strong-weight: var(--vl-font-weight-500);
+  --vl-type-body-sm-strong-line-height: var(--vl-line-height-16);
+  --vl-type-body-sm-strong-tracking: 0;
+  --vl-type-body-md-family: var(--vl-font-family-base);
+  --vl-type-body-md-size: var(--vl-font-size-12);
+  --vl-type-body-md-weight: var(--vl-font-weight-400);
+  --vl-type-body-md-line-height: var(--vl-line-height-18);
+  --vl-type-body-md-tracking: 0;
+  --vl-type-body-md-strong-family: var(--vl-font-family-base);
+  --vl-type-body-md-strong-size: var(--vl-font-size-12);
+  --vl-type-body-md-strong-weight: var(--vl-font-weight-500);
+  --vl-type-body-md-strong-line-height: var(--vl-line-height-18);
+  --vl-type-body-md-strong-tracking: 0;
+  --vl-type-body-base-family: var(--vl-font-family-base);
+  --vl-type-body-base-size: var(--vl-font-size-14);
+  --vl-type-body-base-weight: var(--vl-font-weight-400);
+  --vl-type-body-base-line-height: var(--vl-line-height-20);
+  --vl-type-body-base-tracking: -0.02em;
+  --vl-type-body-base-strong-family: var(--vl-font-family-base);
+  --vl-type-body-base-strong-size: var(--vl-font-size-14);
+  --vl-type-body-base-strong-weight: var(--vl-font-weight-500);
+  --vl-type-body-base-strong-line-height: var(--vl-line-height-20);
+  --vl-type-body-base-strong-tracking: -0.02em;
 
   /* heading */
-  --vl-font-heading-3xs-font-family: var(--vl-font-font-family-default);
-  --vl-font-heading-3xs-font-size: 11px;
-  --vl-font-heading-3xs-font-weight: 600;
-  --vl-font-heading-3xs-line-height: 16px;
-  --vl-font-heading-3xs-letter-spacing: 0;
-  --vl-font-heading-2xs-font-family: var(--vl-font-font-family-default);
-  --vl-font-heading-2xs-font-size: 12px;
-  --vl-font-heading-2xs-font-weight: 600;
-  --vl-font-heading-2xs-line-height: 18px;
-  --vl-font-heading-2xs-letter-spacing: 0;
-  --vl-font-heading-xs-font-family: var(--vl-font-font-family-default);
-  --vl-font-heading-xs-font-size: 13px;
-  --vl-font-heading-xs-font-weight: 600;
-  --vl-font-heading-xs-line-height: 20px;
-  --vl-font-heading-xs-letter-spacing: 0;
-  --vl-font-heading-sm-font-family: var(--vl-font-font-family-default);
-  --vl-font-heading-sm-font-size: 16px;
-  --vl-font-heading-sm-font-weight: 600;
-  --vl-font-heading-sm-line-height: 24px;
-  --vl-font-heading-sm-letter-spacing: 0;
+  --vl-type-heading-3xs-family: var(--vl-font-family-base);
+  --vl-type-heading-3xs-size: var(--vl-font-size-11);
+  --vl-type-heading-3xs-weight: var(--vl-font-weight-600);
+  --vl-type-heading-3xs-line-height: var(--vl-line-height-16);
+  --vl-type-heading-3xs-tracking: 0;
+  --vl-type-heading-2xs-family: var(--vl-font-family-base);
+  --vl-type-heading-2xs-size: var(--vl-font-size-12);
+  --vl-type-heading-2xs-weight: var(--vl-font-weight-600);
+  --vl-type-heading-2xs-line-height: var(--vl-line-height-18);
+  --vl-type-heading-2xs-tracking: 0;
+  --vl-type-heading-xs-family: var(--vl-font-family-base);
+  --vl-type-heading-xs-size: var(--vl-font-size-13);
+  --vl-type-heading-xs-weight: var(--vl-font-weight-600);
+  --vl-type-heading-xs-line-height: var(--vl-line-height-20);
+  --vl-type-heading-xs-tracking: 0;
+  --vl-type-heading-sm-family: var(--vl-font-family-base);
+  --vl-type-heading-sm-size: var(--vl-font-size-16);
+  --vl-type-heading-sm-weight: var(--vl-font-weight-600);
+  --vl-type-heading-sm-line-height: var(--vl-line-height-24);
+  --vl-type-heading-sm-tracking: 0;
 
   /* code */
-  --vl-font-code-editor-font-family: var(--vl-font-font-family-mono);
-  --vl-font-code-editor-font-size: 13px;
-  --vl-font-code-editor-font-weight: 450;
-  --vl-font-code-editor-line-height: 20px;
-  --vl-alias-code-terminal-font-family: var(--vl-font-font-family-mono);
+  --vl-type-code-editor-family: var(--vl-font-family-mono);
+  --vl-type-code-editor-size: var(--vl-font-size-13);
+  --vl-type-code-editor-weight: var(--vl-font-weight-450);
+  --vl-type-code-editor-line-height: var(--vl-line-height-20);
+  --vl-alias-code-terminal-font-family: var(--vl-font-family-mono);
   --vl-static-code-terminal-font-size: 12px;
   --vl-static-code-terminal-font-weight: 450;
   --vl-static-code-terminal-line-height: 18px;
