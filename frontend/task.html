@@ -2,6 +2,7 @@
 <html lang="zh-CN" data-skin="white_blue"><head>
   <meta charset="UTF-8">
   <title>Video Lab - 任务</title>
+  <link rel="stylesheet" href="styles/tokens.css">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="skins/white_blue.css">
   <link rel="stylesheet" href="skins/Black_Orange.css">
@@ -19,7 +20,9 @@ var m = new URL(location.href).searchParams.get('token');
     }
   </script>
   <style>
-    * { box-sizing: border-box; }
+@layer reset, tokens, base, layout, components, pages, skins, utilities;
+@layer pages {
+* { box-sizing: border-box; }
     html, body { height: 100%; margin: 0; }
     body { display: flex; flex-direction: column; overflow: hidden; padding-top: 34px; }
     .task-header {
@@ -253,7 +256,8 @@ var m = new URL(location.href).searchParams.get('token');
     }
     /* 任务窗口 toast 统一左下角（主窗口保持在右下角） */
     .toast-host { right: auto; left: 16px; bottom: 16px; align-items: flex-start; }
-  </style>
+}
+</style>
 </head>
 <body>
   <div class="win-titlebar" id="winTitlebar">

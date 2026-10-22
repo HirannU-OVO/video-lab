@@ -4,7 +4,9 @@
 <meta charset="UTF-8">
 <title>卸载 Video Lab</title>
 <style>
-  * { box-sizing: border-box; }
+@layer reset, tokens, base, layout, components, pages, skins, utilities;
+@layer pages {
+* { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; }
   body { font-family: "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif; background: #fff; color: #1f2328; font-size: 13px; overflow: hidden; display: flex; flex-direction: column; }
   .titlebar { height: 34px; display: flex; align-items: center; -webkit-app-region: drag; padding: 0 6px 0 14px; border-bottom: 1px solid #eceef1; flex: 0 0 auto; }
@@ -40,7 +42,9 @@
   .modal h2 { font-size: 14px; margin: 0 0 8px; }
   .modal p { font-size: 12.5px; color: #57606a; line-height: 1.8; margin: 0 0 14px; }
   .modal .acts { display: flex; gap: 10px; justify-content: flex-end; }
+}
 </style>
+  <link rel="stylesheet" href="styles/tokens.css">
 </head>
 <body>
   <div class="titlebar">

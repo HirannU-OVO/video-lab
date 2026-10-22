@@ -1,3 +1,6 @@
+@layer reset, tokens, base, layout, components, pages, skins, utilities;
+
+@layer skins {
 /* 深色 —— 基于 Nerv 深色模板，深色背景 + 橙色品牌强调 */
 html[data-skin="Black_Orange"] {
   /* 背景层：近黑深灰 */
@@ -129,4 +132,5 @@ html[data-skin="Black_Orange"] {
   /* toast 固定实色（深色浮层实底：层次深灰卡片 + 灰边框） */
   --vl-skin-toast-bg: #1e1e20;
   --vl-skin-toast-border: #3a3a3e;
+}
 }

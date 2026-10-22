@@ -2,6 +2,7 @@
 <html lang="zh-CN" data-skin="white_blue"><head>
   <meta charset="UTF-8">
   <title>Video Lab - 视频处理</title>
+  <link rel="stylesheet" href="styles/tokens.css">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="skins/white_blue.css">
   <link rel="stylesheet" href="skins/Black_Orange.css">
@@ -18,7 +19,9 @@ var m = new URL(location.href).searchParams.get('token');
     }
   </script>
   <style>
-    * { box-sizing: border-box; }
+@layer reset, tokens, base, layout, components, pages, skins, utilities;
+@layer pages {
+* { box-sizing: border-box; }
     html, body { height: 100%; margin: 0; }
     body { display: flex; flex-direction: column; overflow: hidden; padding-top: 34px;
            background: var(--vl-alias-bg-base-default); color: var(--vl-alias-text-default); font-family: var(--vl-font-family-base); }
@@ -244,7 +247,8 @@ var m = new URL(location.href).searchParams.get('token');
       .cv-wrap { flex-direction: column; }
       .cv-params { flex: 1 1 auto; max-width: none; width: 100%; }
     }
-  </style>
+}
+</style>
 </head>
 <body>
   <div class="win-titlebar" id="winTitlebar">

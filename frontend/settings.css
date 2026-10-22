@@ -1,3 +1,6 @@
+@layer reset, tokens, base, layout, components, pages, skins, utilities;
+
+@layer components {
 /* -*- coding: utf-8 -*-
    Video Lab — 设置窗口样式（复用各皮肤的 CSS 变量） */
 html, body {
@@ -653,3 +656,4 @@ body {
 }
 .about-info__v a:hover { color: var(--vl-alias-text-brand, var(--vl-alias-brand-500)); text-decoration-color: currentColor; }
 .about-info__sep { color: var(--vl-alias-text-tertiary); }
+}

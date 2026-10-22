@@ -6,7 +6,9 @@
 <!-- 兜底浅色样式在前，皮肤变量注入位（style#skinVars）置后：同级 :root 后出现者胜，
      确保主进程注入的皮肤变量能覆盖兜底值 -->
 <style>
-  :root {
+@layer reset, tokens, base, layout, components, pages, skins, utilities;
+@layer pages {
+:root {
     --vl-alias-bg-base-default: #FFFFFF;
     --vl-alias-text-default: #222222;
     --vl-alias-text-secondary: #555555;
@@ -42,8 +44,10 @@
     content: ''; flex: 0 0 auto;
     width: 6px; height: 6px; border-radius: 50%; background: #f97316;
   }
+}
 </style>
 <style id="skinVars"></style>
+  <link rel="stylesheet" href="styles/tokens.css">
 </head>
 <body>
 <div class="tray-menu" id="trayMenu">

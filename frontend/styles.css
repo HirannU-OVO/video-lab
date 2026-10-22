@@ -1,5 +1,6 @@
-@import url('styles/tokens.css');
+@layer reset, tokens, base, layout, components, pages, skins, utilities;
 
+@layer components {
 /* 等宽字体 JetBrains Mono（SIL OFL 1.1，可商用分发，见 fonts/OFL-JetBrainsMono.txt）：
    内嵌 Regular，用于路径/日志/数值等 mono 场景，不依赖客户端安装。
    用官方标准版（267 KB）而非 Nerd Font Mono 变体（2.4 MB）—— 界面未使用 Nerd Font
@@ -4864,3 +4865,4 @@ button.is-vl-disabled {
 }
 /* 预览版窗口：标题栏底部橙线（inset 阴影，不占布局） */
 .win-titlebar[data-preview="1"] { box-shadow: inset 0 -2px 0 0 #f97316; }
+}
