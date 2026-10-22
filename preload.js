@@ -219,15 +219,33 @@ const api = {
 
 // 开发者工具接口：仅在 --dev-tools 启动时挂载（无参数时运行环境里完全没有这些能力）
 if (DEV_TOOLS) {
+  const devApplied = new Map();      // 本窗口已试值的令牌（用于「全部还原」）
+  const devListeners = [];           // 页面的变化回调
+  const applyToDom = (p) => {
+    try {
+      if (!p) return;
+      if (p.reset) {
+        for (const n of devApplied.keys()) document.documentElement.style.removeProperty(n);
+        devApplied.clear();
+      } else if (p.name) {
+        document.documentElement.style.setProperty(p.name, p.value);
+        devApplied.set(p.name, p.value);
+      }
+    } catch (e) {}
+  };
+  // 广播到达 → 先落到本窗口的 :root（主窗口与面板都会生效），再通知页面刷新显示
+  ipcRenderer.on('vl-devtools:token-changed', (e, p) => {
+    applyToDom(p);
+    for (const cb of devListeners) { try { cb(p); } catch (err) {} }
+  });
   api.devTools = {
     // 会话内临时试值：只改内存里的 CSS 变量，不写任何配置，退出即还原
     applyToken: (name, value) => { try { ipcRenderer.send('vl-devtools:apply-token', { name: name, value: value }); } catch (e) {} },
     resetTokens: () => { try { ipcRenderer.send('vl-devtools:reset-tokens'); } catch (e) {} },
     // 其他窗口的试值变化（主窗口与面板窗口互相同步）
     onTokenChange: (cb) => {
-      const h = (e, p) => { try { cb(p); } catch (err) {} };
-      ipcRenderer.on('vl-devtools:token-changed', h);
-      return () => { try { ipcRenderer.removeListener('vl-devtools:token-changed', h); } catch (e) {} };
+      devListeners.push(cb);
+      return () => { const i = devListeners.indexOf(cb); if (i >= 0) devListeners.splice(i, 1); };
     }
   };
 }

@@ -7,6 +7,7 @@
   const locked = $('dtLocked'), main = $('dtMain');
 
   if (!API) { locked.hidden = false; return; }
+  locked.hidden = true;
   main.hidden = false;
 
   const LAYERS = [
@@ -157,5 +158,9 @@
     });
   }
 
-  scan();
+  scan().catch(function (e) {
+    locked.hidden = false;
+    main.hidden = true;
+    locked.innerHTML = "<h2>面板加载失败</h2><p>" + String((e && e.message) || e).replace(/[<>&]/g, " ") + "</p><p class=dt-locked__hint>请用 --dev-tools 启动的应用实例打开本页面。</p>";
+  });
 })();

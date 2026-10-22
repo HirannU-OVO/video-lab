@@ -34,7 +34,9 @@ const DEFAULT_HTTP_PORT = IS_PREVIEW ? 9528 : 9527;
 // 开发者工具形态（A-09）：只有显式带 --dev-tools 启动时才存在。
 // 面板是独立窗口、不进设置页导航；普通用户的启动方式永远不带这个参数 → 界面里没有任何入口。
 // ⚠ 必须定义在 startHttpServer 之前（const 有暂时性死区，晚定义会在启动时抛 ReferenceError）。
-const DEV_TOOLS = process.argv.includes('--dev-tools');
+// ⚠ 仅开发态可用：打包后的产品（含预览版）里既没有面板文件，也没有这个能力。
+// 开发态 = 直接跑源码（app.isPackaged 为 false），面板文件也在源码目录里。
+const DEV_TOOLS = !app.isPackaged && process.argv.includes('--dev-tools');
 // ⚠ 开发者工具窗口句柄：必须与 DEV_TOOLS 一起提前声明（let 有暂时性死区，晚声明会在启动时抛 ReferenceError）
 let devToolsWin = null;
 
@@ -861,14 +863,14 @@ async function showTrayMenu() {
   try {
     const cssText = await mainWin.webContents.executeJavaScript(`(function(){
       var s=getComputedStyle(document.documentElement);
-      var names=['--bg-base-default','--text-default','--text-secondary','--border-neutral-l1','--bg-overlay-l2','--radius-6','--radius-8','--body-base-font-size'];
+      var names=['--vl-alias-bg-base-default','--vl-alias-text-default','--vl-alias-text-secondary','--vl-alias-border-neutral-l1','--vl-alias-bg-overlay-l2','--vl-static-radius-6','--vl-static-radius-8','--vl-type-body-base-size'];
       var p=names.map(function(n){var v=s.getPropertyValue(n).trim();return v?(n+':'+v):null;}).filter(Boolean).join(';');
       return p;
     })()`);
     if (cssText) {
       await trayMenuWin.webContents.executeJavaScript("document.getElementById('skinVars').textContent=':root{" + cssText + "}';");
       // 窗口不透明：取皮肤的 --bg-base-default 作为窗口背景色，使圆角外的矩形角落与菜单底色一致（否则会露出默认白/黑角）
-      const mBg = /--bg-base-default:\s*([^;]+)/.exec(cssText);
+      const mBg = /--vl-alias-bg-base-default:\s*([^;]+)/.exec(cssText);
       if (mBg) { try { trayMenuWin.setBackgroundColor(mBg[1].trim()); } catch (e) {} }
     }
   } catch (e) {}
@@ -961,7 +963,9 @@ function openDevToolsWindow() {
   });
   devToolsWin.once('ready-to-show', () => { try { if (devToolsWin && !devToolsWin.isDestroyed()) { devToolsWin.show(); devToolsWin.focus(); } } catch (e) {} });
   try {
-    devToolsWin.loadURL(httpServerInfo.url + '/dev-tokens?token=' + encodeURIComponent(httpServerInfo.token));
+    // ⚠ httpServerInfo.url 已含 '/?token='，直接拼路径会得到 '/?token=X/dev-tokens' → pathname 变成 '/' → 打开的是主窗口！
+    // 这里按端口重建 origin 再拼面板路径。
+    devToolsWin.loadURL('http://localhost:' + httpServerInfo.port + '/dev-tokens?token=' + encodeURIComponent(httpServerInfo.token));
   } catch (e) {}
   devToolsWin.on('closed', () => { devToolsWin = null; });
   return devToolsWin;
