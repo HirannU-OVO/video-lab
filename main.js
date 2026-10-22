@@ -70,7 +70,7 @@ function restartHttpServer() {
       saveConfig(config);
     }
   } catch (e) { try { httpToken = crypto.randomBytes(16).toString('hex'); } catch (e2) {} }
-  startHttpServer({
+  return startHttpServer({
     api,
     getMainWin: () => mainWin,
     getSettingsWin: () => null,   // 设置已内嵌为主窗口面板，不再有独立窗口
@@ -86,7 +86,18 @@ function restartHttpServer() {
     else console.error('[HTTP] 启动失败: ' + (info.error || '未知错误'));
       // 开发者工具形态：HTTP 就绪后自动打开面板窗口（普通启动不会走到这里）
       if (DEV_TOOLS && info.ok) { try { openDevToolsWindow(); } catch (e) {} }
-  }).catch(function (e) { console.error('[HTTP] 异常: ' + e); });
+    return info;
+  }).catch(function (e) { console.error('[HTTP] 异常: ' + e); return null; });
+}
+
+// 页面加载地址（方案 X）：软件端窗口与 agent 使用**同一个 URL 方案**，消除渲染管道差异。
+// - HTTP 就绪 → http://127.0.0.1:<port>/<slug>?token=…
+// - 未就绪或启动失败 → 返回 null，调用方回退 loadFile（保证窗口仍能打开）
+// 注：托盘菜单无 HTTP 路由（自包含小窗），继续用 loadFile。
+function pageLoadUrl(fileName) {
+  if (!httpServerInfo || !httpServerInfo.ok) return null;
+  const slug = fileName === 'index.html' ? '' : String(fileName).replace(/\.html$/, '');
+  return 'http://127.0.0.1:' + httpServerInfo.port + '/' + slug + '?token=' + encodeURIComponent(httpServerInfo.token);
 }
 
 // 卸载准备形态：只显示卸载询问窗口，不进入主界面（不初始化托盘 / HTTP / 扫描 / 任务恢复）
@@ -853,7 +864,8 @@ async function showTrayMenu() {
     //   用不透明窗口 + 系统圆角（Win11 默认 roundedCorners）：窗口背景色在注入皮肤变量后用 setBackgroundColor 对齐 --bg-base-default，圆角外不会露出杂色。
     trayMenuWin = new BrowserWindow({ width: TRAY_MENU_W, height: 60, show: false, frame: false, transparent: false, roundedCorners: true, resizable: false, movable: false, skipTaskbar: true, alwaysOnTop: true, fullscreenable: false, webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false } });
     trayMenuWin.setMenu(null);
-    trayMenuWin.loadFile(path.join(__dirname, 'frontend', 'trayMenu.html'));
+    // 托盘菜单：server 没有它的 HTTP 路由（自包含小窗，皮肤变量由主进程注入），故保持 loadFile
+  trayMenuWin.loadFile(path.join(__dirname, 'frontend', 'trayMenu.html'));
     trayMenuWin.on('blur', () => { if (trayMenuWin && !trayMenuWin.isDestroyed()) trayMenuWin.hide(); });
     trayMenuWin.on('closed', () => { trayMenuWin = null; });
     // 等 ready-to-show（首帧已绘制）而非 did-finish-load：后者只代表文档加载完，此时 show 会先出现空白/半透明窗再刷出内容
@@ -920,7 +932,7 @@ function createToolWindow() {
   }
   // 首帧就绪后再显示（与主窗口一致）：避免「先出现空白窗、再刷出内容」的闪烁观感
   toolWin.once('ready-to-show', async () => { await waitForWindowContent(toolWin); try { if (toolWin && !toolWin.isDestroyed()) { toolWin.show(); toolWin.focus(); } } catch (e) {} });
-  toolWin.loadFile(path.join(__dirname, 'frontend', 'tool.html'));
+  { const u = pageLoadUrl('tool.html'); if (u) toolWin.loadURL(u); else toolWin.loadFile(path.join(__dirname, 'frontend', 'tool.html')); }
   // 关闭只隐藏、不销毁：重建需重新加载整套皮肤资源（女仆皮肤 64KB CSS + 1.7MB 图片），hide 复用后再次打开瞬时显示。
   // 仅在应用真正退出（isQuitting）时才允许销毁。
   toolWin.on('close', (e) => {
@@ -939,7 +951,7 @@ function createTaskWindow() {
   taskWin = new BrowserWindow({ title: IS_PREVIEW ? 'Video Lab Preview - 任务' : 'Video Lab - 任务', width: 760, height: 620, resizable: false, maximizable: false, minimizable: false, frame: false, show: false, webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false } });
   // 首帧就绪后再显示：避免「先出现空白窗、再刷出内容」的闪烁观感
   taskWin.once('ready-to-show', async () => { await waitForWindowContent(taskWin); try { if (taskWin && !taskWin.isDestroyed()) { taskWin.show(); taskWin.focus(); } } catch (e) {} });
-  taskWin.loadFile(path.join(__dirname, 'frontend', 'task.html'));
+  { const u = pageLoadUrl('task.html'); if (u) taskWin.loadURL(u); else taskWin.loadFile(path.join(__dirname, 'frontend', 'task.html')); }
   // 关闭只隐藏、不销毁（同工具窗）：常开常看，重建要重载整套皮肤资源；应用真正退出时才销毁。
   taskWin.on('close', (e) => {
     if (isQuitting) return;
@@ -2164,7 +2176,10 @@ function createWindow() {
   // 设置页已内嵌为主窗口面板（iframe），其 settings.js 依赖 preload 暴露的 window.txapi；
   // 不开此项则 iframe 内取不到，设置页所有接口都会失效。
   mainWin = new BrowserWindow({ title: IS_PREVIEW ? 'Video Lab Preview' : 'Video Lab', width: 1360, height: 860, minWidth: 1120, minHeight: 700, frame: false, show: false, webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false, nodeIntegrationInSubFrames: true } });
-  mainWin.loadFile(path.join(__dirname, 'frontend', 'index.html'));
+  // 方案 X：优先走内嵌 HTTP（与 agent 同一渲染管道）；未就绪时回退 file://
+  const _mainUrl = pageLoadUrl('index.html');
+  if (_mainUrl) mainWin.loadURL(_mainUrl);
+  else mainWin.loadFile(path.join(__dirname, 'frontend', 'index.html'));
   // 页面加载完成即放行「窗口加载后」初始化。注册必须紧跟 loadFile：
   // ⚠ 若推迟到第一次 runAfterWindowLoad 调用时才注册，那时页面往往已经加载完，
   // 监听永不触发 → 只能等固定兜底时间 → 托盘 / HTTP 就绪被无谓推迟。
@@ -2206,7 +2221,7 @@ function openUninstallWindow() {
     title: '卸载 Video Lab',
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false },
   });
-  uninstallWin.loadFile(path.join(__dirname, 'frontend', 'uninstall.html'));
+  { const u = pageLoadUrl('uninstall.html'); if (u) uninstallWin.loadURL(u); else uninstallWin.loadFile(path.join(__dirname, 'frontend', 'uninstall.html')); }
   // VL_UNINSTALL_HEADLESS=1：渲染在屏幕外，供自动化验证读取界面
   const headless = !!process.env.VL_UNINSTALL_HEADLESS;
   // 显示时机：ready-to-show 为主，did-finish-load 兜底 —— 隐藏方式启动时前者可能不触发，窗口就永远不出现
@@ -2515,8 +2530,13 @@ app.whenReady().then(async () => {
   logTiming('whenReady 后 注册 IPC 完成');
   // ── 启动顺序原则：**能在窗口显示后做的，绝不放在窗口显示前** ──
   // 此处只保留窗口必须先有的最小集（createWindow）；ensureConfig / createTray / HTTP / restoreTasks 一律在首帧之后再跑，避免任一环节慢叠加成「点了图标迟迟不出窗口」。
+  // ── 方案 X：页面统一走内嵌 HTTP ──
+  // 让软件端窗口与 agent 用**同一个 URL 方案**加载页面（渲染管道唯一，消除 file:// 与 http:// 的行为差异）。
+  // 此法只增加一次本地服务启动开销，对首帧影响可忽略；
+  // HTTP 起不来时 createWindow 内部会回退 file://，窗口照常打开。
+  if (!httpServerInfo) { try { await restartHttpServer(); } catch (e) {} }
   createWindow();
-  logTiming('主窗口已创建（loadFile 已发起）');
+  logTiming('主窗口已创建（' + (httpServerInfo && httpServerInfo.ok ? 'loadURL http' : 'loadFile 回退') + ' 已发起）');
   // 卸载入口接管（窗口就绪后延迟执行）
   setTimeout(() => { try { ensureUninstallEntryPointsHere(); } catch (e) {} }, 5000);
   // ── 启动期全量扫描：缓存未命中时后台预热（不弹窗、不推迟窗口显示） ──
@@ -2546,7 +2566,7 @@ app.whenReady().then(async () => {
     logTiming('窗口加载后：createTray 开始');
     try { createTray(); } catch (e) {}
     logTiming('窗口加载后：托盘已创建（' + _ms() + 'ms）');
-    restartHttpServer();              // 内嵌 HTTP 服务器：浏览器访问 http://localhost:<port>
+    if (!httpServerInfo) restartHttpServer();   // 已有则跳过（避免二次 listen 抢端口）
     if (IS_AUTOSTART && mainWin && !mainWin.isDestroyed()) mainWin.hide();
     logTiming('窗口加载后：托盘 / HTTP 就绪');
     // 数据缓存失效清理：**窗口就绪后 15 秒**的空闲期增量执行（限量 600 条 + 细让路 + 批间小睡）。

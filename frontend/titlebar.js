@@ -86,7 +86,8 @@
     if (!bar) return;
     // 浏览器侧隐藏窗口控制按钮：独立标签页（不在 iframe 内）时浏览器自带标签栏，隐藏按钮；
     // iframe 内嵌模态（设置页在浏览器模态中）则保留关闭按钮，与本体一致的关闭交互
-    if (VL.host.isHttp && window.self === window.top) {
+    // 仅「纯网页访问」时隐藏窗口控制按钮；软件端（走 http 也一样）必须保留
+    if (VL.host.isElectron === false && window.self === window.top) {
       var ctrls = bar.querySelector('.win-titlebar__controls');
       if (ctrls) ctrls.style.display = 'none';
     }

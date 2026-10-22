@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-skin="white_blue">
+<head>
+<meta charset="utf-8">
+<title>基础组件 · 组件展示</title>
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="styles/tokens.css">
+<link rel="stylesheet" href="styles/components.css">
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles/pages/dev-components.css">
+<link rel="stylesheet" href="skins/white_blue.css">
+<link rel="stylesheet" href="skins/Black_Orange.css">
+<link rel="stylesheet" href="skins/Maid_Atelier.css">
+</head>
+<body class="vl-dc">
+  <!-- 组件展示页：C-04 组件工厂的活样板 + C-07 组件级视觉快照的载体。
+       只用基础组件类与语义令牌：无硬编码色、无内联样式、引用公共层 → 自动被皮肤覆盖。 -->
+  <header class="vl-dc__head">
+    <h1 class="vl-dc__title">基础组件</h1>
+    <p class="vl-hint">由 <code>VL.ui</code> 工厂渲染（.vl-btn / .vl-input / .vl-check / .vl-tag）。切换皮肤时整页跟随。</p>
+  </header>
+
+  <section class="vl-dc__sec">
+    <h2 class="vl-dc__h2">按钮 · variant</h2>
+    <div class="vl-row" id="rowsVariant"></div>
+  </section>
+
+  <section class="vl-dc__sec">
+    <h2 class="vl-dc__h2">按钮 · size</h2>
+    <div class="vl-row" id="rowsSize"></div>
+  </section>
+
+  <section class="vl-dc__sec">
+    <h2 class="vl-dc__h2">按钮 · state</h2>
+    <div class="vl-row" id="rowsState"></div>
+  </section>
+
+  <section class="vl-dc__sec">
+    <h2 class="vl-dc__h2">输入框</h2>
+    <div class="vl-row" id="rowsInput"></div>
+  </section>
+
+  <section class="vl-dc__sec">
+    <h2 class="vl-dc__h2">复选框</h2>
+    <div class="vl-col" id="rowsCheck"></div>
+  </section>
+
+  <section class="vl-dc__sec">
+    <h2 class="vl-dc__h2">标签</h2>
+    <div class="vl-row" id="rowsTag"></div>
+  </section>
+
+  <script src="common.js"></script>
+  <script src="dev-components.js"></script>
+</body>
+</html>

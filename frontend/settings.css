@@ -344,16 +344,18 @@ body {
   flex: 1 1 auto !important;
   min-width: 110px;
 }
+/* @deprecated 用 .vl-btn（B-07 收敛）；本类只保留与基础组件不同的差异 */
 .btn {
-  appearance: none;
-  border: 1px solid var(--vl-alias-border-neutral-l2);
-  background: var(--vl-alias-bg-base-secondary);
-  color: var(--vl-alias-text-default);
+  /* 设置页按钮：由 padding 撑高、字号更大（原观感），其余交给 .vl-btn */
+  height: auto;
   padding: 7px 14px;
-  border-radius: 6px;
   font-size: 14px;
-  cursor: pointer;
-  white-space: nowrap;
+  /* 保留原盒模型与行高，避免整页位移 */
+  line-height: inherit;
+  gap: 0;
+  justify-content: normal;
+  align-items: normal;
+  min-width: auto;
 }
 .btn:hover { background: var(--vl-alias-bg-overlay-l1); }
 .btn-ghost { flex: 0 0 auto; }

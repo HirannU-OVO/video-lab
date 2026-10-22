@@ -253,6 +253,11 @@ if (DEV_TOOLS) {
 }
 
 contextBridge.exposeInMainWorld('txapi', api);
+// 可靠宿主标志：
+// ⚠ 不能用「window.txapi 是否存在」判断宿主 —— 浏览器端由 txapi.js 提供同名替身。
+// ⚠ 也不能用 location.protocol —— 方案 X 后软件端页面同样走 http://127.0.0.1。
+// 只有 preload 注入的这个标志能区分「有原生能力的宿主」与「纯网页」。
+contextBridge.exposeInMainWorld('__VL_ELECTRON__', true);
 
 // 构建标识（预览版）供界面读取
 contextBridge.exposeInMainWorld('vlBuild', { preview: IS_PREVIEW_BUILD });

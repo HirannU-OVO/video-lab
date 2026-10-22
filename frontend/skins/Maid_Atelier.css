@@ -1445,7 +1445,7 @@ html[data-skin="Maid_Atelier"] .config-editor.config-editor--static {
    centerBottom 内「请选择一个日期分支查看内容」），装饰层接管该区域视觉 */
 html[data-skin="Maid_Atelier"] body:not([data-maid-chat-active]) .center-top__dates .center-empty,
 html[data-skin="Maid_Atelier"] body:not([data-maid-chat-active]) .center-bottom .center-empty {
-  display: none !important;
+  display: none;
 }
 
 /* ── 中间底部配置栏：仅在选中配置后从下往上浮现 ──

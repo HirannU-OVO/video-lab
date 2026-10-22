@@ -27,6 +27,9 @@
   flex: 0 0 auto;
   object-fit: contain;
   vertical-align: middle;
+  width: 16px;
+  height: 16px;
+  flex-basis: 16px;
 }
 
 .icon {
@@ -34,22 +37,12 @@
   height: var(--vl-static-icon-size-16);
 }
 
-.icon-img {
-  width: 16px;
-  height: 16px;
-  flex-basis: 16px;
-}
 
 .mono,
 .num,
 code,
 kbd,
 samp,
-pre {
-  font-family: var(--vl-type-code-editor-family);
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum" 1, "lnum" 1;
-}
 
 .metric-value,
 .kpi-value,
@@ -233,6 +226,7 @@ pre {
 
 /* ── Buttons ───────────────────────────────────────────────── */
 /* ===== Buttons ===== */
+  /* @deprecated 用 .vl-btn（+ --primary / --ghost / --danger / --sm）—— B-07 收敛，迁移后删除本类 */
     .ds-btn {
       display: inline-flex; align-items: center; justify-content: center;
       gap: var(--vl-static-spacer-6);
@@ -348,6 +342,7 @@ pre {
 
 /* ── Forms ─────────────────────────────────────────────────── */
 /* ===== Input / Search ===== */
+  /* @deprecated 用 .vl-input —— B-07 收敛 */
     .ds-input { display: flex; align-items: center; gap: var(--vl-static-spacer-8); min-height: 32px; padding: 0 var(--vl-static-spacer-12); background: var(--vl-alias-bg-base-default); border: 1px solid var(--vl-alias-border-neutral-l1); border-radius: var(--vl-static-radius-8); color: var(--vl-alias-text-default); width: 100%; font-family: var(--vl-type-body-base-family); font-size: var(--vl-type-body-base-size); line-height: var(--vl-type-body-base-line-height); }
     .ds-input:focus-within { border-color: var(--vl-alias-border-contrast); background: var(--vl-alias-bg-base-default); }
     .ds-input input { flex: 1; background: transparent; border: none; outline: none; color: var(--vl-alias-text-default); font: inherit; min-width: 0; }
@@ -484,6 +479,7 @@ pre {
     .ds-tab.is-active { color: var(--vl-alias-text-default); }
     .ds-tab.is-active::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--vl-alias-icon-default); }
     .ds-tab__count,
+  /* @deprecated 用 .vl-tag（--brand / --accent / --danger / --ok / --outline）—— B-07 收敛 */
     .ds-tab .ds-tag.num { margin-left: var(--vl-static-spacer-6); min-width: 18px; height: 18px; padding: 0 var(--vl-static-spacer-6); display: inline-grid; place-items: center; vertical-align: middle; border: none; border-radius: var(--vl-static-radius-full); background: var(--vl-alias-bg-overlay-l2); color: var(--vl-alias-text-tertiary); font-family: var(--vl-font-font-family-metric); font-size: var(--vl-type-body-xs-size); line-height: var(--vl-type-body-xs-line-height); font-weight: var(--vl-type-body-xs-weight); font-variant-numeric: tabular-nums; }
 
 /* ── Tag ───────────────────────────────────────────────────── */
@@ -553,22 +549,6 @@ pre {
    Components CSS (shared atoms)
    ═══════════════════════════════════════════════════════════════ */
 .icon,
-.icon-img {
-  display: inline-block;
-  color: currentColor;
-  flex: 0 0 auto;
-  object-fit: contain;
-  vertical-align: middle;
-}
-.icon {
-  width: var(--vl-static-icon-size-16);
-  height: var(--vl-static-icon-size-16);
-}
-.icon-img {
-  width: 16px;
-  height: 16px;
-  flex-basis: 16px;
-}
 
 .mono, .num, code, kbd, samp, pre {
   font-family: var(--vl-type-code-editor-family);
@@ -690,16 +670,14 @@ body {
 [data-main-titlebar] .win-titlebar__title {
   position: static;
   transform: none;
+  font-family: 'Cinzel', 'Georgia', serif;
+  font-weight: 700;
+  letter-spacing: 0.5px;
 }
 [data-main-titlebar] .win-titlebar__mode {
   -webkit-app-region: no-drag;
 }
 /* 主窗口标题栏品牌字体：与品牌名片同款 Cinzel 粗体（其他窗口保持默认字体） */
-[data-main-titlebar] .win-titlebar__title {
-  font-family: 'Cinzel', 'Georgia', serif;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-}
 .win-titlebar__controls {
   margin-left: auto;
   height: 100%;
@@ -812,6 +790,7 @@ body {
 }
 
 /* Toggle button */
+  /* @deprecated 用 .vl-btn —— B-07 收敛 */
 .btn-toggle-dup {
   display: flex;
   align-items: center;
@@ -923,6 +902,10 @@ body {
    折叠态彻底隐藏（展开入口仅右上角圆形按钮） */
 .workspace-body {
   position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
 }
 .preview-resizer-anchor {
   position: relative;
@@ -963,7 +946,7 @@ body[data-preview-collapsed] .preview-resizer-anchor {
 /* 折叠态：右侧预览面板水平收起 + 淡出（width/opacity 过渡，替代 display:none
    以保留展开/收缩动画），折叠/展开由右上角圆形按钮控制，中缝尺寸栏随折叠隐藏 */
 body[data-preview-collapsed] .right-panel {
-  width: 0 !important;
+  width: 0;
   min-width: 0;
   opacity: 0;
   pointer-events: none;
@@ -1024,12 +1007,6 @@ body[data-preview-collapsed] .center-global-search .ds-input {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-}
-.workspace-body {
-  flex: 1;
-  min-height: 0;
-  display: flex;
   overflow: hidden;
 }
 .config-bar {
@@ -1128,6 +1105,7 @@ body[data-preview-collapsed] .center-global-search .ds-input {
   background: var(--vl-alias-status-error-surface-l2);
   color: var(--vl-alias-status-error-default);
 }
+  /* @deprecated 同 .mode-toggle —— B-07 收敛 */
 .sort-toggle__arrow {
   font-size: 9px;
   margin-right: 2px;
@@ -1151,6 +1129,9 @@ body[data-preview-collapsed] .center-global-search .ds-input {
   cursor: pointer;
   white-space: nowrap;
   transition: all 0.1s ease;
+  /* ⚠ 必须显式归零：B-07 批 3 给该按钮加了 .vl-btn 基础类，
+     而 .vl-btn 自带 gap:6px —— 本按钮原本图标紧贴文字，不归零会被撑宽 */
+  gap: 0;
 }
 .sort-toggle:hover {
   background: var(--vl-alias-bg-base-tertiary);
@@ -1639,6 +1620,7 @@ body[data-preview-collapsed] .center-global-search .ds-input {
   display: flex;
   gap: var(--vl-static-spacer-4);
 }
+  /* @deprecated 用 .vl-btn--sm .vl-btn--ghost + [aria-pressed="true"] —— B-07 收敛 */
 .mode-toggle {
   display: flex;
   align-items: center;
@@ -2473,9 +2455,9 @@ body[data-preview-collapsed] .center-global-search .ds-input {
 }
 .config-btn:disabled {
   opacity: 0.45;
-  color: var(--vl-alias-text-disabled) !important;
-  border-color: var(--vl-alias-border-neutral-l1) !important;
-  background: var(--vl-alias-bg-base-tertiary) !important;
+  color: var(--vl-alias-text-disabled);
+  border-color: var(--vl-alias-border-neutral-l1);
+  background: var(--vl-alias-bg-base-tertiary);
   cursor: not-allowed;
 }
 .config-bottombar__warn,
@@ -2726,6 +2708,7 @@ body[data-preview-collapsed] .center-global-search .ds-input {
   gap: 2px;
   flex-shrink: 0;
 }
+  /* @deprecated 同 .mode-toggle —— B-07 收敛 */
 .preview-toggle {
   display: inline-flex;
   align-items: center;
@@ -3735,7 +3718,7 @@ body[data-preview-collapsed] .center-global-search .ds-input {
 }
 /* 带子菜单的项：右侧箭头提示 */
 .ctx-menu__item--has-sub {
-  display: flex !important;
+  display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
@@ -4084,19 +4067,19 @@ body[data-preview-collapsed] .center-global-search .ds-input {
 /* ════════════ 遮罩叠加模式（复用主窗口，布局与配置管理模式一致） ════════════ */
 /* 隐藏批量"管理入口"（新建配置/排序/搜索/A-Z索引/置顶）与批量专属菜单项「刷新配置列表」
    （遮罩侧对应项为「刷新」menuMaskRescan，两者角色等价、数量一致）；「选择路径」两模式通用 */
-body.mask-mode #btnNewConfig,
-body.mask-mode #btnSortName,
-body.mask-mode #btnSortTime,
-body.mask-mode .sidebar__search,
-body.mask-mode #azIndexBar,
-body.mask-mode #sidebarToTop,
-body.mask-mode #menuRefreshConfigs { display: none !important; }
+body[data-mask="1"] #btnNewConfig,
+body[data-mask="1"] #btnSortName,
+body[data-mask="1"] #btnSortTime,
+body[data-mask="1"] .sidebar__search,
+body[data-mask="1"] #azIndexBar,
+body[data-mask="1"] #sidebarToTop,
+body[data-mask="1"] #menuRefreshConfigs { display: none; }
 /* 遮罩模式专属：项目刷新入口（批量隐藏、遮罩显示） */
 #menuMaskRescan { display: none; }
-body.mask-mode #menuMaskRescan { display: flex; }
+body[data-mask="1"] #menuMaskRescan { display: flex; }
 /* 遮罩模式右侧为素材统计预览，隐藏其标题栏 */
-body.mask-mode .right-panel__header,
-body.mask-mode .right-panel__subtitle { display: none; }
+body[data-mask="1"] .right-panel__header,
+body[data-mask="1"] .right-panel__subtitle { display: none; }
 /* 日志视图头部操作 */
 .mask-logview-head { display: flex; justify-content: flex-end; padding: 6px 0; }
 
@@ -4371,7 +4354,7 @@ body.mask-mode .right-panel__subtitle { display: none; }
 /* 后缀输入框：窄栏，紧挨模式选择 */
 .mask-bar__suffix { width: 100px; text-align: left; }
 /* 遮罩模式：顶部无日期分支，解除 center-top 批量占位的最小高度，消除空栏 */
-body.mask-mode .center-top { min-height: 0; max-height: none; }
+body[data-mask="1"] .center-top { min-height: 0; max-height: none; }
 .mask-bar__pick {
   display: inline-flex; align-items: center; justify-content: center;
   width: 26px; height: 26px; padding: 0; border: 1px solid var(--vl-alias-border-neutral-l2); border-radius: 4px;
@@ -4694,9 +4677,9 @@ body.mask-mode .center-top { min-height: 0; max-height: none; }
 .toast--info { border-color: var(--vl-skin-toast-border, var(--vl-alias-border-neutral-l2, #d0d0d0)); color: var(--vl-alias-text-default); }
 /* 统一灰显按钮（模拟 disabled 外观，但保留可点 → 点击弹 toast 说明，见 app.js/task.js 全局委托） */
 button.is-vl-disabled {
-  color: var(--vl-alias-text-disabled) !important;
-  background: transparent !important;
-  border-color: var(--vl-alias-border-neutral-l2) !important;
+  color: var(--vl-alias-text-disabled);
+  background: transparent;
+  border-color: var(--vl-alias-border-neutral-l2);
   opacity: .6;
 }
 
@@ -4755,6 +4738,7 @@ button.is-vl-disabled {
   font-size: 14px;
   user-select: none;
 }
+  /* @deprecated 用 .vl-check —— B-07 收敛 */
 .opt-check:hover, .opt-radio:hover { color: var(--vl-alias-text-default); }
 .opt-check input, .opt-radio input { position: absolute; opacity: 0; width: 0; height: 0; }
 .opt-check__box {

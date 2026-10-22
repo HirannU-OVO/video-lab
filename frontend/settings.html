@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <title>Video Lab - 设置</title>
   <link rel="stylesheet" href="styles/tokens.css">
+  <link rel="stylesheet" href="styles/components.css">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="skins/white_blue.css">
   <link rel="stylesheet" href="skins/Black_Orange.css">
@@ -72,7 +73,7 @@ var m = new URL(location.href).searchParams.get('token');
           <span class="opt-path" id="cfgPathAppdata"></span>
         </div>
         <div class="opt-row">
-          <button type="button" class="btn btn-ghost" id="btnOpenCfgDir">打开文件夹</button>
+          <button type="button" class="btn btn-ghost vl-btn" id="btnOpenCfgDir">打开文件夹</button>
         </div>
         </div>
       </div>
@@ -106,8 +107,8 @@ var m = new URL(location.href).searchParams.get('token');
         <div class="opt-row">
           <label class="form-group__label" for="cacheSize">缓存大小</label>
           <span class="opt-path cache-size-value" id="cacheSize">读取中…</span>
-          <button type="button" class="btn btn-ghost" id="btnCacheStats">查看构成</button>
-          <button type="button" class="btn btn-ghost" id="btnCacheClean">立即清理</button>
+          <button type="button" class="btn btn-ghost vl-btn" id="btnCacheStats">查看构成</button>
+          <button type="button" class="btn btn-ghost vl-btn" id="btnCacheClean">立即清理</button>
         </div>
         <div class="form-group__desc" id="cacheStatsBox" style="display:none;white-space:pre-line;"></div>
         </div>
@@ -179,7 +180,7 @@ var m = new URL(location.href).searchParams.get('token');
         <div class="dir-row">
           <span class="form-label-inline">令牌</span>
           <input class="form-input" id="httpToken" type="text" maxlength="64" placeholder="访问令牌 Token（8–64 位）" title="浏览器访问令牌：8–64 位（短于 8 位会被忽略，页面会提示）">
-          <button class="btn" id="btnGenToken" title="随机生成新的访问令牌">随机生成</button>
+          <button class="btn vl-btn" id="btnGenToken" title="随机生成新的访问令牌">随机生成</button>
         </div>
         <div class="producer-preview">
           <a class="producer-preview__value" id="httpUrl" href="#" title="点击在浏览器中打开该访问地址">浏览器访问地址待生成</a>
@@ -200,7 +201,7 @@ var m = new URL(location.href).searchParams.get('token');
         <div class="form-group__ops">
         <div class="dir-row">
           <input class="form-input" id="cfgRoot" type="text" placeholder="">
-          <button class="btn btn-ghost" data-dir="cfgRoot">选择文件夹</button>
+          <button class="btn btn-ghost vl-btn" data-dir="cfgRoot">选择文件夹</button>
         </div>
         </div>
       </div>
@@ -318,7 +319,7 @@ var m = new URL(location.href).searchParams.get('token');
         <div class="form-group__ops">
         <div class="dir-row">
           <input class="form-input" id="maskRoot" type="text" placeholder="必填，选择遮罩叠加工作路径">
-          <button class="btn btn-ghost" data-dir="maskRoot">选择文件夹</button>
+          <button class="btn btn-ghost vl-btn" data-dir="maskRoot">选择文件夹</button>
         </div>
         </div>
       </div>
@@ -330,7 +331,7 @@ var m = new URL(location.href).searchParams.get('token');
         <div class="form-group__ops">
         <div class="dir-row">
           <input class="form-input" id="maskWatermark" type="text" placeholder="选择水印 mov 文件">
-          <button class="btn btn-ghost" id="btnMaskWatermark">选择文件</button>
+          <button class="btn btn-ghost vl-btn" id="btnMaskWatermark">选择文件</button>
         </div>
         </div>
       </div>
@@ -360,11 +361,11 @@ var m = new URL(location.href).searchParams.get('token');
         <div class="form-group__ops">
         <div class="dir-row">
           <input class="form-input" id="backupDir" type="text" readonly title="" placeholder="">
-          <button class="btn btn-ghost" id="btnPickBackupDir">选择文件夹</button>
+          <button class="btn btn-ghost vl-btn" id="btnPickBackupDir">选择文件夹</button>
           <span class="opt-path" id="backupDirPath" hidden></span>
         </div>
         <div class="opt-row">
-          <button type="button" class="btn btn-ghost" id="btnOpenBackupDir">打开备份文件夹</button>
+          <button type="button" class="btn btn-ghost vl-btn" id="btnOpenBackupDir">打开备份文件夹</button>
         </div>
         </div>
       </div>
@@ -401,7 +402,7 @@ var m = new URL(location.href).searchParams.get('token');
         </div>
         <div class="form-group__ops">
         <div class="opt-row">
-          <button class="btn btn-ghost" id="btnRebuildPrecheck">重建</button>
+          <button class="btn btn-ghost vl-btn" id="btnRebuildPrecheck">重建</button>
         </div>
         </div>
       </div>
@@ -413,7 +414,7 @@ var m = new URL(location.href).searchParams.get('token');
         </div>
         <div class="form-group__ops">
         <div class="opt-row">
-          <button type="button" class="btn btn-ghost" id="btnOpenLogDir">打开文件夹</button>
+          <button type="button" class="btn btn-ghost vl-btn" id="btnOpenLogDir">打开文件夹</button>
           <span class="opt-path" id="logDirPath"></span>
         </div>
         </div>
@@ -431,7 +432,7 @@ var m = new URL(location.href).searchParams.get('token');
             <option value="7d">近 7 天</option>
             <option value="all">全部</option>
           </select>
-          <button type="button" class="btn btn-ghost" id="btnExportDiag">导出压缩包</button>
+          <button type="button" class="btn btn-ghost vl-btn" id="btnExportDiag">导出压缩包</button>
         </div>
         </div>
       </div>
@@ -442,8 +443,8 @@ var m = new URL(location.href).searchParams.get('token');
         </div>
         <div class="form-group__ops">
         <div class="opt-row">
-          <button type="button" class="btn btn-ghost" id="btnDataDirScan">查看可清理项</button>
-          <button type="button" class="btn btn-ghost" id="btnDataDirClean">清理勾选项</button>
+          <button type="button" class="btn btn-ghost vl-btn" id="btnDataDirScan">查看可清理项</button>
+          <button type="button" class="btn btn-ghost vl-btn" id="btnDataDirClean">清理勾选项</button>
         </div>
         <div id="dataDirList" style="display:none;margin-top:8px"></div>
         </div>
@@ -482,7 +483,7 @@ var m = new URL(location.href).searchParams.get('token');
           </div>
         </div>
         <div class="about-hero__act">
-          <button class="btn" id="btnCheckUpdate" title="立即检查所选更新源（GitCode/GitHub）是否有新版本">检查更新</button>
+          <button class="btn vl-btn" id="btnCheckUpdate" title="立即检查所选更新源是否有新版本">检查更新</button>
         </div>
       </div>
 
@@ -549,8 +550,8 @@ var m = new URL(location.href).searchParams.get('token');
       <div class="update-result__desc" id="updateResultDesc"></div>
     </div>
     <div class="update-result__actions">
-      <button class="btn update-result__btn" id="updateResultClose">知道了</button>
-      <button class="btn update-result__btn update-result__btn--primary" id="updateResultGo" style="display:none">立即更新</button>
+      <button class="btn update-result__btn vl-btn" id="updateResultClose">知道了</button>
+      <button class="btn update-result__btn update-result__btn--primary vl-btn vl-btn--primary" id="updateResultGo" style="display:none">立即更新</button>
     </div>
   </div>
 </div>

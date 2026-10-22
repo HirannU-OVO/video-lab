@@ -358,7 +358,7 @@
         var href = urlLink.getAttribute('href');
         if (!href || href === '#') { e.preventDefault(); setStatus('浏览器访问地址尚未生成', false); return; }
         e.preventDefault();
-        if (VL.host.isHttp) { try { window.open(href); } catch (err) {} return; }
+        if (!VL.host.isElectron) { try { window.open(href); } catch (err) {} return; }
         if (api && api.open_external) api.open_external(href).catch(function () {});
         else try { window.open(href); } catch (err) {}
       });
@@ -709,7 +709,7 @@
     // ── 结果弹窗：按【运行形态】分流，判据是协议而非「是否在 iframe 内」──
     //  · 软件端（file://，preload 注入 api）：设置页是主窗口内的 iframe（.settings-frame 是
     //    z-index 9999 的覆盖层且带 transform），自弹浮层会被裁切 —— 结果统一由主窗口弹
-    var IS_BROWSER = VL.host.isHttp;
+    var IS_BROWSER = !VL.host.isElectron;
     var _UR = {
       none:   { sym: '✓', cls: 'ok',   title: '已是最新版本',     close: '知道了' },
       update: { sym: '↑', cls: 'new',  title: '发现新版本',       close: '稍后', go: '立即更新' },

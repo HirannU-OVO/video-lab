@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <title>Video Lab - 首次设置</title>
   <link rel="stylesheet" href="styles/tokens.css">
+  <link rel="stylesheet" href="styles/components.css">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="skins/white_blue.css">
   <link rel="stylesheet" href="skins/Black_Orange.css">
@@ -59,13 +60,13 @@ var m = new URL(location.href).searchParams.get('token');
       <label class="guide-field__label" for="guideRoot">工作路径</label>
       <div class="dir-row">
         <input class="form-input" id="guideRoot" type="text" placeholder="尚未选择" readonly>
-        <button class="btn btn-ghost" id="guidePick">选择文件夹</button>
+        <button class="btn btn-ghost vl-btn" id="guidePick">选择文件夹</button>
       </div>
       <div class="guide-hint">选好后点右下角「保存并开始」。也可以直接关闭本窗口，之后在设置页里设置。</div>
     </div>
     <div class="guide-actions">
       <span class="guide-actions__status" id="guideStatus"></span>
-      <button class="btn btn-primary" id="guideSave">保存并开始</button>
+      <button class="btn btn-primary vl-btn vl-btn--primary" id="guideSave">保存并开始</button>
     </div>
   </div>
 </div>
