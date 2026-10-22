@@ -354,6 +354,32 @@ function describeFiles(paths, { max = 60 } = {}) {
 // ⚠ 仍匹配 task- 前缀：该文件种类已取消，但历史版本产生过，留着以便正常回收、不留孤儿文件。
 const FILE_RE = /^(app|error|engine|task)-(\d{4})-(\d{2})-(\d{2})(?:-(\d+))?\.log(\.gz)?$/;
 
+/** 同日滚动文件限量：单文件 32MB 会滚出 -2/-3…，只按天数清理时当天文件全部保留，高频日志一天能堆几十个 32MB。
+ *  无序号 = 正在写的最新文件，-2 = 次新，序号越大越旧 —— 各类型只保留最新的若干个。 */
+function limitRotatedFiles() {
+  const ROT_KEEP = { app: 3, error: 2, engine: 2, task: 1 };
+  let removed = 0;
+  try {
+    const groups = new Map();
+    for (const f of fs.readdirSync(logDir)) {
+      const m = FILE_RE.exec(f);
+      if (!m || m[6]) continue;
+      const key = m[1] + '|' + m[2] + m[3] + m[4];
+      if (!groups.has(key)) groups.set(key, { kind: m[1], items: [] });
+      groups.get(key).items.push({ f, fresh: m[5] ? Number(m[5]) - 1 : 0 });
+    }
+    for (const g of groups.values()) {
+      const keep = ROT_KEEP[g.kind] || 2;
+      if (g.items.length <= keep) continue;
+      g.items.sort((a, b) => a.fresh - b.fresh);
+      for (const it of g.items.slice(keep)) {
+        try { fs.unlinkSync(path.join(logDir, it.f)); removed++; } catch (e) {}
+      }
+    }
+  } catch (e) {}
+  return removed;
+}
+
 /** 异步清理 + 压缩：超保留期删除；跨天未压缩未超期 → gzip（异步，空闲期调用） */
 async function pruneAsync(keepDays = KEEP_DAYS, keepErrorDays = ERROR_KEEP_DAYS) {
   if (!logDir) return { removed: 0, compressed: 0 };
@@ -361,6 +387,7 @@ async function pruneAsync(keepDays = KEEP_DAYS, keepErrorDays = ERROR_KEEP_DAYS)
   try {
     const cutoffApp = Date.now() - keepDays * 86400000;
     const cutoffErr = Date.now() - keepErrorDays * 86400000;
+    removed += limitRotatedFiles();
     for (const f of fs.readdirSync(logDir)) {
       const m = FILE_RE.exec(f);
       if (!m) continue;
@@ -392,7 +419,7 @@ async function pruneAsync(keepDays = KEEP_DAYS, keepErrorDays = ERROR_KEEP_DAYS)
 function pruneOld(keepDays = KEEP_DAYS, keepErrorDays = ERROR_KEEP_DAYS) {
   if (!logDir) return { removed: 0 };
   try {
-    let removed = 0;
+    let removed = limitRotatedFiles();
     const cutoffApp = Date.now() - keepDays * 86400000;
     const cutoffErr = Date.now() - keepErrorDays * 86400000;
     for (const f of fs.readdirSync(logDir)) {
