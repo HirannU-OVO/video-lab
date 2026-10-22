@@ -121,4 +121,4 @@
   border: 1px solid var(--vl-alias-border-neutral-l1);
 }
 .dt-layer { color: var(--vl-alias-text-tertiary); white-space: nowrap; }
-.dt-refs { color: var(--vl-alias-text-tertiary); text-align: right; }
+.dt-refs { color: var(--vl-alias-text-tertiary); text-align: right; width: 64px; min-width: 64px; white-space: nowrap; }

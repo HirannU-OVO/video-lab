@@ -158,6 +158,15 @@
     });
   }
 
+  // 跟随主窗口的当前皮肤：面板与主窗口同皮肤时，「当前值」才是同一套值、才能当参照。
+  // 皮肤存于主进程（config.skin）—— 主窗口是 file://、面板走 HTTP，不同源，读不到 localStorage。
+  try {
+    if (window.txapi && window.txapi.get_skin) {
+      Promise.resolve(window.txapi.get_skin()).then(function (s) {
+        if (s) document.documentElement.setAttribute('data-skin', String(s));
+      }).catch(function () {});
+    }
+  } catch (e) {}
   scan().catch(function (e) {
     locked.hidden = false;
     main.hidden = true;

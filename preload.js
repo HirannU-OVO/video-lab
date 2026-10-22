@@ -21,7 +21,9 @@ const IS_PREVIEW_BUILD = (() => {
 
 // 开发者工具能力（A-09）：只有以 --dev-tools 启动时才存在。
 // 无该参数时**连键都不挂**（不是挂一个 null）—— 普通用户的运行环境里不留任何痕迹。
-const DEV_TOOLS = process.argv.includes('--dev-tools');
+// ⚠ 渲染进程的 process.argv **读不到主进程的自定义参数**（Electron 只给渲染进程它自己的启动参数），
+// 所以不能在这里判断 --dev-tools —— 改为向主进程同步询问一次。
+const DEV_TOOLS = (() => { try { return ipcRenderer.sendSync('vl-devtools:query') === true; } catch (e) { return false; } })();
 
 const api = {
   list_projects: (force) => invoke('list_projects', force),

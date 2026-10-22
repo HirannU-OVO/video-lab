@@ -970,6 +970,8 @@ function openDevToolsWindow() {
   devToolsWin.on('closed', () => { devToolsWin = null; });
   return devToolsWin;
 }
+// 面板能力的唯一真相在主进程：preload 渲染进程读不到主进程的启动参数，改由这里同步告知。
+ipcMain.on('vl-devtools:query', (e) => { e.returnValue = DEV_TOOLS; });
 // 试值广播：面板改一个令牌 → 所有窗口（含主窗口）同步，退出面板即消失（不落库）
 if (DEV_TOOLS) {
   const broadcastToken = (payload) => {
