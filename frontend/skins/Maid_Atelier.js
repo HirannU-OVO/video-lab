@@ -22,7 +22,7 @@
     doc.head.appendChild(sheet);
     var cssSheet = sheet.sheet;
     var ruleIndex = cssSheet.insertRule(
-      'html[data-skin="Maid_Atelier"] { --maid-mascot-width: 260px; --maid-swag-height: 72px; }',
+      'html[data-skin="Maid_Atelier"] { --vl-skin-maid-mascot-width: 260px; --vl-skin-maid-swag-height: 72px; }',
       cssSheet.cssRules.length
     );
     var widthRule = cssSheet.cssRules[ruleIndex];
@@ -147,11 +147,11 @@
       var swagH = Math.min(94, Math.max(54, w * 0.2575));
       var mascotPx = ROUND_PX(mascotW);
       var swagPx = ROUND_PX(swagH);
-      if (widthRule.style.getPropertyValue('--maid-mascot-width') !== mascotPx) {
-        widthRule.style.setProperty('--maid-mascot-width', mascotPx);
+      if (widthRule.style.getPropertyValue('--vl-skin-maid-mascot-width') !== mascotPx) {
+        widthRule.style.setProperty('--vl-skin-maid-mascot-width', mascotPx);
       }
-      if (widthRule.style.getPropertyValue('--maid-swag-height') !== swagPx) {
-        widthRule.style.setProperty('--maid-swag-height', swagPx);
+      if (widthRule.style.getPropertyValue('--vl-skin-maid-swag-height') !== swagPx) {
+        widthRule.style.setProperty('--vl-skin-maid-swag-height', swagPx);
       }
       if (doc.body.dataset.maidSidebarSize !== size) doc.body.dataset.maidSidebarSize = size;
     }

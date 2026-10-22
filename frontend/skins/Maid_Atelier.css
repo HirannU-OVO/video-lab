@@ -170,20 +170,20 @@ html[data-skin="Maid_Atelier"] {
   --vl-alias-code-tag: #d4707a;
 
   /* ── 皮肤专属变量 ── */
-  --maid-gold: #f2d98f;
-  --maid-gold-soft: #fcefc2;
-  --maid-gold-light: #fff3cf;
-  --maid-navy-950: #091333;
-  --maid-navy-900: #10204d;
-  --maid-navy-800: #1c326b;
-  --maid-indigo: #526aa8;
-  --maid-periwinkle: #8ea5da;
-  --maid-porcelain: #f8f6f0;
-  --maid-glass-bg: rgba(14, 29, 73, 0.72);
-  --maid-glass-bg-light: rgba(14, 29, 73, 0.5);
-  --maid-glass-border: rgba(226, 194, 128, 0.25);
-  --maid-gold-glow: rgba(242, 217, 143, 0.14);
-  --brand-hue: var(--maid-gold);
+  --vl-skin-maid-gold: #f2d98f;
+  --vl-skin-maid-gold-soft: #fcefc2;
+  --vl-skin-maid-gold-light: #fff3cf;
+  --vl-skin-maid-navy-950: #091333;
+  --vl-skin-maid-navy-900: #10204d;
+  --vl-skin-maid-navy-800: #1c326b;
+  --vl-skin-maid-indigo: #526aa8;
+  --vl-skin-maid-periwinkle: #8ea5da;
+  --vl-skin-maid-porcelain: #f8f6f0;
+  --vl-skin-maid-glass-bg: rgba(14, 29, 73, 0.72);
+  --vl-skin-maid-glass-bg-light: rgba(14, 29, 73, 0.5);
+  --vl-skin-maid-glass-border: rgba(226, 194, 128, 0.25);
+  --vl-skin-maid-gold-glow: rgba(242, 217, 143, 0.14);
+  --vl-skin-brand-hue: var(--vl-skin-maid-gold);
 }
 /* ═══════════════════════════════════════════════════════════════
    装饰层：宫殿背景 / 玻璃容器 / 四角+金线 / 女仆装饰
@@ -286,17 +286,17 @@ html[data-skin="Maid_Atelier"] .sidebar__root::after {
 
 /* 4) corners 容器：四段中间金线（从 62px 处到 calc(100% - 124px)，与四角饰衔接）+ 四角 62px（母本 L543-587） */
 html[data-skin="Maid_Atelier"] [data-skin-chrome="sidebar-corners"] {
-  --maid-sidebar-frame-line-x: 1.35px;
-  --maid-sidebar-frame-line-y: 1.25px;
+  --vl-skin-maid-sidebar-frame-line-x: 1.35px;
+  --vl-skin-maid-sidebar-frame-line-y: 1.25px;
   position: absolute;
   inset: 0;
   z-index: 4;
   pointer-events: none;
   background:
-    linear-gradient(90deg, rgba(238, 210, 153, 0.94), rgba(190, 145, 75, 0.96), rgba(238, 210, 153, 0.94)) left 62px top 8.875px / calc(100% - 124px) var(--maid-sidebar-frame-line-y) no-repeat,
-    linear-gradient(90deg, rgba(238, 210, 153, 0.94), rgba(190, 145, 75, 0.96), rgba(238, 210, 153, 0.94)) left 62px bottom 8.875px / calc(100% - 124px) var(--maid-sidebar-frame-line-y) no-repeat,
-    linear-gradient(180deg, rgba(238, 210, 153, 0.94), rgba(190, 145, 75, 0.96), rgba(238, 210, 153, 0.94)) left 8.05px top 62px / var(--maid-sidebar-frame-line-x) calc(100% - 124px) no-repeat,
-    linear-gradient(180deg, rgba(238, 210, 153, 0.94), rgba(190, 145, 75, 0.96), rgba(238, 210, 153, 0.94)) right 8.05px top 62px / var(--maid-sidebar-frame-line-x) calc(100% - 124px) no-repeat;
+    linear-gradient(90deg, rgba(238, 210, 153, 0.94), rgba(190, 145, 75, 0.96), rgba(238, 210, 153, 0.94)) left 62px top 8.875px / calc(100% - 124px) var(--vl-skin-maid-sidebar-frame-line-y) no-repeat,
+    linear-gradient(90deg, rgba(238, 210, 153, 0.94), rgba(190, 145, 75, 0.96), rgba(238, 210, 153, 0.94)) left 62px bottom 8.875px / calc(100% - 124px) var(--vl-skin-maid-sidebar-frame-line-y) no-repeat,
+    linear-gradient(180deg, rgba(238, 210, 153, 0.94), rgba(190, 145, 75, 0.96), rgba(238, 210, 153, 0.94)) left 8.05px top 62px / var(--vl-skin-maid-sidebar-frame-line-x) calc(100% - 124px) no-repeat,
+    linear-gradient(180deg, rgba(238, 210, 153, 0.94), rgba(190, 145, 75, 0.96), rgba(238, 210, 153, 0.94)) right 8.05px top 62px / var(--vl-skin-maid-sidebar-frame-line-x) calc(100% - 124px) no-repeat;
 }
 
 html[data-skin="Maid_Atelier"] [data-skin-chrome="sidebar-corners"] > [data-skin-corner] {
@@ -332,9 +332,9 @@ html[data-skin="Maid_Atelier"] [data-skin-corner="bottom-left"] {
 html[data-skin="Maid_Atelier"] [data-skin-chrome="maid-mascot"] {
   position: absolute;
   left: 52%;
-  bottom: calc(var(--maid-swag-height, 72px) + 69px);
+  bottom: calc(var(--vl-skin-maid-swag-height, 72px) + 69px);
   z-index: 0;
-  width: var(--maid-mascot-width, 260px);
+  width: var(--vl-skin-maid-mascot-width, 260px);
   height: auto;
   max-height: 38%;
   object-fit: contain;
@@ -362,8 +362,8 @@ html[data-skin="Maid_Atelier"] .sidebar__root > .sidebar__footer {
   isolation: auto;
   flex: 0 0 auto;
   z-index: 8;
-  min-height: calc(var(--maid-swag-height, 72px) + 82px);
-  padding: calc(var(--maid-swag-height, 72px) + 2px) 18px 22px;
+  min-height: calc(var(--vl-skin-maid-swag-height, 72px) + 82px);
+  padding: calc(var(--vl-skin-maid-swag-height, 72px) + 2px) 18px 22px;
   border: 0;
   background: transparent;
   box-shadow: none;
@@ -373,7 +373,7 @@ html[data-skin="Maid_Atelier"] .sidebar__root > .sidebar__footer::before {
   position: absolute;
   inset: 0 0 auto;
   z-index: 0;
-  height: var(--maid-swag-height, 72px);
+  height: var(--vl-skin-maid-swag-height, 72px);
   background: url('assets/maid-swag.webp') center top / 100% 100% no-repeat;
   pointer-events: none;
   filter:
@@ -395,7 +395,7 @@ html[data-skin="Maid_Atelier"] .sidebar__root > .sidebar__footer .sidebar-menu-b
    恢复初始底色（同基础样式背景色 + 投影）+ 淡金色亮边框以融入蓝金主题 */
 html[data-skin="Maid_Atelier"] .sidebar__root > .sidebar__footer #sidebarToTop {
   left: 15px;
-  bottom: calc(var(--maid-swag-height, 72px) + 73px);
+  bottom: calc(var(--vl-skin-maid-swag-height, 72px) + 73px);
   background: var(--vl-alias-bg-base-default);
   border: 1px solid rgba(242, 217, 143, 0.55);
   box-shadow: 0 4px 14px color-mix(in srgb, var(--vl-alias-text-default) 12%, transparent),
@@ -603,7 +603,7 @@ html[data-skin="Maid_Atelier"] :is(.mode-toggle, .sort-toggle, .preview-toggle) 
 }
 html[data-skin="Maid_Atelier"] :is(.mode-toggle, .sort-toggle, .preview-toggle):hover {
   background: rgba(255, 252, 243, 0.08);
-  color: var(--maid-gold-soft);
+  color: var(--vl-skin-maid-gold-soft);
   border-color: transparent;
 }
 html[data-skin="Maid_Atelier"] :is(.mode-toggle--active, .sort-toggle--active, .preview-toggle--active) {
@@ -626,7 +626,7 @@ html[data-skin="Maid_Atelier"] :is(.mode-toggle--active, .sort-toggle--active, .
   transform: translateX(-50%);
   width: 60%;
   height: 2px;
-  background: var(--maid-gold);
+  background: var(--vl-skin-maid-gold);
   box-shadow: 0 0 8px rgba(235, 204, 143, 0.45);
   border-radius: 1px;
   pointer-events: none;
@@ -648,7 +648,7 @@ html[data-skin="Maid_Atelier"] .task-tab {
 }
 html[data-skin="Maid_Atelier"] .task-tab:hover {
   background: rgba(255, 252, 243, 0.08);
-  color: var(--maid-gold-soft);
+  color: var(--vl-skin-maid-gold-soft);
   border-color: transparent;
 }
 html[data-skin="Maid_Atelier"] .task-tab--active {
@@ -669,7 +669,7 @@ html[data-skin="Maid_Atelier"] .task-tab--active::after {
   transform: translateX(-50%);
   width: 60%;
   height: 2px;
-  background: var(--maid-gold);
+  background: var(--vl-skin-maid-gold);
   box-shadow: 0 0 8px rgba(235, 204, 143, 0.45);
   border-radius: 1px;
   pointer-events: none;
@@ -687,7 +687,7 @@ html[data-skin="Maid_Atelier"] .task-tab:nth-child(2)::before {
   bottom: 0;
   right: -4.5px; /* 位于 gap:8px 的中点 */
   width: 1px;
-  background: linear-gradient(180deg, transparent, var(--maid-gold) 50%, transparent);
+  background: linear-gradient(180deg, transparent, var(--vl-skin-maid-gold) 50%, transparent);
   opacity: 0.65;
   pointer-events: none;
 }
@@ -828,11 +828,11 @@ html[data-skin="Maid_Atelier"] .workspace::before {
 /* ── 输入框玻璃效果 ── */
 html[data-skin="Maid_Atelier"] .ds-input {
   background: rgba(10, 24, 56, 0.5);
-  border-color: var(--maid-glass-border);
+  border-color: var(--vl-skin-maid-glass-border);
   backdrop-filter: blur(4px);
 }
 html[data-skin="Maid_Atelier"] .ds-input:focus-within {
-  border-color: var(--maid-gold);
+  border-color: var(--vl-skin-maid-gold);
   background: rgba(10, 24, 56, 0.7);
   box-shadow: 0 0 0 2px rgba(197, 164, 104, 0.12);
 }
@@ -840,18 +840,18 @@ html[data-skin="Maid_Atelier"] .sidebar__search .ds-input {
   background: rgba(10, 24, 56, 0.4);
 }
 html[data-skin="Maid_Atelier"] .sidebar__search .ds-input:focus-within {
-  border-color: var(--maid-gold);
+  border-color: var(--vl-skin-maid-gold);
   background: rgba(10, 24, 56, 0.6);
 }
 
 /* ── 侧栏项目列表 ── */
 html[data-skin="Maid_Atelier"] .tree-project__name:hover {
-  background: var(--maid-gold-glow);
+  background: var(--vl-skin-maid-gold-glow);
 }
 html[data-skin="Maid_Atelier"] .tree-project__name--sticky {
   background: rgba(14, 29, 73, 0.9);
   backdrop-filter: blur(8px);
-  box-shadow: 0 1px 0 0 var(--maid-glass-border);
+  box-shadow: 0 1px 0 0 var(--vl-skin-maid-glass-border);
 }
 /* 配置项 hover 沿用日期分支按钮风格：亮蓝底 + 淡金边框；
    基础层预占 1px 透明边框，hover 仅换色不跳动 */
@@ -865,11 +865,11 @@ html[data-skin="Maid_Atelier"] .tree-txt-item:hover {
 }
 
 html[data-skin="Maid_Atelier"] .config-resizer {
-  background: var(--maid-glass-border);
+  background: var(--vl-skin-maid-glass-border);
 }
 html[data-skin="Maid_Atelier"] .config-resizer:hover,
 html[data-skin="Maid_Atelier"] .config-resizer--active {
-  background: var(--maid-gold);
+  background: var(--vl-skin-maid-gold);
 }
 
 /* ── 左侧列表栏三竖线按钮 + 右侧预览栏中缝尺寸栏（蓝金）── */
@@ -986,8 +986,8 @@ html[data-skin="Maid_Atelier"] .right-panel__subtitle {
 /* ── 日期分支按钮激活态：亮金底（与「共 N 个配置」徽章同源）── */
 html[data-skin="Maid_Atelier"] .date-branch-btn--active {
   background: rgba(242, 217, 143, 0.18);
-  border-color: var(--maid-gold);
-  color: var(--maid-gold-soft);
+  border-color: var(--vl-skin-maid-gold);
+  color: var(--vl-skin-maid-gold-soft);
 }
 html[data-skin="Maid_Atelier"] .date-branch-btn--active:hover {
   background: rgba(242, 217, 143, 0.28);
@@ -997,12 +997,12 @@ html[data-skin="Maid_Atelier"] .date-branch-btn--active:hover {
 html[data-skin="Maid_Atelier"] .sidebar-menu {
   background: rgba(14, 29, 73, 0.95);
   backdrop-filter: blur(12px);
-  border: 1px solid var(--maid-glass-border);
+  border: 1px solid var(--vl-skin-maid-glass-border);
 }
 /* ── 左侧列表选中项：金色描边 + 蓝色渐变底色 ── */
 html[data-skin="Maid_Atelier"] .tree-txt-item--active {
   background: linear-gradient(90deg, rgba(30,58,120,0.85), rgba(42,79,155,0.65));
-  color: var(--maid-gold-light);
+  color: var(--vl-skin-maid-gold-light);
   font-weight: var(--vl-font-font-weight-medium);
   border: 1px solid rgba(245,220,120,0.6);
   border-radius: var(--vl-static-radius-6);
@@ -1014,12 +1014,12 @@ html[data-skin="Maid_Atelier"] .tree-txt-item--active:hover {
   border-color: rgba(245,220,120,0.6);
 }
 html[data-skin="Maid_Atelier"] .tree-txt-item--active .tree-txt-item__icon {
-  color: var(--maid-gold-light);
+  color: var(--vl-skin-maid-gold-light);
 }
 /* ── 水印文件名：严格匹配左侧配置选中常规态（金描边 + 蓝渐变底 + 浅金文字） ── */
 html[data-skin="Maid_Atelier"] .config-watermark__path {
   background: linear-gradient(90deg, rgba(30, 58, 120, 0.85), rgba(42, 79, 155, 0.65));
-  color: var(--maid-gold-light);
+  color: var(--vl-skin-maid-gold-light);
   font-weight: var(--vl-font-font-weight-medium);
   border: 1px solid rgba(245, 220, 120, 0.6);
   border-radius: var(--vl-static-radius-6);
@@ -1031,7 +1031,7 @@ html[data-skin="Maid_Atelier"] .config-watermark__path:hover {
   border-color: rgba(245, 220, 120, 0.6);
 }
 html[data-skin="Maid_Atelier"] .config-watermark__path--empty {
-  color: var(--maid-gold-light);
+  color: var(--vl-skin-maid-gold-light);
   opacity: 0.55;
 }
 /* 激活/填充态项目行：整行白色文字 + 透明底（缎带悬浮，去掉其下深色背景） */
@@ -1122,7 +1122,7 @@ html[data-skin="Maid_Atelier"] .tree-project__name::before {
 }
 html[data-skin="Maid_Atelier"] .tree-txt-item--active .tree-txt-item__badge {
   background: rgba(245,220,120,0.2);
-  color: var(--maid-gold-light);
+  color: var(--vl-skin-maid-gold-light);
 }
 
 /* ── 遮罩叠加模式项目行：与配置管理模式项目行同等女仆适配（缎带填充 + 盾徽 + 亮金徽章） ── */
@@ -1132,7 +1132,7 @@ html[data-skin="Maid_Atelier"] .mask-proj-item {
   padding-left: 42px; /* 名文左移避让盾徽徽章（::after 占位） */
 }
 html[data-skin="Maid_Atelier"] .mask-proj-item:hover {
-  background: var(--maid-gold-glow); /* 与批量 tree-project__name:hover 同款金辉 */
+  background: var(--vl-skin-maid-gold-glow); /* 与批量 tree-project__name:hover 同款金辉 */
 }
 html[data-skin="Maid_Atelier"] .mask-proj-item::after {
   content: '';
@@ -1227,22 +1227,22 @@ html[data-skin="Maid_Atelier"] .mask-group-file:hover {
 }
 /* 遮罩双栏间竖线（右栏原片素材侧）：女仆皮肤改金色（对应批量编辑器 config-resizer 金线） */
 html[data-skin="Maid_Atelier"] .mask-config__col--raw {
-  border-left-color: var(--maid-glass-border);
+  border-left-color: var(--vl-skin-maid-glass-border);
 }
 /* 遮罩主题字母分组头与时长：女仆皮肤金色系 */
 html[data-skin="Maid_Atelier"] .mask-letter-head__label {
-  color: var(--maid-gold-light);
+  color: var(--vl-skin-maid-gold-light);
 }
 html[data-skin="Maid_Atelier"] .mask-letter-head__line {
-  background: var(--maid-glass-border);
+  background: var(--vl-skin-maid-glass-border);
 }
 html[data-skin="Maid_Atelier"] .mask-group-file__meta,
 html[data-skin="Maid_Atelier"] .mask-group-head__meta,
 html[data-skin="Maid_Atelier"] .mask-file-item__dur {
-  color: var(--maid-gold-light);
+  color: var(--vl-skin-maid-gold-light);
 }
 html[data-skin="Maid_Atelier"] .sidebar-menu__item:hover {
-  background: var(--maid-gold-glow);
+  background: var(--vl-skin-maid-gold-glow);
   color: var(--vl-alias-text-default);
 }
 
@@ -1255,7 +1255,7 @@ html[data-skin="Maid_Atelier"] .settings-dim {
 html[data-skin="Maid_Atelier"] .busy-box {
   background: rgba(14, 29, 73, 0.95);
   backdrop-filter: blur(16px);
-  border: 1px solid var(--maid-glass-border);
+  border: 1px solid var(--vl-skin-maid-glass-border);
   box-shadow: 0 0 0 1px rgba(197, 164, 104, 0.06), 0 8px 32px rgba(0, 0, 0, 0.4);
 }
 
@@ -1263,21 +1263,21 @@ html[data-skin="Maid_Atelier"] .busy-box {
 html[data-skin="Maid_Atelier"] .skin-popup {
   background: rgba(14, 29, 73, 0.95);
   backdrop-filter: blur(12px);
-  border: 1px solid var(--maid-glass-border);
+  border: 1px solid var(--vl-skin-maid-glass-border);
 }
 
 /* ── 引导态 ── */
 html[data-skin="Maid_Atelier"] .boot-guide__inner {
   background: rgba(14, 29, 73, 0.9);
   backdrop-filter: blur(12px);
-  border: 1px solid var(--maid-glass-border);
+  border: 1px solid var(--vl-skin-maid-glass-border);
 }
 
 /* ── 更新提示条 ── */
 html[data-skin="Maid_Atelier"] .update-banner {
   background: rgba(14, 29, 73, 0.95);
   backdrop-filter: blur(12px);
-  border: 1px solid var(--maid-glass-border);
+  border: 1px solid var(--vl-skin-maid-glass-border);
 }
 
 /* ── 滚动条 ── */
@@ -1308,7 +1308,7 @@ html[data-skin="Maid_Atelier"] body {
 
 /* ── 配置编辑器分隔线 ── */
 html[data-skin="Maid_Atelier"] .config-editor__col--watermark {
-  border-left: 1px solid var(--maid-glass-border);
+  border-left: 1px solid var(--vl-skin-maid-glass-border);
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -1592,10 +1592,10 @@ html[data-skin="Maid_Atelier"] .win-titlebar__btn {
 }
 /* 标题栏模式切换按钮：女仆皮肤金色适配（文字亮金、hover 金辉、图标取金色阶） */
 html[data-skin="Maid_Atelier"] .win-titlebar__mode {
-  color: var(--maid-gold-light);
+  color: var(--vl-skin-maid-gold-light);
 }
 html[data-skin="Maid_Atelier"] .win-titlebar__mode:hover {
-  background: var(--maid-gold-glow);
+  background: var(--vl-skin-maid-gold-glow);
   color: #fff7e6;
 }
 html[data-skin="Maid_Atelier"] .win-titlebar__mode i,
@@ -1634,5 +1634,5 @@ html[data-skin="Maid_Atelier"] .modal-btn--primary:hover {
   background: var(--vl-alias-brand-500);
   border-color: var(--vl-alias-brand-500);
 }  /* toast 固定实色（深海蓝浮层：深蓝卡片 + 海蓝边框） */
-  --toast-bg: #14264f;
-  --toast-border: #2c4a97;
+  --vl-skin-toast-bg: #14264f;
+  --vl-skin-toast-border: #2c4a97;

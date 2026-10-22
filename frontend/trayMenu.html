@@ -29,11 +29,25 @@
   }
   .tray-menu button:hover { background: var(--vl-alias-bg-overlay-l2); }
   .tray-menu .sep { display: block; height: 1px; margin: 4px 6px; background: var(--vl-alias-border-neutral-l1); }
+  /* 预览版标识行（脚本按 window.vlBuild 决定是否显示） */
+  .tray-menu__head {
+    display: flex; align-items: center; gap: 6px;
+    padding: 5px 12px 6px; margin-bottom: 2px;
+    color: #f97316; font-size: 11px; font-weight: 600;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    letter-spacing: .3px; white-space: nowrap;
+    border-bottom: 1px solid var(--vl-alias-border-neutral-l1);
+  }
+  .tray-menu__head::before {
+    content: ''; flex: 0 0 auto;
+    width: 6px; height: 6px; border-radius: 50%; background: #f97316;
+  }
 </style>
 <style id="skinVars"></style>
 </head>
 <body>
 <div class="tray-menu" id="trayMenu">
+  <div class="tray-menu__head" id="trayHead" style="display:none">预览版 · 数据与正式版隔离</div>
   <button data-action="show_main">显示主窗口</button>
   <span class="sep"></span>
   <button data-action="open_tasks">打开任务列表</button>
@@ -50,6 +64,13 @@
 </div>
 <script>
   (function () {
+    // 预览版标识行（仅在 vlBuild.preview 时显示）
+    try {
+      if (window.vlBuild && window.vlBuild.preview) {
+        var head = document.getElementById('trayHead');
+        if (head) head.style.display = '';
+      }
+    } catch (e) {}
     var api = window.txapi;
     if (!api) return;
     document.getElementById('trayMenu').addEventListener('click', function (e) {

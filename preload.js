@@ -10,6 +10,15 @@ const invoke = (channel, ...args) => ipcRenderer.invoke(channel, ...args);
 // 也会注入子框架；iframe 内的窗口类操作必须区别对待，见下方 window_* 接口。
 const IN_SUBFRAME = (() => { try { return window.self !== window.top; } catch (e) { return false; } })();
 
+// 预览版标识：按可执行文件名判定，与主进程 IS_PREVIEW 同源
+// 仅用于界面可见标识（标题栏徽标、标题后缀），不参与能力判断
+const IS_PREVIEW_BUILD = (() => {
+  try {
+    if (process.argv.indexOf('--vl-preview') >= 0) return true;
+    return /preview/i.test(String(process.execPath || ''));
+  } catch (e) { return false; }
+})();
+
 contextBridge.exposeInMainWorld('txapi', {
   list_projects: (force) => invoke('list_projects', force),
   list_versions: (project, name, force) => invoke('list_versions', project, name, force),
@@ -204,3 +213,5 @@ contextBridge.exposeInMainWorld('txapi', {
   on_window_max_changed: (cb) => { ipcRenderer.on('window_max_changed', (e, m) => { try { cb(!!m); } catch (err) {} }); },
 });
 
+// 构建标识（预览版）供界面读取
+contextBridge.exposeInMainWorld('vlBuild', { preview: IS_PREVIEW_BUILD });

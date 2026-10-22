@@ -23,8 +23,51 @@
         if (close) close.style.display = caps.closable ? '' : 'none';
       }
       var title = bar.querySelector('.win-titlebar__title');
-      if (title) title.textContent = String(document.title || '').replace(/^Video Lab\s*-\s*/, '') || 'Video Lab';
+      if (title) title.textContent = pageTitleText();
     }).catch(function () {});
+  }
+  // 标题栏显示文本：剥离产品名前缀，只留页面名；主窗口回落为 "Video Lab"
+  function pageTitleText() {
+    var t = String(document.title || '');
+    t = t.replace(/^Video Lab Preview\s*-\s*/, '').replace(/^Video Lab\s*-\s*/, '');
+    if (!t || /^Video Lab Preview$/.test(t)) return 'Video Lab';
+    return t;
+  }
+  // 预览版标识：标题栏徽标 + 窗口标题加 "Preview" 前缀（仅顶层窗口；浏览器端无 vlBuild，不显示）
+  function applyPreviewBadge(bar) {
+    if (!(window.vlBuild && window.vlBuild.preview)) return;
+    if (window.self !== window.top) return;
+    try {
+      var t = String(document.title || '');
+      if (t && !/^Video Lab Preview/.test(t)) document.title = t.replace(/^Video Lab/, 'Video Lab Preview');
+    } catch (e) {}
+    var titleEl = bar.querySelector('.win-titlebar__title');
+    var badge = document.createElement('span');
+    badge.className = 'win-titlebar__preview';
+    badge.textContent = '预览版';
+    badge.title = '预览版：设置与缓存与正式版完全隔离，不会影响正式数据';
+    if (titleEl && titleEl.parentNode) titleEl.parentNode.insertBefore(badge, titleEl.nextSibling);
+    else bar.appendChild(badge);
+    bar.setAttribute('data-preview', '1');
+  }
+  // 预览版界面品牌：把页面里写死的产品名与内嵌图标换成预览版（顶层与 iframe 内均生效）
+  function applyPreviewBranding() {
+    if (!(window.vlBuild && window.vlBuild.preview)) return;
+    // 产品名：静态文本补"预览版"后缀
+    ['.settings-nav__brand', '.about-hero__name', '.guide-hero__title'].forEach(function (sel) {
+      var nodes = document.querySelectorAll(sel);
+      for (var i = 0; i < nodes.length; i++) {
+        var t = String(nodes[i].textContent || '');
+        if (/Video Lab(?!\s*预览版)/.test(t)) nodes[i].textContent = t.replace('Video Lab', 'Video Lab 预览版');
+      }
+    });
+    // 界面内图标：关于页/引导页的 <img> 指向预览版图标
+    var imgs = document.querySelectorAll('img[src*="app-icon.png"], img[src*="app_icon.svg"]');
+    for (var j = 0; j < imgs.length; j++) {
+      var src = imgs[j].getAttribute('src') || '';
+      if (src.indexOf('/preview/') >= 0) continue;
+      imgs[j].setAttribute('src', src.replace(/\/(app-icon\.png|app_icon\.svg)$/, '/preview/$1'));
+    }
   }
   function syncMaxIcon() {
     var bar = $('winTitlebar');
@@ -72,6 +115,8 @@
         syncMaxIcon();
       });
     }
+    applyPreviewBadge(bar);
+    applyPreviewBranding();
     applyCaps();
     syncMaxIcon();
   }

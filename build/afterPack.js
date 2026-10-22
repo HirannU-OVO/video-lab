@@ -25,7 +25,14 @@ function findRcedit() {
 
 module.exports = async function (context) {
   const appOutDir = context.appOutDir;
-  const ico = path.join(context.packager.projectDir, 'icon', 'app-icon.ico');
+  // 图标取构建配置里的 build.win.icon（缺省回落 icon/app-icon.ico）
+  // ⚠ 不要写死路径：预览版走 icon/preview/app-icon.ico，写死会让产物套错图标
+  let iconRel = 'icon/app-icon.ico';
+  try {
+    const opt = context.packager.platformSpecificBuildOptions || {};
+    if (opt.icon) iconRel = opt.icon;
+  } catch (e) {}
+  const ico = path.isAbsolute(iconRel) ? iconRel : path.join(context.packager.projectDir, iconRel);
   if (!fs.existsSync(ico)) throw new Error('应用图标不存在: ' + ico);
   const exePath = path.join(appOutDir, context.packager.appInfo.productFilename + '.exe');
   if (!fs.existsSync(exePath)) return;
