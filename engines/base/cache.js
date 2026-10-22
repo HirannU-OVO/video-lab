@@ -118,6 +118,10 @@ const VERIFY_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 // 同时覆盖「删掉旧片段 → 导出新片段 → 放回原路径同名」这类需要几分钟到几十分钟的操作。
 const MISSING_RETAIN_MS = 3 * 24 * 60 * 60 * 1000;
 
+// 已失效条目的重新核验间隔：置位 missing 后要定期回查「文件是否被放回」（复活），
+// 但**不能每轮都查** —— 那样待核验数永远降不到 0，空闲清理会无限递归、反复刷日志。
+const MISSING_RECHECK_MS = 60 * 60 * 1000;
+
 /** Ticks 字符串近似比较（18~19 位整数超 Number 安全范围，必须走 BigInt） */
 function ticksNear(a, b, tolerance) {
   if (a == null || b == null || a === '' || b === '') return false;
@@ -390,11 +394,13 @@ class CacheStore {
     // **关键**：只把「超过校验 TTL 未验」的条目列为待核验，并用 SQL 限量取出。
     // ⚠ 不能无差别地把全表拉进内存逐条核验 —— 冷态在机械盘上要几十秒，会冻住主进程事件循环。
     let rows = [];
+    const recheckMs = (opts && opts.missingRecheckMs != null) ? Number(opts.missingRecheckMs) : MISSING_RECHECK_MS;
     try {
-      // missing 的条目**总是**核验（数量少，且「文件被放回 → 复活并保留使用计数」依赖它）；其余条目只在超过校验 TTL 时才核验。
-      rows = this.open().prepare('SELECT path, missing_since FROM video_cache WHERE (verified_at < ? OR missing_since > 0)'
+      // missing 的条目按更短的间隔回查（文件被放回 → 复活并保留使用计数）；其余条目只在超过校验 TTL 时才核验。
+      // ⚠ missing 条目也必须看 verified_at：否则每轮都会重新核验同一批失效条目，待核验数永远降不到 0。
+      rows = this.open().prepare('SELECT path, missing_since FROM video_cache WHERE (verified_at < ? OR (missing_since > 0 AND verified_at < ?))'
         + ' ORDER BY (missing_since > 0) DESC'
-        + (limit > 0 ? ' LIMIT ' + limit : '')).all(now - verifyTtlMs);
+        + (limit > 0 ? ' LIMIT ' + limit : '')).all(now - verifyTtlMs, now - recheckMs);
     } catch (e) { rows = []; }
     const verify = [];
     const missing = new Set();
@@ -427,7 +433,9 @@ class CacheStore {
     try {
       const t = Number(now) || Date.now();
       const ttl = Number(verifyTtlMs) > 0 ? Number(verifyTtlMs) : VERIFY_TTL_MS;
-      return Number(this.open().prepare('SELECT COUNT(*) n FROM video_cache WHERE verified_at < ? OR missing_since > 0').get(t - ttl).n) || 0;
+      // 与 gcPlan 口径一致：missing 条目按更短间隔回查，且同样受 verified_at 约束（否则永远清不完）
+      return Number(this.open().prepare('SELECT COUNT(*) n FROM video_cache WHERE verified_at < ? OR (missing_since > 0 AND verified_at < ?)')
+        .get(t - ttl, t - MISSING_RECHECK_MS).n) || 0;
     } catch (e) { return 0; }
   }
 
