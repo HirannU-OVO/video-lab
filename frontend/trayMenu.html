@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>托盘菜单</title>
+<!-- 兜底浅色样式在前，皮肤变量注入位（style#skinVars）置后：同级 :root 后出现者胜，
+     确保主进程注入的皮肤变量能覆盖兜底值 -->
+<style>
+  :root {
+    --vl-alias-bg-base-default: #FFFFFF;
+    --vl-alias-text-default: #222222;
+    --vl-alias-text-secondary: #555555;
+    --vl-alias-border-neutral-l1: #E5E5E5;
+    --vl-alias-bg-overlay-l2: rgba(106, 111, 255, 0.10);
+    --vl-static-radius-6: 6px;
+    --vl-static-radius-8: 8px;
+    --vl-font-body-base-font-size: 13px;
+    --vl-font-body-sm-font-size: 12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { overflow: hidden; background: transparent; -webkit-font-smoothing: antialiased; }
+  .tray-menu { padding: 4px; border: 1px solid var(--vl-alias-border-neutral-l1); border-radius: var(--vl-static-radius-8); background: var(--vl-alias-bg-base-default); }
+  .tray-menu button {
+    display: block; width: 100%; text-align: left;
+    padding: 7px 12px; border: none; border-radius: var(--vl-static-radius-6);
+    background: transparent; color: var(--vl-alias-text-default);
+    font-size: 12px; font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    cursor: pointer; white-space: nowrap;
+  }
+  .tray-menu button:hover { background: var(--vl-alias-bg-overlay-l2); }
+  .tray-menu .sep { display: block; height: 1px; margin: 4px 6px; background: var(--vl-alias-border-neutral-l1); }
+</style>
+<style id="skinVars"></style>
+</head>
+<body>
+<div class="tray-menu" id="trayMenu">
+  <button data-action="show_main">显示主窗口</button>
+  <span class="sep"></span>
+  <button data-action="open_tasks">打开任务列表</button>
+  <span class="sep"></span>
+  <button data-action="open_tools">视频处理工具</button>
+  <span class="sep"></span>
+  <button data-action="open_settings">设置</button>
+  <span class="sep"></span>
+  <button data-action="open_browser">在浏览器中打开</button>
+  <span class="sep" id="sepUpdate"></span>
+  <button data-action="check_update" id="btnUpdate">检查更新</button>
+  <span class="sep"></span>
+  <button data-action="quit">退出</button>
+</div>
+<script>
+  (function () {
+    var api = window.txapi;
+    if (!api) return;
+    document.getElementById('trayMenu').addEventListener('click', function (e) {
+      var btn = e.target.closest('button[data-action]');
+      if (btn && api.tray_menu_click) api.tray_menu_click(btn.getAttribute('data-action')).catch(function () {});
+    });
+  })();
+</script>
+</body>
+</html>

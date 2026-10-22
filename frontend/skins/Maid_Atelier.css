@@ -1,0 +1,1638 @@
+/* ═══════════════════════════════════════════════════════════════
+   深海女仆 —— 移植自 dsh-deep-whale/maid-atelier 皮肤
+   深海蓝底 + 柔金品牌 + 长春花蓝强调，搭配宫殿背景虚化与蕾丝装饰
+   素材来源：maid-atelier (CC BY-NC-SA 4.0)
+   ═══════════════════════════════════════════════════════════════ */
+
+/* 品牌名片标题字体 Cinzel（SIL OFL 1.1，可商用分发，见 frontend/fonts/OFL-Cinzel.txt）：
+   @font-face 已由 styles.css 全局声明（Regular 400 / Bold 700，主窗口标题栏与品牌名片共用），
+   此处不再重复声明 —— 皮肤启停不影响该字体可用性。 */
+
+html[data-skin="Maid_Atelier"] {
+  /* ── 背景层：深海蓝色阶 ── */
+  --vl-alias-bg-base-default: #091333;
+  --vl-alias-bg-base-secondary: #0e1d49;
+  --vl-alias-bg-base-tertiary: #1c326b;
+  --vl-alias-bg-overlay-l1: rgba(197, 164, 104, 0.04);
+  --vl-alias-bg-overlay-l2: rgba(240, 200, 80, 0.1);
+  --vl-alias-bg-overlay-l3: rgba(197, 164, 104, 0.12);
+  --vl-alias-bg-overlay-l4: rgba(197, 164, 104, 0.16);
+  --vl-alias-bg-white: #091333;
+  --vl-alias-bg-menu: #10204d;
+  --vl-alias-bg-tooltip: #1c326b;
+  --vl-alias-bg-invert: #f8f6f0;
+  --vl-alias-bg-invert-hover: #ffffff;
+  --vl-alias-bg-invert-active: #e2cfaa;
+  --vl-alias-bg-invert-disabled: rgba(248, 246, 240, 0.20);
+  --vl-alias-bg-input-default: #0a1838;
+
+  /* ── 品牌色：柔金 ── */
+  --vl-alias-bg-brand: #c5a468;
+  --vl-alias-bg-brand-hover: #e2cfaa;
+  --vl-alias-bg-brand-active: #a88a52;
+  --vl-alias-bg-brand-disabled: rgba(197, 164, 104, 0.25);
+  --vl-alias-bg-brand-popup: rgba(197, 164, 104, 0.22);
+
+  /* ── 文字层 ── */
+  --vl-alias-text-default: #e7ecf7;
+  --vl-alias-text-default-hover: #ffffff;
+  --vl-alias-text-default-active: #ffffff;
+  --vl-alias-text-secondary: #bdc9e3;
+  --vl-alias-text-secondary-hover: #e7ecf7;
+  --vl-alias-text-secondary-active: #e7ecf7;
+  --vl-alias-text-tertiary: #96a6c9;
+  --vl-alias-text-disabled: #5a6a8a;
+  --vl-alias-text-onbrand: #091333;
+  --vl-alias-text-onaccent: #091333;
+  --vl-alias-text-white: #e7ecf7;
+  --vl-alias-text-brand: #c5a468;
+  --vl-alias-text-brand-hover: #e2cfaa;
+
+  /* ── 图标层 ── */
+  --vl-alias-icon-default: #bdc9e3;
+  --vl-alias-icon-default-hover: #e7ecf7;
+  --vl-alias-icon-default-active: #e7ecf7;
+  --vl-alias-icon-secondary: #96a6c9;
+  --vl-alias-icon-secondary-hover: #bdc9e3;
+  --vl-alias-icon-secondary-active: #bdc9e3;
+  --vl-alias-icon-tertiary: #6f7c99;
+  --vl-alias-icon-disabled: #5a6a8a;
+  --vl-alias-icon-onbrand: #091333;
+  --vl-alias-icon-onaccent: #091333;
+  --vl-alias-icon-white: #e7ecf7;
+  --vl-alias-icon-brand: #c5a468;
+  --vl-alias-icon-brand-hover: #e2cfaa;
+
+  /* ── 边框层 ── */
+  --vl-alias-border-neutral-l1: rgba(232, 199, 128, 0.14);
+  --vl-alias-border-neutral-l2: rgba(237, 207, 140, 0.26);
+  --vl-alias-border-neutral-l3: rgba(242, 215, 152, 0.42);
+  --vl-alias-border-contrast: #c5a468;
+  --vl-alias-border-brand: #c5a468;
+
+  /* ── 强调色 ── */
+  --vl-alias-accent-teal: #5ba896;
+  --vl-alias-accent-coral: #d4847a;
+  --vl-alias-accent-amber: #e2cfaa;
+  --vl-alias-accent-lime: #8ab566;
+  --vl-alias-accent-cyan: #8ea5da;
+  --vl-alias-accent-blue: #526aa8;
+  --vl-alias-accent-magenta: #b47ab8;
+  --vl-alias-accent-violet: #9570ff;
+  --vl-alias-accent-slate: #747e94;
+
+  /* ── 状态色 ── */
+  --vl-alias-status-primary-default: #c5a468;
+  --vl-alias-status-primary-hover: #e2cfaa;
+  --vl-alias-status-primary-active: #a88a52;
+  --vl-alias-status-primary-surface-l1: rgba(197, 164, 104, 0.12);
+  --vl-alias-status-primary-surface-l2: rgba(197, 164, 104, 0.18);
+  --vl-alias-status-primary-surface-l3: rgba(197, 164, 104, 0.36);
+  --vl-alias-status-success-default: #5ba896;
+  --vl-alias-status-success-hover: #73b8a6;
+  --vl-alias-status-success-active: #4a8a7a;
+  --vl-alias-status-success-surface-l1: rgba(91, 168, 150, 0.12);
+  --vl-alias-status-success-surface-l2: rgba(91, 168, 150, 0.18);
+  --vl-alias-status-success-surface-l3: rgba(91, 168, 150, 0.36);
+  --vl-alias-status-alert-default: #e2cfaa;
+  --vl-alias-status-alert-hover: #f0ddb8;
+  --vl-alias-status-alert-active: #c5a468;
+  --vl-alias-status-alert-surface-l1: rgba(226, 207, 170, 0.14);
+  --vl-alias-status-alert-surface-l2: rgba(226, 207, 170, 0.20);
+  --vl-alias-status-alert-surface-l3: rgba(226, 207, 170, 0.36);
+  --vl-alias-status-warning-default: #d4a56a;
+  --vl-alias-status-warning-hover: #e2c089;
+  --vl-alias-status-warning-active: #b88a52;
+  --vl-alias-status-warning-surface-l1: rgba(212, 165, 106, 0.12);
+  --vl-alias-status-warning-surface-l2: rgba(212, 165, 106, 0.16);
+  --vl-alias-status-warning-surface-l3: rgba(212, 165, 106, 0.36);
+  --vl-alias-status-error-default: #d4707a;
+  --vl-alias-status-error-hover: #e08490;
+  --vl-alias-status-error-active: #b85a64;
+  --vl-alias-status-error-surface-l1: rgba(212, 112, 122, 0.12);
+  --vl-alias-status-error-surface-l2: rgba(212, 112, 122, 0.16);
+  --vl-alias-status-error-surface-l3: rgba(212, 112, 122, 0.36);
+
+  /* ── 品牌色阶（柔金系） ── */
+  --vl-alias-brand-50: #FBF6EC;
+  --vl-alias-brand-100: #F5EAD3;
+  --vl-alias-brand-200: #EBD5A8;
+  --vl-alias-brand-300: #DFBD73;
+  --vl-alias-brand-400: #D4AE5C;
+  --vl-alias-brand-500: #c5a468;
+  --vl-alias-brand-600: #a88a52;
+  --vl-alias-brand-700: #8a7042;
+  --vl-alias-brand-800: #6B5632;
+  --vl-alias-brand-900: #4A3B22;
+  --vl-alias-brand-950: #2A1F12;
+
+  /* ── 灰阶（深海蓝系） ── */
+  --vl-alias-brand-grey-50: #060d20;
+  --vl-alias-brand-grey-100: #0a1428;
+  --vl-alias-brand-grey-200: #0e1d49;
+  --vl-alias-brand-grey-300: #142152;
+  --vl-alias-brand-grey-400: #1c326b;
+  --vl-alias-brand-grey-500: #2D4585;
+  --vl-alias-brand-grey-600: #526aa8;
+  --vl-alias-brand-grey-700: #7B91C4;
+  --vl-alias-brand-grey-800: #A0B3D8;
+  --vl-alias-brand-grey-900: #C5D2EC;
+  --vl-alias-brand-grey-950: #E0E7F5;
+
+  /* ── 可视化图表 ── */
+  --vl-alias-viz-series-brand: var(--vl-alias-bg-brand);
+  --vl-alias-viz-series-brand-soft: var(--vl-alias-brand-300);
+  --vl-alias-viz-series-brand-mid: var(--vl-alias-brand-500);
+  --vl-alias-viz-series-brand-deep: var(--vl-alias-brand-700);
+  --vl-alias-viz-series-neutral: var(--vl-alias-brand-grey-500);
+  --vl-alias-viz-series-coral: #d4847a;
+  --vl-alias-viz-series-amber: #e2cfaa;
+  --vl-alias-viz-ui-bg-chart: var(--vl-alias-bg-base-secondary);
+  --vl-alias-viz-ui-bg-tooltip: var(--vl-alias-bg-tooltip);
+  --vl-alias-viz-ui-chart-title: var(--vl-alias-text-default);
+  --vl-alias-viz-ui-chart-subtitle: var(--vl-alias-text-secondary);
+  --vl-alias-viz-ui-chart-axis: var(--vl-alias-border-neutral-l2);
+  --vl-alias-viz-ui-chart-tick: var(--vl-alias-text-secondary);
+  --vl-alias-viz-ui-legend-label: var(--vl-alias-text-secondary);
+  --vl-alias-viz-ui-legend-value: var(--vl-alias-text-default);
+
+  /* ── 代码高亮 ── */
+  --vl-alias-code-text: #e7ecf7;
+  --vl-alias-code-doc: #7f90b4;
+  --vl-alias-code-link: #8ea5da;
+  --vl-alias-code-number: #e2a0c8;
+  --vl-alias-code-action: #9570ff;
+  --vl-alias-code-instruction: #b47ab8;
+  --vl-alias-code-function: #d4a56a;
+  --vl-alias-code-constant: #526aa8;
+  --vl-alias-code-parameter: #8ab566;
+  --vl-alias-code-attribute: #e2cfaa;
+  --vl-alias-code-tag: #d4707a;
+
+  /* ── 皮肤专属变量 ── */
+  --maid-gold: #f2d98f;
+  --maid-gold-soft: #fcefc2;
+  --maid-gold-light: #fff3cf;
+  --maid-navy-950: #091333;
+  --maid-navy-900: #10204d;
+  --maid-navy-800: #1c326b;
+  --maid-indigo: #526aa8;
+  --maid-periwinkle: #8ea5da;
+  --maid-porcelain: #f8f6f0;
+  --maid-glass-bg: rgba(14, 29, 73, 0.72);
+  --maid-glass-bg-light: rgba(14, 29, 73, 0.5);
+  --maid-glass-border: rgba(226, 194, 128, 0.25);
+  --maid-gold-glow: rgba(242, 217, 143, 0.14);
+  --brand-hue: var(--maid-gold);
+}
+/* ═══════════════════════════════════════════════════════════════
+   装饰层：宫殿背景 / 玻璃容器 / 四角+金线 / 女仆装饰
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── 中心面板：宫殿背景移交行为层角色舞台（character-stage） ── */
+/* 容器透明，让角色舞台（palace + 双女仆）作为 z0 完全透出；
+   各内容子区在 z1 之上绘制 navy band / 玻璃容器，参照母本 conversation pane */
+html[data-skin="Maid_Atelier"] .center-panel {
+  position: relative;
+  background: transparent;
+}
+
+/* 顶部全局搜索栏：恒顶层（z 高于装饰/header 的 20/21），背景足够不透明，
+   保证 header/装饰上移退场动画从其上滑过时被盖住 */
+html[data-skin="Maid_Atelier"] .center-global-search {
+  position: relative;
+  z-index: 30;
+  background: rgba(10, 24, 56, 0.96);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid rgba(225, 191, 124, 0.32);
+}
+
+/* 日期分支整体区：透明，让宫殿背景完全透出 */
+   /* 遮罩由下方子区（header/dates/装饰层）各自承担，不在此处叠加整体暗罩 */
+html[data-skin="Maid_Atelier"] .center-top {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-bottom: 0;
+}
+
+/* 日期分支按钮容器：透明，让 navy band 与宫殿背景透出 */
+html[data-skin="Maid_Atelier"] .center-top__dates {
+  position: relative;
+  z-index: 1;
+}
+
+/* 底部内容区：完全透明，让 character-stage 角色舞台铺满透出 */
+html[data-skin="Maid_Atelier"] .center-bottom {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   侧栏分层（完全照搬母本 maid-atelier.module.css）
+   sidebar(纯色深底 + 右缘金线 box-shadow)
+     └─ .sidebar__root(内容根: 三层渐变背景 + 双侧内阴影 + isolation)
+          ├─ prepend: sidebar-corners(z4: 四段中间金线 + 四角62px)
+          ├─ prepend: sidebar-mascot(z0: chibi)
+          ├─ 其余内容(z2)
+          └─ .sidebar__footer(data-maid-sidebar-footer: swag横幅z0 + 按钮z1)
+   ═══════════════════════════════════════════════════════════════ */
+
+/* 1) 侧栏容器：纯色深底 #0a173b + 外部右投影 + 右缘金线内阴影（母本 L474-493） */
+html[data-skin="Maid_Atelier"] .sidebar {
+  background: #0a173b;
+  border-right: 0;
+  box-shadow:
+    8px 0 34px rgba(8, 17, 48, 0.22),
+    inset -1px 0 rgba(255, 245, 215, 0.82),
+    inset -3px 0 rgba(226, 207, 166, 0.72);
+  position: relative;
+  z-index: auto;
+}
+
+/* 2) 内容根：三层渐变（顶部径向高光 + 上亮下暗线性 + 微噪点纹理）+ 双侧内阴影（母本 L495-506） */
+html[data-skin="Maid_Atelier"] .sidebar__root {
+  isolation: auto;
+  background:
+    radial-gradient(circle at 50% 14%, rgba(91, 119, 188, 0.23), transparent 31%),
+    linear-gradient(180deg, rgba(16, 36, 86, 0.97), rgba(5, 14, 43, 0.96)),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.026) 0 1px, transparent 1px 7px);
+  box-shadow:
+    inset 9px 0 16px rgba(255, 255, 255, 0.018),
+    inset -8px 0 18px rgba(0, 0, 0, 0.26);
+}
+
+/* 3) 内容根子元素（除装饰 chrome 外）提升到 z2，位于 mascot(z0) 之上、corners(z4) 之下 */
+html[data-skin="Maid_Atelier"] .sidebar__root > :not([data-skin-chrome]) {
+  position: relative;
+  z-index: 2;
+}
+
+/* 3.5) 半透明遮罩层：覆盖整个 sidebar__root，位于 chibi(z0) 之上、内容(z2) 之下，
+   让 chibi 完整显示但被半透明深色遮罩呈现"半透明"视觉效果（母本机制）。
+   corners(z4) 与 footer 内 swag/按钮在 z1 之上，不受遮罩影响。*/
+html[data-skin="Maid_Atelier"] .sidebar__root::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: rgba(3, 9, 25, 0.78);
+  pointer-events: none;
+}
+
+/* 4) corners 容器：四段中间金线（从 62px 处到 calc(100% - 124px)，与四角饰衔接）+ 四角 62px（母本 L543-587） */
+html[data-skin="Maid_Atelier"] [data-skin-chrome="sidebar-corners"] {
+  --maid-sidebar-frame-line-x: 1.35px;
+  --maid-sidebar-frame-line-y: 1.25px;
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(238, 210, 153, 0.94), rgba(190, 145, 75, 0.96), rgba(238, 210, 153, 0.94)) left 62px top 8.875px / calc(100% - 124px) var(--maid-sidebar-frame-line-y) no-repeat,
+    linear-gradient(90deg, rgba(238, 210, 153, 0.94), rgba(190, 145, 75, 0.96), rgba(238, 210, 153, 0.94)) left 62px bottom 8.875px / calc(100% - 124px) var(--maid-sidebar-frame-line-y) no-repeat,
+    linear-gradient(180deg, rgba(238, 210, 153, 0.94), rgba(190, 145, 75, 0.96), rgba(238, 210, 153, 0.94)) left 8.05px top 62px / var(--maid-sidebar-frame-line-x) calc(100% - 124px) no-repeat,
+    linear-gradient(180deg, rgba(238, 210, 153, 0.94), rgba(190, 145, 75, 0.96), rgba(238, 210, 153, 0.94)) right 8.05px top 62px / var(--maid-sidebar-frame-line-x) calc(100% - 124px) no-repeat;
+}
+
+html[data-skin="Maid_Atelier"] [data-skin-chrome="sidebar-corners"] > [data-skin-corner] {
+  position: absolute;
+  width: 62px;
+  height: 62px;
+  background: url('assets/sidebar-corner.webp') top right / 130px 130px no-repeat;
+  filter: drop-shadow(0 1px 1px rgba(2, 7, 24, 0.42));
+  transform-origin: center;
+}
+html[data-skin="Maid_Atelier"] [data-skin-corner="top-left"] {
+  top: 1px;
+  left: 1px;
+  transform: scaleX(-1);
+}
+html[data-skin="Maid_Atelier"] [data-skin-corner="top-right"] {
+  top: 1px;
+  right: 1px;
+}
+html[data-skin="Maid_Atelier"] [data-skin-corner="bottom-right"] {
+  right: 1px;
+  bottom: 1px;
+  transform: scaleY(-1);
+}
+html[data-skin="Maid_Atelier"] [data-skin-corner="bottom-left"] {
+  bottom: 1px;
+  left: 1px;
+  transform: scale(-1);
+}
+
+/* 5) sidebar-mascot（chibi）：置于内容之下(z0)，位于 footer 垂饰上方（母本 L593-611）
+    放在整个框体底部、金边框内：bottom 锚定 footer 垂饰上方区域 */
+html[data-skin="Maid_Atelier"] [data-skin-chrome="maid-mascot"] {
+  position: absolute;
+  left: 52%;
+  bottom: calc(var(--maid-swag-height, 72px) + 69px);
+  z-index: 0;
+  width: var(--maid-mascot-width, 260px);
+  height: auto;
+  max-height: 38%;
+  object-fit: contain;
+  object-position: center bottom;
+  pointer-events: none;
+  opacity: 0.92;
+  filter:
+    saturate(1)
+    brightness(1.08)
+    contrast(1.04)
+    drop-shadow(0 5px 12px rgba(2, 7, 24, 0.24));
+  transform: translateX(-50%) translateZ(0);
+  user-select: none;
+  -webkit-user-drag: none;
+  transition: opacity 0.3s ease, bottom 0.3s ease, width 0.3s ease;
+}
+
+/* 6) sidebar-footer：垂饰横幅（swag）作为 footer::before 承载 + 底部留白（母本 L744-769）
+    置顶：选择器提特（.sidebar__root > .sidebar__footer，(0,3,1) 平级并后于
+    .sidebar__root > :not([data-skin-chrome]) 的 z2 定义），确保 footer 高于
+    corners(z4)，左下角圆按钮不再被金框角饰遮挡 */
+html[data-skin="Maid_Atelier"] .sidebar__root > .sidebar__footer {
+  box-sizing: border-box;
+  position: relative;
+  isolation: auto;
+  flex: 0 0 auto;
+  z-index: 8;
+  min-height: calc(var(--maid-swag-height, 72px) + 82px);
+  padding: calc(var(--maid-swag-height, 72px) + 2px) 18px 22px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+html[data-skin="Maid_Atelier"] .sidebar__root > .sidebar__footer::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 0;
+  height: var(--maid-swag-height, 72px);
+  background: url('assets/maid-swag.webp') center top / 100% 100% no-repeat;
+  pointer-events: none;
+  filter:
+    brightness(1.1)
+    saturate(1.04)
+    contrast(1.04)
+    drop-shadow(0 4px 9px rgba(2, 8, 28, 0.26));
+}
+/* footer 内按钮（对应母本 [data-slot='sidebar.settings'] 按钮）：置于最顶层
+   （含 hover 态），不被金框角饰遮盖；置顶按钮移到蕾丝(swag)装饰上方 */
+html[data-skin="Maid_Atelier"] .sidebar__root > .sidebar__footer .sidebar-menu-btn {
+  position: absolute;
+  z-index: 3;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+/* 置顶按钮：移到蕾丝横幅上方（bottom 大于 swag 高度，不再与之重叠），
+   恢复初始底色（同基础样式背景色 + 投影）+ 淡金色亮边框以融入蓝金主题 */
+html[data-skin="Maid_Atelier"] .sidebar__root > .sidebar__footer #sidebarToTop {
+  left: 15px;
+  bottom: calc(var(--maid-swag-height, 72px) + 73px);
+  background: var(--vl-alias-bg-base-default);
+  border: 1px solid rgba(242, 217, 143, 0.55);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--vl-alias-text-default) 12%, transparent),
+    inset 0 0 4px rgba(242, 217, 143, 0.12);
+}
+/* 置顶按钮 hover：避免被上方 id 固定底色规则压制，显式恢复主题底色 hover */
+html[data-skin="Maid_Atelier"] .sidebar__root > .sidebar__footer #sidebarToTop:hover {
+  background: var(--vl-alias-brand-500);
+  color: var(--vl-alias-text-onaccent);
+  border: none;
+}
+/* 菜单按钮 → 列表下方设置名片（母本 [data-maid-sidebar-footer] [data-slot='sidebar.settings']
+   样式：border-image 金框饰图 + 左右 34px 边框 + 中央 fill + 米色 Georgia 文字） */
+html[data-skin="Maid_Atelier"] .sidebar__root > .sidebar__footer #sidebarMenuBtn {
+  box-sizing: border-box;
+  position: absolute;
+  left: 24.5px;
+  right: 24.5px;
+  bottom: 25px;
+  width: auto;
+  min-width: 0;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding-inline: 34px;
+  color: #f2dfba;
+  border-style: solid;
+  border-width: 0 34px;
+  border-image-source: url('assets/sidebar-settings-frame.webp');
+  border-image-slice: 0 220 0 220 fill;
+  border-image-width: 0 34px;
+  border-image-repeat: stretch;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 16px;
+  letter-spacing: 0.02em;
+  filter: drop-shadow(0 4px 10px rgba(2, 8, 28, 0.26));
+  transition: color 150ms ease, filter 150ms ease, transform 150ms ease;
+}
+html[data-skin="Maid_Atelier"] .sidebar__root > .sidebar__footer #sidebarMenuBtn::after {
+  content: '菜单';
+  line-height: 1;
+}
+html[data-skin="Maid_Atelier"] .sidebar__root > .sidebar__footer #sidebarMenuBtn > i {
+  color: #e8c77f;
+  filter: drop-shadow(0 1px 2px rgba(2, 7, 24, 0.62));
+}
+html[data-skin="Maid_Atelier"] .sidebar__root > .sidebar__footer #sidebarMenuBtn:hover {
+  color: #fff8e8;
+  background: none;
+  border-image-source: url('assets/sidebar-settings-frame.webp');
+  filter: brightness(1.1) drop-shadow(0 5px 12px rgba(2, 8, 28, 0.3));
+  transform: translateY(-1px);
+}
+/* 二级菜单（sidebar-menu）置顶：皮肤把菜单迁移到 sidebarRoot 直接子后，
+   高于 corners(z4)/footer(z8)，不被边缘蕾丝装饰遮住 */
+html[data-skin="Maid_Atelier"] .sidebar__root > .sidebar-menu {
+  position: absolute;
+  z-index: 1000;
+}
+
+/* 侧栏 header / 搜索 保留分隔线与层级；项目列表标题文字向右移 7px */
+html[data-skin="Maid_Atelier"] .sidebar__header {
+  padding-left: calc(var(--vl-static-spacer-12) + 7px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+html[data-skin="Maid_Atelier"] .sidebar__search {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+html[data-skin="Maid_Atelier"] .sidebar__tree {
+  position: relative;
+}
+
+/* 品牌行（sidebar-brand，对应母本 [class*='logoRow']）：居中 appicon + 标题，
+   深蓝渐变金边卡片 + 双内阴影，让项目列表标题栏整体下移；
+   遮罩(::after z1)在其下，卡片边缘金饰清晰 */
+html[data-skin="Maid_Atelier"] [data-skin-chrome="sidebar-brand"] {
+  position: relative;
+  z-index: 2;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex: 0 0 auto;
+  min-height: 44px;
+  margin: 18px 18.5px 0;
+  padding: 6px 1px;
+  border: 1px solid rgba(226, 207, 170, 0.72);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(92, 119, 187, 0.26), transparent 44%),
+    linear-gradient(180deg, rgba(18, 40, 92, 0.98), rgba(7, 18, 54, 0.98));
+  box-shadow:
+    inset 0 0 0 2px rgba(8, 18, 51, 0.88),
+    inset 0 0 0 3px rgba(197, 164, 104, 0.2),
+    0 7px 18px rgba(2, 7, 25, 0.28);
+}
+/* 图标与标题同色（#f4ead5）：span 承载，透明轮廓作为 mask 遮罩，
+   填充与右侧「Video Lab」标题一致的瓷白色（span 非替换元素，mask 稳定生效）。
+   注意 url() 相对本 CSS（frontend/skins/）解析，需 ../../icon/ 到 app/icon/ */
+html[data-skin="Maid_Atelier"] [data-skin-brand="icon"] {
+  display: block;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  background: #f4ead5;
+  -webkit-mask: url('../../icon/app-icon.png') center / contain no-repeat;
+  mask: url('../../icon/app-icon.png') center / contain no-repeat;
+  filter: drop-shadow(0 1px 3px rgba(2, 8, 28, 0.5));
+  user-select: none;
+  -webkit-user-drag: none;
+}
+/* 标题：Cinzel 装饰衬线（内嵌 OFL），粗字重，紧凑字距 */
+html[data-skin="Maid_Atelier"] [data-skin-brand="title"] {
+  font-family: 'Cinzel', 'Georgia', 'Merriweather', serif;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #f4ead5;
+  text-shadow: 0 1px 3px rgba(4, 11, 35, 0.55);
+}
+/* 超窄侧栏（rail）：品牌行收窄居中（母本 L682-693） */
+html[data-skin="Maid_Atelier"] body[data-maid-sidebar-size="rail"] [data-skin-chrome="sidebar-brand"] {
+  justify-content: center;
+  min-height: 54px;
+  margin: 0;
+  padding: 7px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* azbar 位于整个框体最左侧：使其从最左缘轻微向内收（margin-left），
+   展开显示（is-show）时多让位一点 */
+html[data-skin="Maid_Atelier"] .sidebar__az-index {
+  margin-left: 4px;
+}
+html[data-skin="Maid_Atelier"] .sidebar__az-index.is-show {
+  margin-left: 8px;
+}
+/* azbar 首字母激活突出时：字母颜色换成深棕色（与亮金缎带区分明）
+   背景沿用基础浅蓝高亮，只改前景色 */
+html[data-skin="Maid_Atelier"] .az-letter--active {
+  color: #4a2e14;
+}
+
+/* 中央舞台（行为层注入，见 .character-stage）：左侧女仆立绘移出 sidebar，
+   立绘回归中心面板角色舞台，避免与 chibi 吉祥物在侧栏叠放 */
+
+/* ── 中间列表标题栏（center-top__header，对应母本 conversation header）── */
+/* 仅用材质（top-trim 布纹）+ 纯色覆盖：用 workspace 露法（放大到 149px 高，
+   让 tile 顶部蕾丝绣花移出可见区，只留 navy 布 + 金色横线）+ 半透明纯色压降。
+   启动/未选中态：整行隐藏（上移出画 + 透明），由装饰衬层接管顶部；
+   选中态：标题行下移入场、衬层同速上移退场（双向 transition，替换原单向 animation）*/
+html[data-skin="Maid_Atelier"] .center-top__header {
+  position: relative;
+  z-index: 21;
+  color: #f8f3e8;
+  text-shadow: 0 1px 3px rgba(4, 11, 35, 0.55);
+  background:
+    url('assets/top-trim-tile.webp') center -2px / auto 149px repeat-x,
+    rgba(10, 24, 56, 0.86);
+  border-bottom: 1px solid rgba(225, 191, 124, 0.32);
+  transition:
+    transform 520ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 400ms ease,
+    background 280ms ease,
+    border-width 280ms ease,
+    border-color 280ms ease;
+}
+/* 启动/未选中态：标题行整体上移出画（center-top overflow:hidden 裁剪）并透明，
+   三种交互都不再显示，点击穿透交由背景与装饰层 */
+html[data-skin="Maid_Atelier"] body:not([data-maid-chat-active]) .center-top__header {
+  transform: translateY(-36px);
+  opacity: 0;
+  pointer-events: none;
+}
+/* 标题文字：次要色，紧贴标题行最左（盾徽已移除，不再预留缩进） */
+html[data-skin="Maid_Atelier"] .center-top__title {
+  padding-left: 0;
+  color: #b5c1dd;
+}
+
+/* ── 模式切换按钮（mode-toggle / sort-toggle / preview-toggle，对应母本 tab[role='tab']）── */
+/* 统一 tab 风格：透明背景 + 米色文字 + 激活态金色下划线发光（替代实底按钮）。
+   sort-toggle 为左侧列表「名称/时间」排序切换，preview-toggle 为右侧「实时/原始」切换，
+   与中间「配置列表/日志」完全一致 */
+html[data-skin="Maid_Atelier"] :is(.mode-toggle, .sort-toggle, .preview-toggle) {
+  position: relative;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 4px;
+  background: transparent;
+  border: 0;
+  color: #d7def0;
+  text-shadow: 0 1px 3px rgba(4, 11, 35, 0.55);
+  transition: color 0.15s ease, background 0.15s ease;
+}
+html[data-skin="Maid_Atelier"] :is(.mode-toggle, .sort-toggle, .preview-toggle):hover {
+  background: rgba(255, 252, 243, 0.08);
+  color: var(--maid-gold-soft);
+  border-color: transparent;
+}
+html[data-skin="Maid_Atelier"] :is(.mode-toggle--active, .sort-toggle--active, .preview-toggle--active) {
+  background: transparent;
+  border-color: transparent;
+  color: #fff7e6;
+}
+html[data-skin="Maid_Atelier"] :is(.mode-toggle--active, .sort-toggle--active, .preview-toggle--active):hover {
+  background: rgba(255, 252, 243, 0.08);
+  color: #fff7e6;
+  border-color: transparent;
+}
+/* 激活态底部金色下划线 + 光晕（移植母本 tab[aria-selected='true']::after）
+   位置上移：紧挨文字下方（bottom:0，原 bottom:-7px 悬在按钮下方，再下移 2px 后的位置） */
+html[data-skin="Maid_Atelier"] :is(.mode-toggle--active, .sort-toggle--active, .preview-toggle--active)::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: 60%;
+  height: 2px;
+  background: var(--maid-gold);
+  box-shadow: 0 0 8px rgba(235, 204, 143, 0.45);
+  border-radius: 1px;
+  pointer-events: none;
+}
+html[data-skin="Maid_Atelier"] .mode-toggle:disabled,
+html[data-skin="Maid_Atelier"] .mode-toggle:disabled:hover {
+  background: transparent;
+  color: var(--vl-alias-text-disabled);
+  border-color: transparent;
+}
+/* 任务窗口 tab（正在运行/已完成/已停止）：与主界面模式切换同款风格 —— 透明底 + 激活态金色下划线 */
+html[data-skin="Maid_Atelier"] .task-tab {
+  position: relative;
+  background: transparent;
+  border-color: transparent;
+  color: #d7def0;
+  text-shadow: 0 1px 3px rgba(4, 11, 35, 0.55);
+  transition: color 0.15s ease, background 0.15s ease;
+}
+html[data-skin="Maid_Atelier"] .task-tab:hover {
+  background: rgba(255, 252, 243, 0.08);
+  color: var(--maid-gold-soft);
+  border-color: transparent;
+}
+html[data-skin="Maid_Atelier"] .task-tab--active {
+  background: transparent;
+  border-color: transparent;
+  color: #fff7e6;
+}
+html[data-skin="Maid_Atelier"] .task-tab--active:hover {
+  background: rgba(255, 252, 243, 0.08);
+  color: #fff7e6;
+  border-color: transparent;
+}
+html[data-skin="Maid_Atelier"] .task-tab--active::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: 60%;
+  height: 2px;
+  background: var(--maid-gold);
+  box-shadow: 0 0 8px rgba(235, 204, 143, 0.45);
+  border-radius: 1px;
+  pointer-events: none;
+}
+html[data-skin="Maid_Atelier"] .task-tab--active .task-tab__count {
+  background: rgba(255, 247, 230, 0.16);
+  color: #fff7e6;
+}
+/* 三 tab 之间的悬浮细金分隔线：整高渐隐（上下不再留空），绝对定位不参与排布，hover/激活背景不影响 */
+html[data-skin="Maid_Atelier"] .task-tab:nth-child(1)::before,
+html[data-skin="Maid_Atelier"] .task-tab:nth-child(2)::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -4.5px; /* 位于 gap:8px 的中点 */
+  width: 1px;
+  background: linear-gradient(180deg, transparent, var(--maid-gold) 50%, transparent);
+  opacity: 0.65;
+  pointer-events: none;
+}
+/* 任务窗口 tab 栏背景：参考主界面日志分支标题行的牛皮纸（top-trim 布纹）材质 */
+html[data-skin="Maid_Atelier"] .task-tabs {
+  background:
+    url('assets/top-trim-tile.webp') center -2px / auto 149px repeat-x,
+    rgba(8, 20, 50, 0.9);
+  border-bottom-color: rgba(225, 191, 124, 0.4);
+}
+/* 任务列表背景：参考主界面项目列表的多层叠加（径向高光 + 上亮下暗 + 微噪点 + 内阴影） */
+html[data-skin="Maid_Atelier"] .task-list {
+  position: relative;
+  background:
+    radial-gradient(circle at 50% 14%, rgba(91, 119, 188, 0.23), transparent 31%),
+    linear-gradient(180deg, rgba(16, 36, 86, 0.97), rgba(5, 14, 43, 0.96)),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.026) 0 1px, transparent 1px 7px);
+  box-shadow:
+    inset 0 6px 14px rgba(255, 255, 255, 0.02),
+    inset 0 -10px 22px rgba(0, 0, 0, 0.32);
+}
+/* chibi 参考项目列表：位于列表多层背景之上、任务卡片之下（可见），
+   尺寸不变 260px、左下角、左右镜像；上方再盖一层半透明黑底遮罩压暗（同侧栏） */
+html[data-skin="Maid_Atelier"] .task-list::after {
+  content: '';
+  position: absolute;
+  left: 12px;
+  bottom: 8px;
+  z-index: 0;
+  width: 260px;
+  height: 196px;
+  background: url('assets/maid-chibi.webp') center / contain no-repeat;
+  transform: scaleX(-1) translateZ(0);
+  opacity: 0.92;
+  filter: drop-shadow(0 5px 12px rgba(2, 7, 24, 0.24));
+  pointer-events: none;
+}
+/* 半透明黑底遮罩：盖在 chibi 之上、任务卡片之下（对齐侧栏 sidebar__root::after） */
+html[data-skin="Maid_Atelier"] .task-list::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
+  background: rgba(8, 17, 42, 0.55);
+  pointer-events: none;
+}
+html[data-skin="Maid_Atelier"] .task-list > * {
+  position: relative;
+  z-index: 2; /* 任务卡片半透明遮罩之上 */
+}
+
+/* 设置窗口右上角 git 按钮：除位置/大小外，各状态样式对齐侧栏置顶按钮
+   （常态 底色+淡金边框+内金投影；hover 主题底白字去边框） */
+html[data-skin="Maid_Atelier"] .settings-gh {
+  background: var(--vl-alias-bg-base-default);
+  border: 1px solid rgba(242, 217, 143, 0.55);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--vl-alias-text-default) 12%, transparent),
+    inset 0 0 4px rgba(242, 217, 143, 0.12);
+}
+html[data-skin="Maid_Atelier"] .settings-gh:hover {
+  background: var(--vl-alias-brand-500);
+  color: var(--vl-alias-text-onaccent);
+  border: none;
+  transform: translateY(-2px);
+}
+/* 日志预览高亮块：浅蓝（替代金色 brand-100/200，避免金色高亮刺眼） */
+html[data-skin="Maid_Atelier"] .right-panel__code-line.log-target,
+html[data-skin="Maid_Atelier"] .right-panel__line-num.log-target {
+  background: rgba(105, 158, 216, 0.24);
+}
+html[data-skin="Maid_Atelier"] .right-panel__code-line.log-target.code-line--log-video {
+  background: rgba(105, 158, 216, 0.34);
+}
+/* 日志选择模式选中行：浅黄底上白字看不清，整行文字改深蓝色（hover 态恢复默认浅字，避免深蓝叠深背景） */
+html[data-skin="Maid_Atelier"] .log-list--selecting .log-entry--selected:not(:hover),
+html[data-skin="Maid_Atelier"] .log-list--selecting .log-entry--selected:not(:hover) .log-entry__video-name,
+html[data-skin="Maid_Atelier"] .log-list--selecting .log-entry--selected:not(:hover) .log-entry__clip-count,
+html[data-skin="Maid_Atelier"] .log-list--selecting .log-entry--selected:not(:hover) .log-entry__clip-path {
+  color: #14335e;
+}
+
+/* ── 状态栏：背景参考日志分支标题行的纸张材质（top-trim 布纹 + 深蓝纯色覆盖 + 上缘金线） ── */
+html[data-skin="Maid_Atelier"] .status-bar {
+  position: relative;
+  background:
+    url('assets/top-trim-tile.webp') center -2px / auto 149px repeat-x,
+    rgba(8, 20, 50, 0.9);
+  border-top: 1px solid rgba(225, 191, 124, 0.35);
+}
+html[data-skin="Maid_Atelier"] .status-bar::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 5px;
+  background: url('assets/bottom-trim-tile.webp') repeat-x center/auto 5px;
+  opacity: 0.25;
+  pointer-events: none;
+}
+html[data-skin="Maid_Atelier"] .status-bar__left {
+  position: relative;
+}
+html[data-skin="Maid_Atelier"] .status-bar__left::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 60px;
+  height: 16px;
+  background: url('assets/bottom-crest.webp') center/contain no-repeat;
+  opacity: 0.15;
+  pointer-events: none;
+}
+
+/* ── 工作区缎带 ── */
+html[data-skin="Maid_Atelier"] .workspace {
+  position: relative;
+}
+html[data-skin="Maid_Atelier"] .workspace::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 120px;
+  height: 4px;
+  background: url('assets/workspace-ribbon.webp') center/contain repeat-x;
+  opacity: 0.2;
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* ── 输入框玻璃效果 ── */
+html[data-skin="Maid_Atelier"] .ds-input {
+  background: rgba(10, 24, 56, 0.5);
+  border-color: var(--maid-glass-border);
+  backdrop-filter: blur(4px);
+}
+html[data-skin="Maid_Atelier"] .ds-input:focus-within {
+  border-color: var(--maid-gold);
+  background: rgba(10, 24, 56, 0.7);
+  box-shadow: 0 0 0 2px rgba(197, 164, 104, 0.12);
+}
+html[data-skin="Maid_Atelier"] .sidebar__search .ds-input {
+  background: rgba(10, 24, 56, 0.4);
+}
+html[data-skin="Maid_Atelier"] .sidebar__search .ds-input:focus-within {
+  border-color: var(--maid-gold);
+  background: rgba(10, 24, 56, 0.6);
+}
+
+/* ── 侧栏项目列表 ── */
+html[data-skin="Maid_Atelier"] .tree-project__name:hover {
+  background: var(--maid-gold-glow);
+}
+html[data-skin="Maid_Atelier"] .tree-project__name--sticky {
+  background: rgba(14, 29, 73, 0.9);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 1px 0 0 var(--maid-glass-border);
+}
+/* 配置项 hover 沿用日期分支按钮风格：亮蓝底 + 淡金边框；
+   基础层预占 1px 透明边框，hover 仅换色不跳动 */
+html[data-skin="Maid_Atelier"] .tree-txt-item {
+  border: 1px solid transparent;
+  box-sizing: border-box;
+}
+html[data-skin="Maid_Atelier"] .tree-txt-item:hover {
+  background: var(--vl-alias-bg-base-tertiary);
+  border-color: var(--vl-alias-border-neutral-l2);
+}
+
+html[data-skin="Maid_Atelier"] .config-resizer {
+  background: var(--maid-glass-border);
+}
+html[data-skin="Maid_Atelier"] .config-resizer:hover,
+html[data-skin="Maid_Atelier"] .config-resizer--active {
+  background: var(--maid-gold);
+}
+
+/* ── 左侧列表栏三竖线按钮 + 右侧预览栏中缝尺寸栏（蓝金）── */
+html[data-skin="Maid_Atelier"] .sidebar-resize-btn,
+html[data-skin="Maid_Atelier"] .preview-resizer {
+  background: linear-gradient(180deg, rgba(23, 46, 106, 0.95), rgba(11, 24, 64, 0.95));
+  border: 1px solid rgba(242, 217, 143, 0.55);
+  color: #e8c77f;
+  box-shadow:
+    inset 0 0 0 1px rgba(5, 15, 45, 0.64),
+    0 4px 12px rgba(1, 7, 24, 0.3);
+}
+html[data-skin="Maid_Atelier"] .sidebar-resize-btn:hover,
+html[data-skin="Maid_Atelier"] .preview-resizer:hover {
+  background: linear-gradient(180deg, rgba(44, 78, 152, 0.95), rgba(15, 33, 82, 0.95));
+  border-color: rgba(244, 218, 164, 0.9);
+  color: #fff3cf;
+}
+html[data-skin="Maid_Atelier"] .sidebar-resize-btn svg {
+  width: 14px;
+  height: 14px;
+}
+/* 女仆皮肤：三竖线按钮右移 1.5px（净 -8.5px，骑在金边框中间）与实色背景（不透明，不透背景） */
+html[data-skin="Maid_Atelier"] .sidebar-resize-btn {
+  transform: translate(-50%, -50%) translateX(-8.5px);
+  background: #142a59;
+}
+/* 女仆皮肤：按钮 hover 同样使用实色，避免常态实色↔hover 半透明渐变切换时出现"丢背景"闪变 */
+html[data-skin="Maid_Atelier"] .sidebar-resize-btn:hover {
+  background: #1c326b;
+}
+/* 界面右上角圆形折叠按钮：蓝金皮肤（同侧栏置顶按钮风格） */
+html[data-skin="Maid_Atelier"] .preview-collapse-round {
+  background: linear-gradient(180deg, rgba(23, 46, 106, 0.95), rgba(11, 24, 64, 0.95));
+  border: 1px solid rgba(242, 217, 143, 0.55);
+  color: #e8c77f;
+  box-shadow:
+    inset 0 0 0 1px rgba(5, 15, 45, 0.64),
+    0 4px 12px rgba(1, 7, 24, 0.3);
+}
+html[data-skin="Maid_Atelier"] .preview-collapse-round:hover {
+  background: linear-gradient(180deg, rgba(44, 78, 152, 0.95), rgba(15, 33, 82, 0.95));
+  border-color: rgba(244, 218, 164, 0.9);
+  color: #fff3cf;
+}
+html[data-skin="Maid_Atelier"] .preview-collapse-round .preview-collapse__icon,
+html[data-skin="Maid_Atelier"] .preview-collapse-round svg {
+  width: 12px;
+  height: 12px;
+}
+/* 女仆皮肤：侧栏标题行「新增配置」图标按钮，与右上角圆形按钮同款蓝金渐变 */
+html[data-skin="Maid_Atelier"] .sidebar__new-config {
+  background: linear-gradient(180deg, rgba(23, 46, 106, 0.95), rgba(11, 24, 64, 0.95));
+  border: 1px solid rgba(242, 217, 143, 0.55);
+  color: #e8c77f;
+  box-shadow:
+    inset 0 0 0 1px rgba(5, 15, 45, 0.64),
+    0 4px 12px rgba(1, 7, 24, 0.3);
+}
+html[data-skin="Maid_Atelier"] .sidebar__new-config:hover {
+  background: linear-gradient(180deg, rgba(44, 78, 152, 0.95), rgba(15, 33, 82, 0.95));
+  border-color: rgba(244, 218, 164, 0.9);
+  color: #fff3cf;
+  transform: translateY(-1px); /* 保持 hover 上浮与预览按钮一致 */
+}
+html[data-skin="Maid_Atelier"] .sidebar__new-config svg {
+  width: 12px;
+  height: 12px;
+}
+/* 右侧面板左缘：细亮金线分隔（替代原拖拽尺寸栏）
+   背景参考侧栏多层叠加（顶部径向高光 + 上亮下暗线性 + 微噪点纹理 + 内阴影），
+   不用纯色，无需 chibi（吉祥物仅侧栏有）；
+   内容/行号/代码区硬编码的 #1E1E1E 改为透明，让多层背景透出 */
+html[data-skin="Maid_Atelier"] .right-panel {
+  border-left: 1px solid rgba(242, 217, 143, 0.55);
+  background:
+    radial-gradient(circle at 50% 14%, rgba(60, 85, 150, 0.17), transparent 31%),
+    linear-gradient(180deg, rgba(8, 21, 58, 0.98), rgba(2, 8, 28, 0.985)),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.02) 0 1px, transparent 1px 7px);
+  box-shadow:
+    inset 6px 0 14px rgba(255, 255, 255, 0.015),
+    inset -8px 0 18px rgba(0, 0, 0, 0.42);
+}
+html[data-skin="Maid_Atelier"] .right-panel__content,
+html[data-skin="Maid_Atelier"] .right-panel__line-numbers,
+html[data-skin="Maid_Atelier"] .right-panel__code {
+  background: transparent;
+}
+
+/* 预览栏标题行：与顶部搜索栏对齐（36px），背景统一为玻璃容器样式
+   （半透明 navy + 背景模糊 + 底部金线） */
+html[data-skin="Maid_Atelier"] .right-panel__header {
+  background: rgba(14, 29, 73, 0.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid rgba(225, 191, 124, 0.32);
+}
+
+/* 副标题栏：与日期分支标题行（center-top__header）统一
+   高度 36px + top-trim 布纹材质 + 半透明纯色覆盖 + 底部金线 */
+html[data-skin="Maid_Atelier"] .right-panel__subtitle {
+  height: 36px;
+  line-height: 36px;
+  padding: 0 var(--vl-static-spacer-12);
+  font-size: 13px;
+  font-weight: var(--vl-font-font-weight-medium);
+  color: #b5c1dd;
+  background:
+    url('assets/top-trim-tile.webp') center -2px / auto 149px repeat-x,
+    rgba(10, 24, 56, 0.86);
+  border-bottom: 1px solid rgba(225, 191, 124, 0.32);
+}
+
+/* ── 日期分支按钮激活态：亮金底（与「共 N 个配置」徽章同源）── */
+html[data-skin="Maid_Atelier"] .date-branch-btn--active {
+  background: rgba(242, 217, 143, 0.18);
+  border-color: var(--maid-gold);
+  color: var(--maid-gold-soft);
+}
+html[data-skin="Maid_Atelier"] .date-branch-btn--active:hover {
+  background: rgba(242, 217, 143, 0.28);
+}
+
+/* ── 侧栏菜单 ── */
+html[data-skin="Maid_Atelier"] .sidebar-menu {
+  background: rgba(14, 29, 73, 0.95);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--maid-glass-border);
+}
+/* ── 左侧列表选中项：金色描边 + 蓝色渐变底色 ── */
+html[data-skin="Maid_Atelier"] .tree-txt-item--active {
+  background: linear-gradient(90deg, rgba(30,58,120,0.85), rgba(42,79,155,0.65));
+  color: var(--maid-gold-light);
+  font-weight: var(--vl-font-font-weight-medium);
+  border: 1px solid rgba(245,220,120,0.6);
+  border-radius: var(--vl-static-radius-6);
+  box-shadow: 0 0 8px rgba(245,220,120,0.15), inset 0 0 12px rgba(30,58,120,0.3);
+}
+html[data-skin="Maid_Atelier"] .tree-txt-item--active:hover {
+  /* 与激活态常态一致：hover 不再加深/变色 */
+  background: linear-gradient(90deg, rgba(30,58,120,0.85), rgba(42,79,155,0.65));
+  border-color: rgba(245,220,120,0.6);
+}
+html[data-skin="Maid_Atelier"] .tree-txt-item--active .tree-txt-item__icon {
+  color: var(--maid-gold-light);
+}
+/* ── 水印文件名：严格匹配左侧配置选中常规态（金描边 + 蓝渐变底 + 浅金文字） ── */
+html[data-skin="Maid_Atelier"] .config-watermark__path {
+  background: linear-gradient(90deg, rgba(30, 58, 120, 0.85), rgba(42, 79, 155, 0.65));
+  color: var(--maid-gold-light);
+  font-weight: var(--vl-font-font-weight-medium);
+  border: 1px solid rgba(245, 220, 120, 0.6);
+  border-radius: var(--vl-static-radius-6);
+  box-shadow: 0 0 8px rgba(245, 220, 120, 0.15), inset 0 0 12px rgba(30, 58, 120, 0.3);
+}
+html[data-skin="Maid_Atelier"] .config-watermark__path:hover {
+  /* 与激活态常态一致：hover 不再加深/变色 */
+  background: linear-gradient(90deg, rgba(30, 58, 120, 0.85), rgba(42, 79, 155, 0.65));
+  border-color: rgba(245, 220, 120, 0.6);
+}
+html[data-skin="Maid_Atelier"] .config-watermark__path--empty {
+  color: var(--maid-gold-light);
+  opacity: 0.55;
+}
+/* 激活/填充态项目行：整行白色文字 + 透明底（缎带悬浮，去掉其下深色背景） */
+html[data-skin="Maid_Atelier"] .tree-project__name--sticky {
+  background: transparent;
+  box-shadow: none;
+}
+html[data-skin="Maid_Atelier"] .tree-project__name.is-filled {
+  color: #fff8e8;
+  text-shadow: 0 1px 2px rgba(2, 8, 28, 0.54);
+}
+html[data-skin="Maid_Atelier"] .tree-project__name.is-filled:hover {
+  background: transparent;
+}
+html[data-skin="Maid_Atelier"] .tree-project__name.is-filled .tree-arrow,
+html[data-skin="Maid_Atelier"] .tree-project__name.is-filled .tree-project__icon {
+  color: #fff8e8;
+  filter: drop-shadow(0 1px 2px rgba(2, 8, 28, 0.45));
+}
+/* 左侧展开/折叠箭头 → 母本盾徽徽章（折叠常态小徽章、展开态放大增亮） */
+html[data-skin="Maid_Atelier"] .tree-project__name .tree-arrow {
+  display: none;
+}
+/* 原文件夹 SVG 图标隐藏，改用 ::after 定位盾徽（因为 icon() 返回裸 <svg> 无法设 background） */
+html[data-skin="Maid_Atelier"] .tree-project__name .tree-project__icon {
+  display: none;
+}
+html[data-skin="Maid_Atelier"] .tree-project__name::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 29px;
+  background: url('assets/workspace-shield.webp') center / contain no-repeat;
+  pointer-events: none;
+  filter: drop-shadow(0 2px 3px rgba(2, 8, 28, 0.48));
+}
+html[data-skin="Maid_Atelier"] .tree-project__name.is-filled::after {
+  width: 27px;
+  height: 33px;
+  filter: drop-shadow(0 2px 3px rgba(2, 8, 28, 0.55)) brightness(1.15);
+}
+/* 「共 N 个配置」：右侧胶囊徽章，亮金底 + 白字（母本 meta 金色系提亮，改为固定右侧一行） */
+html[data-skin="Maid_Atelier"] .tree-project__name {
+  padding-left: 42px; /* 名文左移避让盾徽徽章（::after 占位 28px） */
+}
+html[data-skin="Maid_Atelier"] .tree-project__badge {
+  flex-shrink: 0;
+  width: auto;
+  height: 17px;
+  margin: 0 0 0 auto;
+  padding: 0 8px;
+  border-radius: 9px;
+  background: linear-gradient(180deg, #f2d98f, #d9b65c);
+  color: #0a173b;
+  font-size: 11px;
+  line-height: 17px;
+  font-weight: 500;
+  white-space: nowrap;
+  text-shadow: none; /* 徽章在激活项目行内，清除父级继承的文字投影 */
+}
+/* 切换配置文件场景（非展开触发）：徽章静止，不重播滑入动画 */
+html[data-skin="Maid_Atelier"] .tree-project__badge--static {
+  animation: none;
+}
+html[data-skin="Maid_Atelier"] .tree-project__badge--leave {
+  background: linear-gradient(180deg, #f2d98f, #d9b65c);
+  color: #0a173b;
+}
+/* ▼ 母本蓝缎带：展开项目行的实色填充（brand-500）替换为 workspace-ribbon 卷边缎带，
+    中段随侧栏宽度拉伸（border-image），保留原有 scaleX 填充动画（is-filled/is-filling） */
+html[data-skin="Maid_Atelier"] .tree-project__name::before {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  /* 缎带延伸出行框（左侧卷边探出 -12px、上下各外扩 3px），配合透明底呈悬浮感 */
+  inset: -3px 0 -3px -12px;
+  border-style: solid;
+  border-width: 0 36px 0 35px;
+  border-image-source: url('assets/workspace-ribbon.webp');
+  border-image-slice: 0 145 0 140 fill;
+  border-image-width: 0 36px 0 35px;
+  border-image-repeat: stretch;
+  pointer-events: none;
+}
+html[data-skin="Maid_Atelier"] .tree-txt-item--active .tree-txt-item__badge {
+  background: rgba(245,220,120,0.2);
+  color: var(--maid-gold-light);
+}
+
+/* ── 遮罩叠加模式项目行：与配置管理模式项目行同等女仆适配（缎带填充 + 盾徽 + 亮金徽章） ── */
+html[data-skin="Maid_Atelier"] .mask-proj-item {
+  position: relative;
+  isolation: isolate;
+  padding-left: 42px; /* 名文左移避让盾徽徽章（::after 占位） */
+}
+html[data-skin="Maid_Atelier"] .mask-proj-item:hover {
+  background: var(--maid-gold-glow); /* 与批量 tree-project__name:hover 同款金辉 */
+}
+html[data-skin="Maid_Atelier"] .mask-proj-item::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 29px;
+  background: url('assets/workspace-shield.webp') center / contain no-repeat;
+  pointer-events: none;
+  filter: drop-shadow(0 2px 3px rgba(2, 8, 28, 0.48));
+}
+html[data-skin="Maid_Atelier"] .mask-proj-item .mask-proj-item__icon { display: none; }
+html[data-skin="Maid_Atelier"] .mask-proj-item--active {
+  background: transparent;
+  box-shadow: none;
+  color: #fff8e8;
+  text-shadow: 0 1px 2px rgba(2, 8, 28, 0.54);
+}
+html[data-skin="Maid_Atelier"] .mask-proj-item--active:hover { background: transparent; }
+html[data-skin="Maid_Atelier"] .mask-proj-item--active .mask-proj-item__name { color: #fff8e8; }
+/* 缎带始终在位：默认为收起（scaleX(0)，不可见），选中展开、取消收回，
+   与批量缎带完全同构（transform-origin:left 从左向右划入/向左收回，transition 0.32s ease） */
+html[data-skin="Maid_Atelier"] .mask-proj-item::before {
+  content: '';
+  position: absolute;
+  /* 与批量 .tree-project__name::before 同款：清掉全局的主题色底与圆角，
+     缎带完全由 border-image 绘制 —— 否则选中时缎带下会透出主题色底色 */
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  inset: -3px 0 -3px -12px;
+  z-index: -1;
+  transform: scaleX(0);
+  transform-origin: left center;
+  border-style: solid;
+  border-width: 0 36px 0 35px;
+  border-image-source: url('assets/workspace-ribbon.webp');
+  border-image-slice: 0 145 0 140 fill;
+  border-image-width: 0 36px 0 35px;
+  border-image-repeat: stretch;
+  pointer-events: none;
+  transition: transform 0.32s ease;
+}
+html[data-skin="Maid_Atelier"] .mask-proj-item--active::before {
+  transform: scaleX(1);
+}
+html[data-skin="Maid_Atelier"] .mask-proj-item__badge,
+html[data-skin="Maid_Atelier"] .mask-proj-item--active .mask-proj-item__badge {
+  background: linear-gradient(180deg, #f2d98f, #d9b65c);
+  color: #0a173b;
+  text-shadow: none; /* 清除选中态父级继承的文字投影 */
+}
+/* 遮罩模式装饰行：宿主仅为装饰提供绝对定位基线（中心列顶部 76px 可视区），
+   本身透明无底色；中心列放行溢出并取消最小高度 → 装饰完整显示、不推挤内容，
+   选中后装饰 translateY(-100%) 退场，顶部由 header 材质（选中态自带深蓝底+金线）
+   与内容区深底接管，无残留空栏、无蓝底条 */
+html[data-skin="Maid_Atelier"] body.mask-mode #maskOrnamentHost {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 76px;
+  z-index: 19;
+  pointer-events: none;
+  background: transparent;
+}
+html[data-skin="Maid_Atelier"] body.mask-mode .center-top {
+  min-height: 0;
+  overflow: visible;
+}
+/* 遮罩内容区与批量配置编辑器同款：暗沉深蓝底衬托女仆背景 + 同款进场动画（时长/曲线/方向一致） */
+html[data-skin="Maid_Atelier"] .mask-config {
+  background: rgba(8, 17, 42, 0.55);
+  animation: maidPaneIn 340ms cubic-bezier(0.22, 0.78, 0.2, 1) both;
+}
+/* 静默重复渲染不重放进场（对应批量 config-editor--static） */
+html[data-skin="Maid_Atelier"] .mask-config.mask-config--static {
+  animation: none;
+}
+/* 遮罩列表各行 hover：与批量 config-path-row 同款蓝调 */
+html[data-skin="Maid_Atelier"] .mask-folder-row:hover,
+html[data-skin="Maid_Atelier"] .mask-folder-row--open,
+html[data-skin="Maid_Atelier"] .mask-theme-row:hover,
+html[data-skin="Maid_Atelier"] .mask-theme-row--open,
+html[data-skin="Maid_Atelier"] .mask-file-item:hover,
+html[data-skin="Maid_Atelier"] .mask-group-head:hover,
+html[data-skin="Maid_Atelier"] .mask-group-file:hover {
+  background: rgba(91, 119, 188, 0.14);
+}
+/* 遮罩双栏间竖线（右栏原片素材侧）：女仆皮肤改金色（对应批量编辑器 config-resizer 金线） */
+html[data-skin="Maid_Atelier"] .mask-config__col--raw {
+  border-left-color: var(--maid-glass-border);
+}
+/* 遮罩主题字母分组头与时长：女仆皮肤金色系 */
+html[data-skin="Maid_Atelier"] .mask-letter-head__label {
+  color: var(--maid-gold-light);
+}
+html[data-skin="Maid_Atelier"] .mask-letter-head__line {
+  background: var(--maid-glass-border);
+}
+html[data-skin="Maid_Atelier"] .mask-group-file__meta,
+html[data-skin="Maid_Atelier"] .mask-group-head__meta,
+html[data-skin="Maid_Atelier"] .mask-file-item__dur {
+  color: var(--maid-gold-light);
+}
+html[data-skin="Maid_Atelier"] .sidebar-menu__item:hover {
+  background: var(--maid-gold-glow);
+  color: var(--vl-alias-text-default);
+}
+
+/* ── 载入遮罩 / 设置遮罩 ── */
+html[data-skin="Maid_Atelier"] .busy-overlay,
+html[data-skin="Maid_Atelier"] .settings-dim {
+  background: rgba(6, 13, 32, 0.6);
+  backdrop-filter: blur(4px);
+}
+html[data-skin="Maid_Atelier"] .busy-box {
+  background: rgba(14, 29, 73, 0.95);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--maid-glass-border);
+  box-shadow: 0 0 0 1px rgba(197, 164, 104, 0.06), 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+/* ── 皮肤选择弹窗 ── */
+html[data-skin="Maid_Atelier"] .skin-popup {
+  background: rgba(14, 29, 73, 0.95);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--maid-glass-border);
+}
+
+/* ── 引导态 ── */
+html[data-skin="Maid_Atelier"] .boot-guide__inner {
+  background: rgba(14, 29, 73, 0.9);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--maid-glass-border);
+}
+
+/* ── 更新提示条 ── */
+html[data-skin="Maid_Atelier"] .update-banner {
+  background: rgba(14, 29, 73, 0.95);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--maid-glass-border);
+}
+
+/* ── 滚动条 ── */
+html[data-skin="Maid_Atelier"] ::-webkit-scrollbar-track {
+  background: rgba(9, 19, 51, 0.3);
+}
+html[data-skin="Maid_Atelier"] ::-webkit-scrollbar-thumb {
+  background: rgba(197, 164, 104, 0.3);
+  border-radius: 4px;
+}
+html[data-skin="Maid_Atelier"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(197, 164, 104, 0.5);
+}
+html[data-skin="Maid_Atelier"] ::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ── 选中文本 ── */
+html[data-skin="Maid_Atelier"] ::selection {
+  background: rgba(197, 164, 104, 0.25);
+  color: #ffffff;
+}
+
+/* ── 全局背景纹理 ── */
+html[data-skin="Maid_Atelier"] body {
+  background: linear-gradient(160deg, #091333 0%, #0a1530 40%, #091333 100%);
+}
+
+/* ── 配置编辑器分隔线 ── */
+html[data-skin="Maid_Atelier"] .config-editor__col--watermark {
+  border-left: 1px solid var(--maid-glass-border);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   中间配置列表 UI
+   ═══════════════════════════════════════════════════════════════ */
+
+/* 路径列表暗色背景：配置编辑区整体加深，让下方宫殿/女仆背景显得暗沉。
+   严格参考侧栏遮罩（.sidebar__root::after）：同色 rgba(8,17,42,0.55)，无模糊 */
+html[data-skin="Maid_Atelier"] .config-editor {
+  background: rgba(8, 17, 42, 0.55);
+}
+html[data-skin="Maid_Atelier"] .config-editor__col-header {
+  background: rgba(14, 29, 73, 0.6);
+  border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+html[data-skin="Maid_Atelier"] .config-editor__col--watermark,
+html[data-skin="Maid_Atelier"] .config-editor__wm-section {
+  background: transparent;
+}
+html[data-skin="Maid_Atelier"] .config-editor__wm-section.is-watermark-error {
+  background: var(--vl-alias-status-error-surface-l1);
+}
+html[data-skin="Maid_Atelier"] .config-path-row {
+  border-bottom-color: rgba(255, 255, 255, 0.05);
+}
+html[data-skin="Maid_Atelier"] .config-path-row:hover {
+  background: rgba(91, 119, 188, 0.14);
+}
+
+/* 日期分支按钮列表：未选中时透明无框（装饰层接管视觉）；选中后显示分支按钮，
+   仅保留简洁 navy band + 底部粗金线 */
+html[data-skin="Maid_Atelier"] body:not([data-maid-chat-active]) .center-top__dates {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  transition: background 280ms ease, border 280ms ease;
+}
+html[data-skin="Maid_Atelier"] body[data-maid-chat-active] .center-top__dates {
+  background:
+    linear-gradient(180deg, rgba(16, 36, 86, 0.9), rgba(5, 14, 43, 0.94));
+  border: 0;
+  border-radius: 0;
+  border-bottom: 3px solid rgba(190, 145, 75, 0.9);
+  transition: background 280ms ease, border 280ms ease;
+}
+
+/* 选中配置（对话展开）→ 母本 conversation 形态：
+   header 背景为材质 + 纯色（略深）；标题行下缘为细金线（参考配置列表细边框） */
+html[data-skin="Maid_Atelier"] body[data-maid-chat-active] .center-top__header {
+  transform: translateY(0);
+  opacity: 1;
+  background:
+    url('assets/top-trim-tile.webp') center -2px / auto 149px repeat-x,
+    rgba(8, 20, 50, 0.9);
+  /* 标题行下缘：细金线（颜色/样式参考配置列表激活项的 1px 细边框） */
+  border-bottom: 1px solid rgba(245, 220, 120, 0.6);
+}
+/* 进出均走基础规则的 transition（双向），不再需要单向进入动画；移除 maidHeaderDropIn */
+
+/* ── 日期分支装饰层（date-ornament）── 完全照搬母本 top-trim 窗帘规格
+   启动/未选中态：landing 蕾丝层就位（48px，top-trim 素材 /auto 51px 横铺），
+   蝴蝶结按母本 80×42 贴顶（top:-1）居中；
+   选中态：整层上移退场（translateY(-100%)），标题行同速下移入场。 */
+html[data-skin="Maid_Atelier"] [data-skin-chrome="date-ornament"] {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 76px;
+  z-index: 20;
+  overflow: hidden;
+  pointer-events: none;
+  transition: transform 520ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+/* 启动/未选中态：不偏移，完整展示蕾丝层+蝴蝶结 */
+html[data-skin="Maid_Atelier"] body:not([data-maid-chat-active]) [data-skin-chrome="date-ornament"] {
+  transform: translateY(0);
+}
+/* landing 蕾丝层（母本 L295-299）：48px / 51px 行高横向平铺，含边缘透明行 */
+html[data-skin="Maid_Atelier"] [data-skin-chrome="date-ornament"]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  height: 48px;
+  background: url('assets/top-trim-tile.webp') left -2px / auto 51px repeat-x;
+  pointer-events: none;
+}
+/* 蝴蝶结（母本 L324-336）：80×42 贴顶居中，独立于蕾丝层 */
+html[data-skin="Maid_Atelier"] [data-skin-chrome="date-ornament"]::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -1px;
+  width: 80px;
+  height: 42px;
+  transform: translateX(-50%);
+  background: url('assets/maid-bow.webp') center / contain no-repeat;
+  pointer-events: none;
+  filter: drop-shadow(0 3px 6px rgba(4, 11, 35, 0.32));
+}
+/* 选中配置：整层上移退场（母本 landing translateY(-100%)） */
+html[data-skin="Maid_Atelier"] body[data-maid-chat-active] [data-skin-chrome="date-ornament"] {
+  transform: translateY(-100%);
+}
+
+/* ── 中间区内容入场淡入：重建即播放，避免按钮/配置区"突然出现"的割裂感 ── */
+html[data-skin="Maid_Atelier"] .date-branch-btn {
+  animation: maidBtnIn 260ms cubic-bezier(0.22, 0.78, 0.2, 1) both;
+}
+@keyframes maidBtnIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: none; }
+}
+/* 配置间切换时静默：按钮不重放进场动画（与徽章/config-editor --static 同思路） */
+html[data-skin="Maid_Atelier"] .date-branch-btn.date-branch-btn--static {
+  animation: none;
+}
+html[data-skin="Maid_Atelier"] .config-editor {
+  animation: maidPaneIn 340ms cubic-bezier(0.22, 0.78, 0.2, 1) both;
+}
+@keyframes maidPaneIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+/* 配置间切换静默：不重放进场动画（与徽章 --static 同思路） */
+html[data-skin="Maid_Atelier"] .config-editor.config-editor--static {
+  animation: none;
+}
+
+/* 未选中配置时：两个空态提示框都隐藏（dates 内「从左侧选择一个 TXT」、
+   centerBottom 内「请选择一个日期分支查看内容」），装饰层接管该区域视觉 */
+html[data-skin="Maid_Atelier"] body:not([data-maid-chat-active]) .center-top__dates .center-empty,
+html[data-skin="Maid_Atelier"] body:not([data-maid-chat-active]) .center-bottom .center-empty {
+  display: none !important;
+}
+
+/* ── 中间底部配置栏：仅在选中配置后从下往上浮现 ──
+   初始态（未选中配置 / 折叠项目名回到初始态）：整体隐藏（收起且透明）；
+   选中配置（data-maid-chat-active）：与内部配置一起从下往上滑入浮现，
+   回到初始态反向滑出消失 */
+html[data-skin="Maid_Atelier"] .config-bar {
+  height: 0;
+  min-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-top-width: 0;
+  opacity: 0;
+  transform: translateY(46px);
+  overflow: hidden;
+  transition:
+    height 420ms cubic-bezier(0.22, 0.78, 0.2, 1),
+    opacity 320ms ease 80ms,
+    transform 420ms cubic-bezier(0.22, 0.78, 0.2, 1);
+}
+html[data-skin="Maid_Atelier"] body[data-maid-chat-active] .config-bar {
+  height: 46px;
+  border-top-width: 1px;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   行为层装饰（由 Maid_Atelier.js 注入，dispose 时完整移除）
+   sidebar-mascot / sidebar-corners / footer 已在上方「侧栏分层」块
+   定义（完全照搬母本）。
+   ═══════════════════════════════════════════════════════════════ */
+
+/* 超窄侧栏（rail）：装饰收窄，避免溢出 */
+html[data-skin="Maid_Atelier"] body[data-maid-sidebar-size="rail"] [data-skin-chrome="maid-mascot"] {
+  bottom: 12px;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   角色舞台（character-stage）：宫殿背景 + 左右双女仆立绘
+   移植自母本 maid-atelier.module.css 核心规则：
+   舞台铺满中心面板（z0），内容在 z1 之上；女仆锚定舞台底部
+   两角，以高度百分比缩放；body[data-maid-chat-active]（选中配置）
+   投影驱动女仆从大尺寸收缩到左右下角。
+   ═══════════════════════════════════════════════════════════════ */
+
+/* 舞台容器：宫殿背景 + 裁剪溢出（由 JS 注入 skin-owner 标记）。
+   挂载于 center-panel（内容列）内、z0 垫底；右侧预览栏 / 底部配置栏
+   出现时挤压内容列，stage 跟随自动让位，女仆永不被面板遮挡 */
+html[data-skin="Maid_Atelier"] [data-skin-chrome="character-stage"] {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  contain: strict;
+  background: url('assets/palace-night.webp') center / cover no-repeat;
+}
+
+/* 内容区层级已在「中心面板」块分别定义（z-index:1 位于 character-stage 之上）*/
+
+/* 共享立绘基线：底部角落锚定 + 平滑收缩过渡 */
+html[data-skin="Maid_Atelier"] [data-maid-character] {
+  position: absolute;
+  display: block;
+  z-index: 1;
+  width: auto;
+  max-width: none;
+  object-fit: contain;
+  object-position: center bottom;
+  filter: drop-shadow(0 20px 24px rgba(27, 44, 91, 0.14));
+  transition:
+    translate 620ms cubic-bezier(0.22, 0.78, 0.2, 1),
+    bottom 620ms cubic-bezier(0.22, 0.78, 0.2, 1),
+    height 620ms cubic-bezier(0.22, 0.78, 0.2, 1),
+    opacity 420ms ease;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* 左女仆：左下角，高 90% */
+html[data-skin="Maid_Atelier"] [data-maid-character="left"] {
+  bottom: 0;
+  left: clamp(8px, 1.5%, 24px);
+  height: 90%;
+}
+
+/* 右女仆：右下角，高 80% */
+html[data-skin="Maid_Atelier"] [data-maid-character="right"] {
+  right: clamp(8px, 1.5%, 24px);
+  bottom: 0;
+  height: 80%;
+}
+
+/* 未选中配置但预览栏已展开：内容列被右面板挤窄，女仆单独收缩到中间尺寸
+   （常规 90/80 → 76/72），避免与展开的预览栏拥挤；选中配置仍走 64/62 */
+html[data-skin="Maid_Atelier"] body:not([data-maid-chat-active]):not([data-preview-collapsed]) [data-maid-character="left"] {
+  height: 76%;
+}
+html[data-skin="Maid_Atelier"] body:not([data-maid-chat-active]):not([data-preview-collapsed]) [data-maid-character="right"] {
+  height: 72%;
+}
+
+/* 选中配置（data-maid-chat-active）→ 双女仆收缩到左右下角（母本 64%/62%） */
+html[data-skin="Maid_Atelier"] body[data-maid-chat-active] [data-maid-character="left"] {
+  height: 64%;
+  opacity: 0.9;
+}
+html[data-skin="Maid_Atelier"] body[data-maid-chat-active] [data-maid-character="right"] {
+  height: 62%;
+  opacity: 0.9;
+}
+
+/* 窄视口下立绘整体压低，防止与内容争夺阅读空间 */
+@media (max-width: 1080px) {
+  html[data-skin="Maid_Atelier"] [data-maid-character] {
+    opacity: 0.74;
+  }
+}
+@media (max-width: 700px) {
+  html[data-skin="Maid_Atelier"] body[data-maid-chat-active] [data-maid-character="left"] {
+    height: 46%;
+  }
+  html[data-skin="Maid_Atelier"] body[data-maid-chat-active] [data-maid-character="right"] {
+    height: 44%;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   自制标题栏（frame:false）蓝金皮肤：深蓝 navy 渐变 + 金色下沿，
+   与侧栏/中间区同源材质，消除亮色系统标题栏的割裂感
+   ═══════════════════════════════════════════════════════════════ */
+html[data-skin="Maid_Atelier"] .win-titlebar {
+  background:
+    linear-gradient(180deg, rgba(23, 46, 106, 0.98), rgba(11, 24, 64, 0.98));
+  border-bottom: 1px solid rgba(225, 191, 124, 0.55);
+  box-shadow: 0 2px 10px rgba(2, 7, 25, 0.28);
+}
+html[data-skin="Maid_Atelier"] .win-titlebar__title {
+  color: #f4e3bf;
+  letter-spacing: 0.06em;
+  text-shadow: 0 1px 3px rgba(2, 7, 25, 0.55);
+}
+html[data-skin="Maid_Atelier"] .win-titlebar__btn {
+  color: #e6dcc4;
+}
+/* 标题栏模式切换按钮：女仆皮肤金色适配（文字亮金、hover 金辉、图标取金色阶） */
+html[data-skin="Maid_Atelier"] .win-titlebar__mode {
+  color: var(--maid-gold-light);
+}
+html[data-skin="Maid_Atelier"] .win-titlebar__mode:hover {
+  background: var(--maid-gold-glow);
+  color: #fff7e6;
+}
+html[data-skin="Maid_Atelier"] .win-titlebar__mode i,
+html[data-skin="Maid_Atelier"] .win-titlebar__mode svg {
+  color: #d9b65c;
+}
+html[data-skin="Maid_Atelier"] .win-titlebar__btn:hover {
+  background: rgba(242, 217, 143, 0.16);
+  color: #fff7e6;
+}
+html[data-skin="Maid_Atelier"] .win-titlebar__btn--close:hover {
+  background: #d34a3f;
+  color: #ffffff;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   金色按钮提亮：主按钮（保存为当日配置）与弹窗强调按钮
+   改用更亮的金色阶（brand-300/400），深色文字保持对比；
+   仅影响按钮，不影响其他金色装饰元素
+   ═══════════════════════════════════════════════════════════════ */
+html[data-skin="Maid_Atelier"] .config-btn--save-today {
+  background: var(--vl-alias-brand-300);
+  border-color: var(--vl-alias-brand-300);
+  color: var(--vl-alias-text-onbrand);
+}
+html[data-skin="Maid_Atelier"] .config-btn--save-today:hover {
+  background: var(--vl-alias-brand-200);
+  border-color: var(--vl-alias-brand-200);
+}
+html[data-skin="Maid_Atelier"] .modal-btn--primary {
+  background: var(--vl-alias-brand-400);
+  border-color: var(--vl-alias-brand-400);
+  color: var(--vl-alias-text-onaccent);
+}
+html[data-skin="Maid_Atelier"] .modal-btn--primary:hover {
+  background: var(--vl-alias-brand-500);
+  border-color: var(--vl-alias-brand-500);
+}  /* toast 固定实色（深海蓝浮层：深蓝卡片 + 海蓝边框） */
+  --toast-bg: #14264f;
+  --toast-border: #2c4a97;

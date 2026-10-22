@@ -1,0 +1,42 @@
+Video Lab NOTICE
+================
+
+授权：
+- 代码部分（除 frontend/skins/assets/ 外）：MIT，见 LICENSE。
+- 素材部分（frontend/skins/assets/ 下的图片素材）：CC BY-NC-SA 4.0，见 LICENSE-ARTWORK
+  （该素材目录内另有一份许可副本，随分发包一并提供）。
+
+皮肤「深海女仆（Maid Atelier）」移植自 maid-atelier（dsh-deep-whale 仓库，上游同样按
+「代码 MIT / 素材 CC BY-NC-SA 4.0」分离授权）。依据其 NOTICE 保留创作链：
+
+1. 一创：上善（上善无形）—— 鲸鱼娘（whale-girl）角色形象原作
+   Pixiv: https://www.pixiv.net/users/62155430
+   Bilibili: https://b23.tv/8h5L4xz
+2. 二创：ZipZipPipe —— 女仆鲸鱼娘二次设计（含 DeepSeek 元素，GPT Image 2 生成）
+   Pixiv: https://www.pixiv.net/users/18604994
+   Bilibili: https://b23.tv/Pnw6nG8
+3. 三创（皮肤实现）：Small-tailqwq —— DeepSeek 元素再设计与皮肤工程实现
+   仓库: https://github.com/Small-tailqwq/dsh-deep-whale（maid-atelier 子目录）
+
+皮肤工程脚手架：zhu1090093659/dsh-web（作者 Solitude，Apache-2.0）
+https://github.com/zhu1090093659/dsh-web
+
+
+随包分发的第三方可执行组件
+==========================
+
+FFmpeg / FFprobe（内置组件，位于安装目录的 resources\ffmpeg\）
+- 版本：8.1.3（构建标识 n8.1.3-20260921）
+- 构建：BtbN/FFmpeg-Builds 的 Windows x64 **GPL** 静态构建
+  https://github.com/BtbN/FFmpeg-Builds
+- 版权：Copyright (c) 2000-2026 the FFmpeg developers
+- 获取渠道：npmmirror 镜像（国内源，与软件内「组件缺失自动下载」同一来源）
+  https://registry.npmmirror.com/-/binary/ffmpeg-builds/v8.1.3/ffmpeg-8.1.3-win32-x64-gpl.tar.xz
+- 授权：**GPL v3** —— 该构建启用 `--enable-gpl --enable-version3`；
+  许可全文见 https://www.gnu.org/licenses/gpl-3.0.txt
+- 合规说明：本软件以**独立可执行文件**方式调用 FFmpeg（进程间调用，不与本软件代码链接），
+  属「聚合」而非衍生作品，不影响本软件自身代码（MIT）的授权。
+  依 GPL 要求随包提供本声明与来源信息；FFmpeg 的完整对应源码可自上述构建项目获取
+  （构建项目为其发布源，含与该二进制对应的源码与构建脚本）。
+- 组件清单（版本 / 来源 / sha256，供核对用的是哪一份）：随包的
+  resources\ffmpeg\_meta.json

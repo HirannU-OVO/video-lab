@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-skin="white_blue">
+<head>
+  <meta charset="UTF-8">
+  <title>Video Lab - 设置</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="skins/white_blue.css">
+  <link rel="stylesheet" href="skins/Black_Orange.css">
+  <link rel="stylesheet" href="skins/Maid_Atelier.css">
+  <link rel="stylesheet" href="settings.css">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="../icon/app-icon.png">
+  <script>
+    // 皮肤首屏注入：主窗口/本页切换皮肤时都会把当前皮肤写进 localStorage（同源共享），
+    // 这里在样式生效前同步应用，避免内嵌设置页"先按默认皮肤渲染、再被异步结果改回来"的闪烁。
+    try { var _sk0 = localStorage.getItem('vl_skin'); if (_sk0) document.documentElement.setAttribute('data-skin', _sk0); } catch (e) {}
+    if (location.protocol.startsWith('http')) {
+var m = new URL(location.href).searchParams.get('token');
+      if (m) localStorage.setItem('tx_token', m);
+      if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(function () {});
+      // 内嵌模态带 skin 参数：iframe 渲染前同步应用当前皮肤，避免先白后换的闪烁
+      var sk = new URL(location.href).searchParams.get('skin');
+      if (sk) document.documentElement.setAttribute('data-skin', sk);
+    }
+  </script>
+</head>
+<body>
+<div class="win-titlebar" id="winTitlebar">
+  <span class="win-titlebar__title">Video Lab - 设置</span>
+  <div class="win-titlebar__controls">
+    <button class="win-titlebar__btn win-titlebar__btn--close" data-wctl="close" title="关闭">
+      <svg viewBox="0 0 12 12"><path d="M3 3l6 6M9 3L3 9" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+</div>
+<div class="settings-shell">
+
+  <aside class="settings-nav">
+    <div class="settings-nav__brand">Video Lab</div>
+    <button class="settings-nav__item is-active" data-view="general">通用设置</button>
+    <button class="settings-nav__item" data-view="batch">批量拼接</button>
+    <button class="settings-nav__item" data-view="mask">遮罩叠加</button>
+    <button class="settings-nav__item" data-view="tool">视频处理</button>
+
+    <button class="settings-nav__item" data-view="maintenance">维护</button>
+    <button class="settings-nav__item" data-view="changelog">更新日志</button>
+    <button class="settings-nav__item" data-view="about">关于</button>
+  </aside>
+
+  <div class="settings-body">
+
+    <!-- ═══ 通用设置 ═══ -->
+    <section class="settings-view is-active" id="view-general">
+      <h2 class="settings-view__title">通用设置</h2>
+
+      <div class="form-group">
+        <div class="form-group__head">
+          <label class="form-group__label">主题<small>界面的配色方案，立即生效</small></label>
+        </div>
+        <div class="form-group__ops">
+          <div class="theme-row" id="themeRow"></div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <div class="form-group__head">
+          <label class="form-group__label">配置与缓存库位置<small>配置、缓存与任务记录都存于此目录</small></label>
+        </div>
+        <div class="form-group__ops">
+        <div class="opt-row">
+          <span class="opt-path" id="cfgPathAppdata"></span>
+        </div>
+        <div class="opt-row">
+          <button type="button" class="btn btn-ghost" id="btnOpenCfgDir">打开文件夹</button>
+        </div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <div class="form-group__head">
+          <label class="form-group__label">缓存管理<small>手动清理画布预览与视频信息缓存</small></label>
+        </div>
+        <div class="form-group__ops">
+        <div class="opt-row">
+          <label class="opt-radio">
+            <input type="radio" name="cachePolicy" value="off">
+            <span class="opt-radio__dot"></span>
+            <span class="opt-radio__label">不删除缓存文件</span>
+          </label>
+        </div>
+        <div class="opt-row">
+          <label class="opt-radio">
+            <input type="radio" name="cachePolicy" value="auto">
+            <span class="opt-radio__dot"></span>
+            <span class="opt-radio__label">自动删除</span>
+          </label>
+          <select class="form-input opt-time-select" id="cacheKeepDays" title="缓存保留天数">
+            <option value="3">3 天</option>
+            <option value="7">7 天</option>
+            <option value="15">15 天</option>
+            <option value="30">30 天</option>
+          </select>
+          <span class="form-group__desc opt-inline-note">前的缓存文件</span>
+        </div>
+        <div class="opt-row">
+          <label class="form-group__label" for="cacheSize">缓存大小</label>
+          <span class="opt-path cache-size-value" id="cacheSize">读取中…</span>
+          <button type="button" class="btn btn-ghost" id="btnCacheStats">查看构成</button>
+          <button type="button" class="btn btn-ghost" id="btnCacheClean">立即清理</button>
+        </div>
+        <div class="form-group__desc" id="cacheStatsBox" style="display:none;white-space:pre-line;"></div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <div class="form-group__head">
+          <label class="form-group__label">任务结束提醒</label>
+          <div class="form-group__desc">需系统已允许通知，否则不会弹出</div>
+        </div>
+        <div class="form-group__ops">
+        <div class="opt-row">
+          <label class="opt-check">
+            <input type="checkbox" id="notifyTaskEnd">
+            <span class="opt-check__box"></span>
+            <span>任务跑完或失败时弹系统通知</span>
+          </label>
+        </div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <div class="form-group__head">
+          <label class="form-group__label">开机自启动<small>登录系统后自动在后台启动</small></label>
+        </div>
+        <div class="form-group__ops">
+        <div class="opt-row">
+          <label class="opt-check">
+            <input type="checkbox" id="autoStart">
+            <span class="opt-check__box"></span>
+            <span>开机后台自启动（静默到托盘）</span>
+          </label>
+        </div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <div class="form-group__head">
+          <label class="form-group__label">关闭主窗口<small>点右上角关闭按钮时的行为</small></label>
+        </div>
+        <div class="form-group__ops">
+        <div class="opt-row">
+          <label class="opt-radio">
+            <input type="radio" name="closeBehavior" value="exit">
+            <span class="opt-radio__dot"></span>
+            <span class="opt-radio__label">退出软件</span>
+          </label>
+        </div>
+        <div class="opt-row">
+          <label class="opt-radio">
+            <input type="radio" name="closeBehavior" value="tray">
+            <span class="opt-radio__dot"></span>
+            <span class="opt-radio__label">最小化至系统托盘</span>
+          </label>
+        </div>
+        </div>
+      </div>
+
+      <div class="form-group form-group--http">
+        <div class="form-group__head">
+          <label class="form-group__label">本地 HTTP 服务</label>
+          <div class="form-group__desc">浏览器访问的端口与令牌</div>
+        </div>
+        <div class="form-group__ops">
+        <div class="dir-row">
+          <span class="form-label-inline">端口</span>
+          <input class="form-input form-input--port" id="httpPort" type="number" min="1" max="65535" placeholder="9527" title="浏览器访问端口（1-65535，默认 9527）">
+        </div>
+        <div class="dir-row">
+          <span class="form-label-inline">令牌</span>
+          <input class="form-input" id="httpToken" type="text" maxlength="64" placeholder="访问令牌 Token（8–64 位）" title="浏览器访问令牌：8–64 位（短于 8 位会被忽略，页面会提示）">
+          <button class="btn" id="btnGenToken" title="随机生成新的访问令牌">随机生成</button>
+        </div>
+        <div class="producer-preview">
+          <a class="producer-preview__value" id="httpUrl" href="#" title="点击在浏览器中打开该访问地址">浏览器访问地址待生成</a>
+        </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ 批量拼接 ═══ -->
+    <section class="settings-view" id="view-batch">
+      <h2 class="settings-view__title">批量拼接</h2>
+
+      <div class="form-group">
+        <div class="form-group__head">
+          <label class="form-group__label">工作路径</label>
+          <div class="form-group__desc">存放各项目文件夹与 TXT 配置</div>
+        </div>
+        <div class="form-group__ops">
+        <div class="dir-row">
+          <input class="form-input" id="cfgRoot" type="text" placeholder="">
+          <button class="btn btn-ghost" data-dir="cfgRoot">选择文件夹</button>
+        </div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <div class="form-group__head">
+          <label class="form-group__label">创作者名<small>成片名中的创作者标识</small></label>
+        </div>
+        <div class="form-group__ops">
+          <input class="form-input opt-text-input" id="batchProducer" type="text" placeholder="">
+        </div>
+      </div>
+
+      <div class="form-group form-group--stack">
+        <div class="form-group__head">
+          <label class="form-group__label">提取前缀<small>从配置名或素材路径提取，可添加多个</small></label>
+        </div>
+        <div class="field-row">
+          <input class="form-input" id="batchTxtPrefix" type="text" placeholder="输入后回车添加，可添加多个" autocomplete="off">
+          <button type="button" class="multi-tags__caret" id="batchTxtPrefixCaret" title="展开 / 折叠已添加项" aria-expanded="false" aria-controls="batchTxtPrefixTags">&#9662;</button>
+        </div>
+        <div class="multi-tags" id="batchTxtPrefixTags" hidden></div>
+      </div>
+
+      <div class="form-group">
+        <div class="form-group__head">
+          <label class="form-group__label">后缀<small>成片名末尾的序号标识，可留空</small></label>
+        </div>
+        <div class="form-group__ops">
+          <input class="form-input opt-num-input" id="batchSuffixMark" type="text" placeholder="">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <div class="form-group__head">
+          <label class="form-group__label">成片名预览<small>按上面的命名规则拼出的实际文件名</small></label>
+        </div>
+        <div class="form-group__ops">
+        <div class="producer-preview">
+          <code class="producer-preview__value" id="batchNamePreview"></code>
+        </div>
+        </div>
+      </div>
+
+
+      <div class="form-group">
+        <div class="form-group__head">
+          <label class="form-group__label">最大成片时长 (秒)<small>单个成片的时长上限，留空则不限制</small></label>
+        </div>
+        <div class="form-group__ops">
+          <input class="form-input opt-num-input" id="batchMaxDuration" type="number" min="1" step="1" placeholder="">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <div class="form-group__head">
+          <label class="form-group__label">倍速阈值<small>时长超标时的加速倍率上限</small></label>
+        </div>
+        <div class="form-group__ops">
+          <input class="form-input opt-num-input" id="batchSpeedLimit" type="number" min="1" step="0.1" placeholder="">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <div class="form-group__head">
+          <label class="form-group__label">重试次数<small>任务失败后自动重试的次数，填 0 表示不重试</small></label>
+        </div>
+        <div class="form-group__ops">
+          <input class="form-input opt-num-input" id="batchMaxRetry" type="number" min="1" step="1" placeholder="">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <div class="form-group__head">
+          <label class="form-group__label">重复度下限<small>不一致时长占比的下限</small></label>
+        </div>
+        <div class="form-group__ops">
+        <div class="opt-row">
+          <label class="opt-check">
+            <input type="checkbox" id="replicaDedupRatioOn">
+            <span class="opt-check__box"></span>
+            <span>默认启用</span>
+          </label>
+          <input class="form-input opt-num-input" id="replicaDedupRatio" type="number" min="0" max="1" step="0.05" placeholder="">
+        </div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <div class="form-group__head">
+          <label class="form-group__label">重复度上限<small>不一致时长占比的上限</small></label>
+        </div>
+        <div class="form-group__ops">
+        <div class="opt-row">
+          <label class="opt-check">
+            <input type="checkbox" id="replicaDedupMaxOn">
+            <span class="opt-check__box"></span>
+            <span>默认启用</span>
+          </label>
+          <input class="form-input opt-num-input" id="replicaDedupMax" type="number" min="0" max="1" step="0.05" placeholder="">
+        </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ 遮罩叠加 ═══ -->
+    <section class="settings-view" id="view-mask">
+      <h2 class="settings-view__title">遮罩叠加设置</h2>
+
+      <div class="form-group">
+        <div class="form-group__head">
+          <label class="form-group__label">遮罩素材路径</label>
+          <div class="form-group__desc">以文件夹区分项目</div>
+        </div>
+        <div class="form-group__ops">
+        <div class="dir-row">
+          <input class="form-input" id="maskRoot" type="text" placeholder="必填，选择遮罩叠加工作路径">
+          <button class="btn btn-ghost" data-dir="maskRoot">选择文件夹</button>
+        </div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <div class="form-group__head">
+          <label class="form-group__label">固定水印<small>遮罩叠加模式默认水印文件</small></label>
+        </div>
+        <div class="form-group__ops">
+        <div class="dir-row">
+          <input class="form-input" id="maskWatermark" type="text" placeholder="选择水印 mov 文件">
+          <button class="btn btn-ghost" id="btnMaskWatermark">选择文件</button>
+        </div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <div class="form-group__head">
+          <label class="form-group__label">水印透明度<small>取值范围 0.05–1，留空用默认 0.3</small></label>
+        </div>
+        <div class="form-group__ops">
+        <div class="dir-row">
+          <input class="form-input opt-num-input" id="maskAlpha" type="number" min="0.05" max="1" step="0.05" placeholder="0.3" title="水印透明度（0.05-1），留空使用默认值 0.3">
+        </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ 维护 ═══ 低频兜底操作：日常刷新预缓存走主窗口侧栏 -->
+    <!-- ═══ 视频处理 ═══ -->
+    <section class="settings-view" id="view-tool">
+      <h2 class="settings-view__title">视频处理</h2>
+
+
+      <div class="form-group">
+        <div class="form-group__head">
+          <label class="form-group__label">默认备份文件夹<small>处理前备份的文件存放位置</small></label>
+        </div>
+        <div class="form-group__ops">
+        <div class="dir-row">
+          <input class="form-input" id="backupDir" type="text" readonly title="" placeholder="">
+          <button class="btn btn-ghost" id="btnPickBackupDir">选择文件夹</button>
+          <span class="opt-path" id="backupDirPath" hidden></span>
+        </div>
+        <div class="opt-row">
+          <button type="button" class="btn btn-ghost" id="btnOpenBackupDir">打开备份文件夹</button>
+        </div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <div class="form-group__head">
+          <label class="form-group__label">自动清理备份<small>任务完成后删除超过保留时间的备份</small></label>
+        </div>
+        <div class="form-group__ops">
+        <div class="opt-row">
+          <label class="opt-check">
+            <input type="checkbox" id="backupAutoClean">
+            <span class="opt-check__box"></span>
+            <span>任务完成后自动清理</span>
+          </label>
+          <select class="form-input opt-time-select" id="backupKeepDays" title="备份保留时间">
+            <option value="3">保留 3 天</option>
+            <option value="7">保留 7 天</option>
+            <option value="15">保留 15 天</option>
+            <option value="30">保留 30 天</option>
+          </select>
+        </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="settings-view" id="view-maintenance">
+      <h2 class="settings-view__title">维护</h2>
+
+      <div class="form-group">
+        <div class="form-group__head">
+          <label class="form-group__label">视频信息缓存</label>
+          <div class="form-group__desc">清空并重新检测全部素材，耗时较长</div>
+        </div>
+        <div class="form-group__ops">
+        <div class="opt-row">
+          <button class="btn btn-ghost" id="btnRebuildPrecheck">重建</button>
+        </div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <div class="form-group__head">
+          <label class="form-group__label">运行日志</label>
+          <div class="form-group__desc">逐条记录启动退出、任务执行与配置变更</div>
+        </div>
+        <div class="form-group__ops">
+        <div class="opt-row">
+          <button type="button" class="btn btn-ghost" id="btnOpenLogDir">打开文件夹</button>
+          <span class="opt-path" id="logDirPath"></span>
+        </div>
+        </div>
+      </div>
+      <div class="form-group">
+        <div class="form-group__head">
+          <label class="form-group__label">问题反馈包</label>
+          <div class="form-group__desc">按所选时间范围打包运行记录与设置信息</div>
+        </div>
+        <div class="form-group__ops">
+        <div class="opt-row" data-nosave>
+          <select class="form-input opt-time-select" id="diagRange" title="反馈包包含的日志范围">
+            <option value="today">今天</option>
+            <option value="3d">近 3 天</option>
+            <option value="7d">近 7 天</option>
+            <option value="all">全部</option>
+          </select>
+          <button type="button" class="btn btn-ghost" id="btnExportDiag">导出压缩包</button>
+        </div>
+        </div>
+      </div>
+      <div class="form-group">
+        <div class="form-group__head">
+          <label class="form-group__label">可清理项</label>
+          <div class="form-group__desc">可清理的中间产物与历史残留</div>
+        </div>
+        <div class="form-group__ops">
+        <div class="opt-row">
+          <button type="button" class="btn btn-ghost" id="btnDataDirScan">查看可清理项</button>
+          <button type="button" class="btn btn-ghost" id="btnDataDirClean">清理勾选项</button>
+        </div>
+        <div id="dataDirList" style="display:none;margin-top:8px"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="settings-view" id="view-changelog">
+      <div class="changelog-box" id="changelogBox"><div class="changelog-hint" id="changelogHint"></div></div>
+    </section>
+
+    <!-- ═══ 关于 ═══ -->
+    <section class="settings-view" id="view-about">
+      <!-- ① 名片栏：这是什么版本、按哪个源检查、能不能升级 -->
+      <div class="about-hero">
+        <div class="about-hero__mark"><img src="../icon/app_icon.svg" alt="Video Lab" draggable="false"></div>
+        <div class="about-hero__main">
+          <div class="about-hero__name">Video Lab</div>
+          <div class="about-hero__ver">
+            <span class="about-hero__v" id="aboutVer">—</span>
+          </div>
+        </div>
+        <!-- 更新源内联在名片栏：标签 + 两个 radio（值由选中态体现，不再单独写一行「检查更新源：GitCode」） -->
+        <div class="about-hero__pick">
+          <span class="about-hero__pick-label">检查更新源：</span>
+          <div class="about-hero__pick-opts">
+            <label class="opt-radio">
+              <input type="radio" name="updateSource" value="gitcode">
+              <span class="opt-radio__dot"></span>
+              <span class="opt-radio__label">GitCode</span>
+            </label>
+            <label class="opt-radio">
+              <input type="radio" name="updateSource" value="github">
+              <span class="opt-radio__dot"></span>
+              <span class="opt-radio__label">GitHub</span>
+            </label>
+          </div>
+        </div>
+        <div class="about-hero__act">
+          <button class="btn" id="btnCheckUpdate" title="立即检查所选更新源（GitCode/GitHub）是否有新版本">检查更新</button>
+        </div>
+      </div>
+
+      <!-- ② 自动更新：什么时候查、查到新版怎么办（更新源已在名片栏内选择） -->
+      <div class="form-group">
+        <div class="form-group__head">
+          <label class="form-group__label">更新检查</label>
+          <div class="form-group__desc">启动时、或每日定时检查更新</div>
+        </div>
+        <div class="form-group__ops">
+        <div class="opt-row">
+          <label class="opt-check">
+            <input type="checkbox" id="autoCheckUpdate">
+            <span class="opt-check__box"></span>
+            <span>启动时自动检查更新</span>
+          </label>
+        </div>
+        <div class="opt-row">
+          <label class="opt-check">
+            <input type="checkbox" id="checkUpdateDaily">
+            <span class="opt-check__box"></span>
+            <span>每日定期检查更新</span>
+          </label>
+          <select class="form-input opt-time-select" id="checkUpdateHour" title="每日定时检查更新时间（24小时制整点，默认 9:00）"></select>
+        </div>
+        <div class="opt-row opt-row--spaced" title="更新方式：发现新版本后自动检查并下载 / 仅提醒（对启动时检查、手动检查、定时检查均生效）">
+          <label class="opt-radio">
+            <input type="radio" name="updateMode" value="auto">
+            <span class="opt-radio__dot"></span>
+            <span class="opt-radio__label">自动检查并下载</span>
+          </label>
+          <label class="opt-radio">
+            <input type="radio" name="updateMode" value="notify">
+            <span class="opt-radio__dot"></span>
+            <span class="opt-radio__label">有新版本提醒我</span>
+          </label>
+        </div>
+        </div>
+      </div>
+
+      <!-- ④ 环境与组件：组件是自动下载的，把版本 / 来源 / 目录 / 校验结果显式摆出来，
+           便于核对"实际跑的是哪一份"（排查用，故排在最后） -->
+      <div class="form-group">
+        <div class="form-group__head">
+          <label class="form-group__label">运行环境<small>当前生效的组件版本与路径</small></label>
+        </div>
+        <div class="about-info" id="aboutInfo"><div class="changelog-hint">正在读取…</div></div>
+      </div>
+    </section>
+
+    <!-- 检查更新的结果弹窗已统一到主窗口（设置页是 iframe，自弹浮层会被裁切，见 index.html 的 #updateResultMask） -->
+
+  </div>
+</div>
+
+<!-- 检查更新结果弹窗：**设置页自己弹**。软件端里设置页是主窗口内的 iframe、浏览器端里它是独立页面，
+     两种形态都由设置页弹，用户正看着哪就在哪出结论（iframe 内的弹窗只覆盖设置面板，不会被裁切）。
+     托盘入口的结果由主窗口弹（见 index.html 的 #updateResultMask） -->
+<div class="update-result" id="updateResultMask" style="display:none">
+  <div class="update-result__box">
+    <div class="update-result__icon" id="updateResultIcon">✓</div>
+    <div class="update-result__body">
+      <div class="update-result__title" id="updateResultTitle"></div>
+      <div class="update-result__desc" id="updateResultDesc"></div>
+    </div>
+    <div class="update-result__actions">
+      <button class="btn update-result__btn" id="updateResultClose">知道了</button>
+      <button class="btn update-result__btn update-result__btn--primary" id="updateResultGo" style="display:none">立即更新</button>
+    </div>
+  </div>
+</div>
+
+<script src="txapi.js"></script>
+<script src="common.js"></script>
+<script src="logbootstrap.js"></script>
+<script src="titlebar.js"></script>
+<script src="settings.js"></script>
+</body>
+</html>

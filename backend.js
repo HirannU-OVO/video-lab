@@ -1,0 +1,9526 @@
+// -*- coding: utf-8 -*-
+// Video Lab — 后端逻辑（Node.js 移植，与 main.py 行为一致）
+// 负责扫描项目/TXT、解析配置、预检测、调度内置任务引擎。
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const os = require('os');
+
+const VIDEO_EXTS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.m4v']);
+
+// 顶层目录中需要排除的非项目目录
+const EXCLUDED_TOP_DIRS = new Set([
+  'Video Lab', '_design_draft', '.design', '.git', '__pycache__',
+]);
+
+// 日志文件名特征（用于区分配置与日志）
+const LOG_NAME_RE = /(拼接日志|复刻日志)/;
+// 引擎写在成片目录里的源配置留档（复刻侧）：属产物附件而非可执行配置，配置索引须排除
+const BACKUP_NAME_RE = /^配置备份-/;
+// 复刻模式名称，按 旧版脚本 的 mode 映射；两种模式在侧栏各作一个配置名，仅含日志无配置
+const REPLICA_MODES = ['原片复刻', '去重复刻'];
+const REPLICA_PROJECT = '复刻'; // 侧栏中的虚拟项目名（仅含日志，无配置）
+const REPLICA_MARK = 'REPLICA:'; // 复刻项目虚拟版本的 path 前缀，用于路由 list_logs / logContent
+
+// 默认配置
+// 项目实际依赖的 FFmpeg 滤镜清单（三模块 + 视频处理工具的滤镜调用全量收集）：
+// 缺任何一个都视为环境不合格（精简版/第三方便携构建常缺 colorchannelmixer、signalstats 等）
+const FFMPEG_REQUIRED_FILTERS = [
+  'scale', 'overlay', 'colorchannelmixer', 'rotate', 'transpose', 'atempo',
+  'trim', 'setpts', 'select', 'aselect', 'concat', 'fps', 'volume',
+  'format', 'signalstats', 'metadata',
+];
+
+// 必需编码器（硬件编码硬约束）：三档转码格式都走 NVENC ——只查滤镜查不到编码器能力（老版本 ffmpeg 没有 av1_nvenc，会"检测合格但选 AV1 就失败"）
+const FFMPEG_REQUIRED_ENCODERS = ['h264_nvenc', 'hevc_nvenc', 'av1_nvenc'];
+
+// 环境探测超时（毫秒）：探测异步、不阻塞事件循环，宁可多等，也不要因超时把「没探到」误判成「缺滤镜」。
+const ENV_PROBE_TIMEOUT_MS = Math.max(1, Number(process.env.VL_ENV_PROBE_TIMEOUT_MS) || 45000);
+
+// 成片存在性判定的内存缓存有效期（毫秒），由 HAS_OUTPUT_PERSIST_TTL_MS 统一。
+
+// 启动保护期：启动后这段时间内空闲队列不消费任务（首屏渲染与用户首次操作期间零磁盘竞争），20 秒后后台才开始校验。
+const IDLE_BOOT_GRACE_MS = 20000;
+
+// 前台活动让路窗口：最近这段时间内有过前台活动（渲染/读取/任务）就让队列再等一会儿。
+const IDLE_FOREGROUND_HOLD_MS = 3000;
+
+// 单个空闲 job 的最长占用
+const IDLE_JOB_TIMEOUT_MS = 120 * 1000;
+
+// 后台全量重扫的最小间隔（**外部更改的兜底通道**）：
+// 已知的变更时刻（保存配置 / 任务启停）走「立即失效 + 广播」，不经这里；
+// 这里只兜底**外部**对素材盘的改（用户手动增删改文件、别的程序写入），且只在队列空闲、前台让路时执行。
+const SCAN_FULL_MIN_INTERVAL_MS = 60 * 1000;
+// 成片存在性结论的**持久化**有效期（verify_cache）：命中则连热启动也省掉重复核验。
+// 只用于「合并同一批文件的重复校验」，不做长期真相缓存（窗口必须短，否则删了成片界面仍说「还在」）。
+const HAS_OUTPUT_PERSIST_TTL_MS = 10 * 60 * 1000;
+// 续跑前 ffprobe 校验的成片数量上限
+const PRUNE_PROBE_LIMIT = 12;
+
+
+
+const DEFAULT_CONFIG = {
+  skin: 'white_blue',
+  ffmpeg_dir: '',             // FFmpeg 组件目录（启动自动下载落到「数据目录\ffmpeg」）；空 = 尚未就绪，启动时会自动下载
+  notify_task_end: true,      // 任务失败 / 本轮跑完的 Windows 系统通知（默认开启，可在 设置-通用设置 关闭）
+  backup_dir: '',             // 视频处理「处理前备份」的默认目录；留空 = 数据目录下 backup（与缓存库同目录）
+  backup_auto_clean: false,   // 视频处理任务完成后自动清理过期备份（默认关闭；删除走回收站可还原）
+  backup_keep_days: 7,        // 备份保留天数（3 / 7 / 15 / 30）
+  cache_keep_days: 30,        // 缓存保留天数：内容缓存（视频/目录/TXT 条目）超期未更新即清理（缓存可再生）
+  auto_check_update: true,    // 启动时自动检查更新
+  check_update_daily: false,  // 每日定时检查更新（整点触发，需 app 保持运行）
+  check_update_hour: 9,       // 每日定时检查更新时间（24 小时制整点 0-23，默认 9）
+  update_source: 'gitcode',   // 更新源：gitcode=GitCode release / github=GitHub release，默认 GitCode
+  update_mode: 'notify',      // 更新方式：notify=有新版本仅提醒（默认）/ auto=自动检查并下载
+  // config_storage 已废弃移除：数据目录恒为 %APPDATA%\Video Lab（设置页无此项）。
+  http_port: 9527,            // 浏览器访问端口（0-65535，默认 9527）
+  // 旧版脚本 顶部全局参数（文件内同名常量被顶部读环境变量 BATCH_* 覆盖）
+  batch: {
+    // 工作路径：批量拼接模式自己的工作目录（存放各项目文件夹及 TXT 配置）。
+    // 归属放在 batch（与 mask.root 对称）—— 各模式的工作目录由各模式自己承接；
+    // 顶层 root 只是旧锚点，由 main 启动时一次性迁移过来。
+    root: '',
+    max_duration: 179,   // MaxTotalDurationSec 最大成片时长(秒)
+    max_retry: 45,       // MaxRetry 重试次数
+    speed_limit: 1.2,    // SpeedThreshold 倍速阈值
+    txt_prefix: '',      // TxtNamePrefix 提取前缀，可留空
+    producer: '',      // 成片名固定品牌名（设置页-批量拼接 配置）
+    suffix_mark: '',     // 序号后缀（成片名中的序号标识），可留空 = 无任何后缀
+  },
+  // 旧版脚本 顶部全局参数（文件内同名常量被顶部读环境变量 REPLICA_* 覆盖）
+  replica: {
+    max_duration: 179,   // MaxTotalDurationSec
+    speed_limit: 1.2,    // SpeedThreshold
+    dedup_ratio: 0.4,    // 重复度下限（DedupRatio）：低于它会被判定重复度过高
+    dedup_ratio_max: 0.5,    // 重复度上限：超过它会被判定为全新视频（继承不到流量）
+    dedup_ratio_on: true,    // 下限是否启用（复刻弹窗默认勾选状态）
+    dedup_ratio_max_on: true,// 上限是否启用（复刻弹窗默认勾选状态）
+  },
+  // 遮罩叠加：独立工作路径 + 固定水印（设置页配置，遮罩模式界面默认使用）
+  mask: {
+    root: '',            // 遮罩叠加项目工作路径（不允许复用批量拼接工作路径）
+    watermark_mov: '',   // 固定水印 mov（模式1/2 默认水印，界面可临时更换）
+    watermark_alpha: '', // 水印透明度（0.05-1；留空用脚本默认 0.3）
+  },
+};
+
+// ── 文本内容缓存后端（由 Api 在缓存库可用后注入）──────────────────────
+// 缓存能力**下沉到 readText 本身**，而不是逐处调用点打补丁 ——
+// 于是配置、日志、索引等**所有** TXT 读取自动获得「指纹一致即零文件读取」的能力。
+const TEXT_CACHE_MAX_BYTES = 1024 * 1024;   // 超过 1MB 的文本不缓存（避免库体积失控）
+let _textCacheBackend = null;               // { get(path, fp) -> string|null, put(path, fp, text) }
+
+function readText(filePath, fallback = 'utf-8') {
+  const full = filePath == null ? '' : String(filePath);
+  const be = _textCacheBackend;
+  let fp = '';
+  if (be && full) {
+    try {
+      const st = fs.statSync(full);
+      if (st.isFile() && st.size <= TEXT_CACHE_MAX_BYTES) fp = String(st.mtimeMs) + ':' + String(st.size);
+    } catch (e) { fp = ''; }
+    if (fp) {
+      try { const hit = be.get(full, fp); if (hit != null) return hit; } catch (e) {}   // ★ 命中：零文件读取
+    }
+  }
+  let buf;
+  try { buf = fs.readFileSync(full); } catch (e) { return ''; }
+  const encodings = [fallback, 'utf-8', 'gbk', 'utf-16le'];
+  for (const enc of encodings) {
+    try {
+      const s = new TextDecoder(enc, { fatal: true }).decode(buf);
+      const text = s.replace(/^\uFEFF/, '');
+      if (fp && be) { try { be.put(full, fp, text); } catch (e) {} }                     // 读后写回（含解析结果保留）
+      return text;
+    } catch (e) { continue; }
+  }
+  return '';
+}
+
+function contentHash(filePath) {
+  try { return crypto.createHash('md5').update(fs.readFileSync(filePath)).digest('hex'); }
+  catch (e) { return null; }
+}
+
+// 原子写：先写 <p>.tmp 再 rename 覆盖；写入/替换失败时清理临时文件，原文件保持有效可复用。
+// 用于任务状态/配置/索引等"坏一次就丢功能"的关键落盘，避免崩溃写坏半截文件。
+function atomicWrite(p, content) {
+  try {
+    fs.writeFileSync(p + '.tmp', content, 'utf-8');
+    fs.renameSync(p + '.tmp', p);
+    return true;
+  } catch (e) {
+    try { if (p && fs.existsSync(p + '.tmp')) fs.unlinkSync(p + '.tmp'); } catch (e2) {}
+    return false;
+  }
+}
+
+// 清理残留的未完成临时缓存（上次中断遗留），原文件不受影响；加载关键缓存前调用
+function cleanupTmp(p) {
+  try { const tmp = p + '.tmp'; if (tmp && fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch (e) {}
+}
+
+function stripQuotes(s) {
+  // 去除路径/水印/排除字符串首尾成对的双引号或单引号
+  s = String(s == null ? '' : s).trim();
+  if (s.length >= 2) {
+    const f = s[0], l = s[s.length - 1];
+    if ((f === '"' && l === '"') || (f === "'" && l === "'")) s = s.slice(1, -1).trim();
+  }
+  return s;
+}
+
+function dateSortKey(label) {
+  let m = /^(\d{2})(\d{2})$/.exec(label);
+  if (m) return [0, parseInt(m[1], 10), parseInt(m[2], 10)];
+  m = /^(\d+)\s*月$/.exec(label);
+  if (m) return [1, parseInt(m[1], 10), 0];
+  if (label === '模版' || label === '模板' || label.endsWith('模板')) return [2, 0, 0];
+  return [3, 0, 0];
+}
+
+function compareDateSortKey(a, b) {
+  const ka = dateSortKey(a), kb = dateSortKey(b);
+  for (let i = 0; i < 3; i++) { if (ka[i] !== kb[i]) return ka[i] - kb[i]; }
+  return 0;
+}
+
+function relativeDateLabel(relParts) {
+  let label = null;
+  for (const p of relParts) { if (/^\d{4}$/.test(p)) label = p; }
+  if (label) return label;
+  for (const p of relParts) { if (/^\d+\s*月$/.test(p)) return p; }
+  for (let i = relParts.length - 1; i >= 0; i--) {
+    const p = relParts[i].trim();
+    if (p && p !== '月份') return p;
+  }
+  // 兜底标签：配置/日志直接位于根目录、无任何日期段时用它（前端显示不加括号）
+  return '根目录';
+}
+
+function isChengpianFile(relParts) { return relParts.some((p) => p.endsWith('成片')); }
+
+function walkFiles(dir) {
+  const out = [];
+  const stack = [dir];
+  while (stack.length) {
+    const cur = stack.pop();
+    let entries;
+    try { entries = fs.readdirSync(cur, { withFileTypes: true }); } catch (e) { continue; }
+    for (const ent of entries) {
+      const full = path.join(cur, ent.name);
+      if (ent.isDirectory()) stack.push(full);
+      else if (ent.isFile()) out.push(full);
+    }
+  }
+  return out;
+}
+
+// 异步遍历（启动路径专用）：用 fs.promises 读目录，每处理 yieldEvery 个条目让出一轮事件循环，
+// 使主进程在扫描期间仍能响应 IPC / 重绘（同步版会整段占死，表现为窗口无响应、进度条不动）。
+// onTick(processed) 用于上报进度，返回 false 可中断遍历（取消语义）。
+async function walkFilesAsync(dir, opts) {
+  const yieldEvery = (opts && opts.yieldEvery) || 60;
+  const onTick = (opts && opts.onTick) || null;
+  const shouldStop = (opts && opts.shouldStop) || null;
+  const onTruncated = (opts && opts.onTruncated) || null;
+  const out = [];
+  const stack = [dir];
+  let since = 0;
+  // 中断时返回部分结果，通过 onTruncated 通知调用方
+  const halted = () => {
+    if (!(shouldStop && shouldStop())) return false;
+    if (onTruncated) { try { onTruncated(); } catch (e) {} }
+    return true;
+  };
+  while (stack.length) {
+    if (halted()) return out;
+    const cur = stack.pop();
+    let entries;
+    try { entries = await fs.promises.readdir(cur, { withFileTypes: true }); } catch (e) { continue; }
+    for (const ent of entries) {
+      const full = path.join(cur, ent.name);
+      if (ent.isDirectory()) stack.push(full);
+      else if (ent.isFile()) out.push(full);
+      if (++since >= yieldEvery) {
+        since = 0;
+        if (onTick) onTick(out.length);
+        await new Promise((r) => setImmediate(r));   // 让位：主进程可处理其他事件
+        if (halted()) return out;
+      }
+    }
+  }
+  if (onTick) onTick(out.length);
+  return out;
+}
+
+// 按内容 hash 去重（保留排序后的第一个），用于同类别（成片内/成片外）配置 txt 合并
+function dedupeByHash(list) {
+  const seen = new Set();
+  const out = [];
+  for (const it of list.slice().sort((a, b) => a.full.localeCompare(b.full))) {
+    if (seen.has(it.hash)) continue;
+    seen.add(it.hash);
+    out.push(it);
+  }
+  return out;
+}
+
+// 按「成片文件夹」目录去重：每个成片文件夹取一份配置。目录名含时间，升序即旧→新
+function dedupeByDir(list) {
+  const seen = new Set();
+  const out = [];
+  for (const it of list.slice().sort((a, b) => a.full.localeCompare(b.full))) {
+    const d = path.dirname(it.full);
+    if (seen.has(d)) continue;
+    seen.add(d);
+    out.push(it);
+  }
+  return out;
+}
+
+// 任务实际耗时（秒）：accumMs 为已结束的运行段，runStartAt 为当前段起点
+function taskElapsed(t) {
+  if (!t) return 0;
+  let ms = Number(t.accumMs) || 0;
+  if (t.runStartAt) ms += Date.now() - Number(t.runStartAt);
+  if (!ms && t.startedAt) {
+    // 旧格式任务（没有 accumMs）：按「结束-开始-累计暂停」兜底
+    const ended = t.status === 'done' || t.status === 'stopped' || t.status === 'error' || t.status === 'interrupted';
+    const end = ended ? (t.endedAt || Date.now()) : Date.now();
+    let pausedMs = t.totalPausedMs || 0;
+    if (t.pausedAt) pausedMs += Date.now() - t.pausedAt;
+    return Math.max(0, Math.round((end - t.startedAt - pausedMs) / 1000));
+  }
+  return Math.max(0, Math.round(ms / 1000));
+}
+// 时间格式跟随实际用时：几十秒只显秒；1m1s / 10m10s / 1h0m10s（分秒含 0 亦保留）
+function zhDuration(sec) {
+  const s = Math.max(0, Math.round(sec));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60;
+  if (h > 0) return h + 'h' + m + 'm' + x + 's';
+  if (m > 0) return m + 'm' + x + 's';
+  return x + 's';
+}
+// ffmpeg 状态行的 elapsed 字段：6.x 后为 HH:MM:SS.mmm，部分版本为纯秒数 float，统一解析成秒
+function parseElapsedSec(v) {
+  const s = String(v).trim();
+  const p = s.split(':');
+  if (p.length === 3) {
+    const sec = parseFloat(p[2]);
+    return (parseInt(p[0], 10) || 0) * 3600 + (parseInt(p[1], 10) || 0) * 60 + (Number.isNaN(sec) ? 0 : sec);
+  }
+  const f = parseFloat(s);
+  return Number.isNaN(f) ? NaN : f;
+}
+// ffmpeg 帧进度中文直译（与前端 frontend/task.js 的 liveLineText 保持一致）：
+// 顺序：帧(总帧数)/q/大小/时间/码率/丢帧(为 0 不显示)/已用时/速度；体积换算 MB（KiB/1024，1 位小数）；
+// elapsed（秒）格式化为时分秒。成片完成时将最后一行帧进度以此形式固化进任务日志
+function zhLiveLine(kv) {
+  const order = [['frame', '总帧数'], ['q', 'q'], ['size', '大小'], ['time', '时间'], ['bitrate', '码率'], ['drop', '丢帧'], ['elapsed', '已用时'], ['speed', '速度']];
+  const parts = [];
+  for (const [k, label] of order) {
+    let v = kv[k];
+    if (k === 'drop') { if (!(parseFloat(v) > 0)) continue; } // 丢帧为 0（或缺省）不显示
+    if (v === undefined || v === null || v === '') continue;
+    if (k === 'size') {
+      const m = String(v).match(/^([\d.]+)\s*kib$/i);
+      v = m ? (parseFloat(m[1]) / 1024).toFixed(1) + 'MB' : v;
+    }
+    if (k === 'elapsed') {
+      // 与 time= 保持**同一种格式**（HH:MM:SS.xx）：ffmpeg 原生 elapsed 是 H:MM:SS.xx（小时无前导零），
+      // 这里只补齐小时位（不换成「1分23秒」这类中文），与同行的时间列对齐才便于比对。
+      const em = String(v).match(/^(\d+):(\d{1,2}):(\d{1,2}(?:\.\d+)?)$/);
+      v = em
+        ? (em[1].padStart(2, '0') + ':' + em[2].padStart(2, '0') + ':' + em[3])
+        : v;
+    }
+    parts.push(label + '=' + v);
+  }
+  return parts.join(' ');
+}
+
+class Api {
+  constructor(root, config, enginesDir, storageDir) {
+    this.root = root;
+    this.config = Object.assign({}, DEFAULT_CONFIG, config || {});
+    this.enginesDirFixed = enginesDir || ''; // Node 引擎位置（源码形态 app\engines，分发形态 resources\Engines）
+    this.storageDir = storageDir || '';      // 数据目录：引导文件与两个库（config.json / settings.db / cache.db）同目录
+    this._persistTimer = null;                          // 任务持久化节流定时器
+    this._clipIndex = null;        // Map<baseDir, {mtime, entries}>
+    this._clipIndexRoot = '';
+    this._clipIndexDirty = false;
+    this._rebuildingClip = false; // 成片索引后台分批重建进行中标志（防并发重复触发）
+    this.onScanProgress = null;   // 各扫描/重建环节进度回调（main 注入，推送主窗口渲染实时状态）
+    this._precheckToken = 0;      // 预检测取消令牌：token 变化即中断旧探测（重置/换路径/手动取消）
+    this._inlineProbing = 0;      // 行内预检测进行中计数：后台大探测遇其让路，保证用户操作优先
+    // 过期锁清理排入空闲队列（见 restoreTasks 末尾）：启动期不做同步扫盘；锁残留不影响功能，晚清理无妨。
+    this._loadAppSettings();      // 应用级设置：settings.db 为主（config 只作兼容回退）
+    // ffprobe 探测并发上限：保持低值，避免占用过多 CPU/IO 拖慢整机
+    this.probeConcurrency = 4;
+    this._videoCache = null;
+    this._videoInfoCache = new Map();
+    // 成片存在性判定的内存结果（taskId → { v, at }）：由 _prewarmHasOutputAsync 分批异步填充，
+    //   使 snapshotTasks / _taskHasOutput 在恢复期后是**纯内存判定**，不逐任务碰磁盘。
+    this._hasOutputMemo = new Map();
+    // 统一空闲校验队列（见 _idleEnqueue）：启动期不发起批量文件 IO，校验全靠它后台串行完成
+    this._idleJobs = [];
+    this._idleRunning = false;
+    this._idleDelayMs = 50;                                  // 自适应节流间隔（实测反馈驱动）
+    this._idleStats = { done: 0, slow: 0, fast: 0, maxMs: 0, timeout: 0 };
+    this._idleJobStartedAt = 0;   // 当前 job 的开始时刻（看门狗用）
+    // 启动保护期：照预检测那套「后台检测不冻前台」的模式，队列在启动后这段时间内**不消费任何任务**，保证首屏渲染与用户首次操作期间完全不与前台争磁盘 IO。
+    this._idleStartAt = Date.now() + IDLE_BOOT_GRACE_MS;
+    this._lastForegroundAt = 0;
+    // 「缓存优先」是**默认行为**：读取先命中内存/持久化缓存，指纹校验与重建一律排入空闲队列
+    // （自带启动保护期 `_idleStartAt` 与前台让路 `_lastForegroundAt`，启动期不直接扫盘）。
+    this._videoCacheDirty = false; // 缓存内容是否有未落盘变更：无变更时预检测不再重复写整份缓存
+    this._videoCacheDirtyKeys = new Set();   // 待写回的路径（增量 upsert）
+    this._videoCacheRemovedKeys = new Set(); // 待删除的路径
+    this._cacheStore = null;       // 数据缓存库（<storageDir>\cache.db），惰性打开
+    this._cacheBackendMode = '';   // 'db' | 'mem'：首次使用时判定一次（mem = 库不可用，退化纯内存不落盘）
+    this._settingsStore = null;    // 设置库（<storageDir>\settings.db），惰性打开
+    this._settingsMode = '';       // 'db' | 'mem'
+    this._lnkCache = new Map();    // .lnk 解析结果缓存（lnk 路径 → { mtimeMs, target }），lnk 未变则免重复解析
+    this._lnkParser = undefined;   // .lnk 解析器（惰性取底座引擎实现）
+    this._txtTree = null;
+    this._txtTreeSeq = 0;      // 配置树的代际号：定向更新会 +1，用来作废在跑的异步全量结果
+    this._txtTreeTruncated = false;
+    this._logTruncated = false;
+    // ⚠ 这里**不要**排队 video_cache 失效清理：清理是维护性任务，不该占据启动。
+    //   全量同步跑会把冷态事件循环冻住，窗口画出来也点不动。
+    //   故排到窗口就绪后 15 秒的空闲期增量执行（见 gcVideoCacheIdle：限量 + 细让路 + 批间小睡）。
+    this._txtTreeRoot = null;
+    this._projectsCache = null;
+    this._projectsInflight = null;   // 进行中的 listProjectsAsync（并发合并，避免同一份扫描跑多遍）
+    this._projectsSeq = 0;           // 刷新代际：force 后令在跑的旧任务结果作废
+    this._lastFreshTiming = null;    // isScanCacheFreshAsync 的分段耗时，供启动日志定位瓶颈
+    this._versionsCache = new Map();
+    this._versionsFp = new Map(); // 各配置版本列表的「目录级指纹」，list_versions 入口核对自动失效
+    this._scanCache = new Map();
+    this._scanLoadedRoot = '';
+    this._scanDirty = false;
+    this._scanDirtyKeys = new Set();   // 待写回的指纹键（增量 upsert）
+    this._scanRemovedKeys = new Set(); // 待删除的指纹键
+    // 日志 txt 缓存：刷新配置时一次性收集全部日志，供日期分支/对应关系直接使用
+    this._logCache = null;
+    this._logCacheRoot = '';
+    // 水印主流水印固化缓存：按 root 隔离加载，换工作目录时重置（_wmCacheLoadedRoot !== root 视为未加载）
+    this._wmCache = null;
+    this._wmEnabled = null; // 项目是否启用主流水印判定（root+'\u0000'+项目 -> true/false）
+    this._wmCacheLoadedRoot = null;
+    // 任务管理：实时捕获 ps1 输出并推送，支持多任务与停止排队任务
+    this.tasks = new Map();
+    this.taskSeq = 0;
+    this.onTasksChanged = null; // 由 main 进程注入，用于向渲染进程推送任务快照
+    this.onVersionsChanged = null; // 由 main 进程注入：配置文件写操作后广播，供前端即时自愈
+    // 排队调度：同一时刻仅运行一个任务，其余按创建顺序排队（由软件安排制作顺序，不依赖抢锁）
+    this._taskQueue = [];
+    this._runningTaskId = null;
+    // 计划序号：新建任务入队时递增分配，暂停任务保留、启动任务移除、拖拽/置顶重排后重算。
+    // UI 显示与「继续」插队位置都以此为准（暂停任务随队列推进自然前移，成为下一个后停住，新任务可越过）
+    this._planSeq = 0;
+  }
+
+  // ── 库路径：两个库与引导文件同目录（扁平布局），一律由 storageDir 派生，不做重算 ──
+  get cacheDbPath() {
+    return this.storageDir ? path.join(this.storageDir, 'cache.db') : '';
+  }
+
+  get settingsDbPath() {
+    return this.storageDir ? path.join(this.storageDir, 'settings.db') : '';
+  }
+
+  // Node 引擎根目录：由 main 按形态动态解析传入（源码形态 app\engines，分发形态 resources\Engines）；未传入时按本文件所在目录同级探测作为兜底
+  get enginesDir() {
+    if (this.enginesDirFixed) return this.enginesDirFixed;
+    const parent = __dirname;
+    // 源码形态为 app\engines，分发形态为 resources\Engines：逐一探测并取回真实大小写
+    for (const name of ['engines', 'Engines']) {
+      const cand = path.join(parent, name);
+      try { if (fs.existsSync(cand)) return fs.realpathSync(cand); } catch (e) {}
+    }
+    return path.join(parent, 'engines');
+  }
+
+  /**
+   * 往任务日志（任务窗口里那份）加一行 —— 全项目唯一入口。
+   * 判空 / 去重 / 行数上限三件事只在这里维护。
+   * @param {object} task 任务对象（需有 log 数组）
+   * @param {string} line 一行文本（不含换行）
+   * @param {{dedupe?:boolean, cap?:number}} [o] dedupe：与最后一行相同则不写；cap：行数上限（默认 2000）
+   */
+  _taskLog(task, line, o) {
+    if (!task || !task.log) return false;
+    const opt = o || {};
+    const text = String(line == null ? '' : line);
+    if (opt.dedupe && task.log[task.log.length - 1] === text) return false;
+    const cap = opt.cap || 2000;
+    if (task.log.length >= cap) task.log.splice(0, task.log.length - cap + 1);
+    task.log.push(text);
+    return true;
+  }
+
+  // 运行日志出口（懒加载；写日志永不影响主流程）
+  _lg(verb, action, summary, data) {
+    try { this._ensureRunLog().logEvent(verb, action, summary, data); } catch (e) {}
+  }
+  // runlog 单例（懒加载）。⚠ 这里**不读设置库**：本方法会在启动关键路径上被调用，
+  // 而读 settings.db 需要同步开库（启动期硬约束禁止）→ 级别恢复另走空闲队列（见 _restoreLogLevel）。
+  _ensureRunLog() {
+    if (!this._runLog) this._runLog = require(path.join(this.enginesDir, 'base', 'runlog.js'));
+    return this._runLog;
+  }
+  // 引擎原始行 → engine-<date>.log（唯一落盘方 = 主进程）。
+  // stdout 与 stderr 的每一行都落，任务置为终态后也不丢（内存 500 行窗口之外的后续行、
+  // 崩溃前最后输出的唯一去处）；ffmpeg 进度类高频行在 runlog 内按秒采样。
+  _engineLine(tag, line) {
+    try { this._ensureRunLog().engineLine(tag, line); } catch (e) {}
+  }
+  _engineMark(tag, what) {
+    try { this._ensureRunLog().engineTaskMark(tag, what); } catch (e) {}
+  }
+  // 任务 env 的业务字段快照 —— 还原「成片命名 / 输出目录 / 续跑范围」的唯一凭据，任务记录一旦被清除就再也没有别处留存了。
+  _envBrief(env) {
+    const E = env || {};
+    const keys = ['REPLICA_TXT', 'REPLICA_OUTPUT_DIR', 'BATCH_COUNT', 'BATCH_GROUP', 'BATCH_SUBMIT_TS',
+      'BATCH_TXT_PREFIX', 'BATCH_SUFFIX_MARK', 'BATCH_PRODUCER', 'BATCH_ONLY_NAMES', 'BATCH_ONLY_INDEX',
+      'REPLICA_ONLY_NAMES', 'REPLICA_ONLY_NAME', 'REPLICA_SUBMIT_TS',
+      'MASK_ONLY_NAMES', 'MASK_RAW_DIRS', 'MASK_THEMES', 'MASK_OUTPUT_DIR'];
+    const out = {};
+    for (const k of keys) { const v = E[k]; if (v !== undefined && v !== null && String(v) !== '') out[k] = String(v).slice(0, 240); }
+    return out;
+  }
+  // 被删产物的可复盘清单（路径 + 大小 + 修改时间）—— 必须在删除之前调用
+  _describeForLog(paths) {
+    try {
+      return this._ensureRunLog().describeFiles(paths);
+    } catch (e) { return { files: [], count: 0, bytes: 0, truncated: false }; }
+  }
+  _humanSize(n) {
+    try {
+      return this._ensureRunLog().humanSize(n);
+    } catch (e) { return String(n) + ' B'; }
+  }
+
+  // 引擎入口文件；不存在返回空串（调用方据此判定引擎不可用）
+  _engineRunnerPath() {
+    const d = this.enginesDir;
+    if (!d) return '';
+    const p = path.join(d, 'engine-runner.js');
+    try { return fs.existsSync(p) ? p : ''; } catch (e) { return ''; }
+  }
+
+  // 传给任务的缓存环境变量：引擎直读同一个库（<storageDir>\cache.db），无中间文件
+  _cacheEnvBase() {
+    return { VL_CACHE_DB: this.cacheDbPath || '' };
+  }
+
+  // 引擎是否为当前执行路径：引擎入口文件就绪即可用
+  _nodeEnginePrimary() {
+    return !!this._engineRunnerPath();
+  }
+
+  // 任务是否可分发到内置引擎：未知任务类型一律不分发
+  shouldUseNodeEngine(type) {
+    if (!type) return false;
+    return this._nodeEnginePrimary();
+  }
+
+  getRoot() { return this.root; }
+
+  setRoot(newRoot) {
+    // 相同路径（如启动时 ensureConfig 每次都调用 setRoot(同 root)）：仅同步内存，不清缓存——
+    // 否则会清掉已保存的主流水印设置（watermark_cache 被误删，用户需重新设置）
+    if (String(newRoot || '') === String(this.root || '')) {
+      this.root = newRoot || '';
+      return;
+    }
+    // 更换工作目录（即使重选相同目录）：仅清内存触发重载，不物理删除文件——水印/默认分组数按 root+项目 隔离保存，属设置数据，不能被换目录/清缓存抹掉
+    this._wmCache = null;
+    this._wmCacheLoadedRoot = null;
+    this.root = newRoot;
+    this._videoCache = null;
+    this._videoInfoCache.clear();
+    this._invalidateCaches();
+    // 切根时清理与 root 绑定的缓存
+    this._hasOutputMemo.clear();
+    this._replicaLogCache = null;
+    this._lnkCache.clear();
+    this._scanCache = new Map();
+    this._scanLoadedRoot = '';
+    this._scanDirty = false;
+    this._scanDirtyKeys.clear();
+    this._scanRemovedKeys.clear();
+    // 成片索引随工作目录重置：清内存并取消进行中的后台重建，避免旧目录写入新缓存
+    this._clipIndex = new Map();
+    this._clipIndexRoot = '';
+    this._clipIndexDirty = false;
+    // 预检测缓存库随 root 重建连接：root 前缀隔离在库内以 gcPlan / 载入过滤体现
+    if (this._cacheStore) { try { this._cacheStore.close(); } catch (e) {} }
+    this._cacheStore = null;
+    this._cacheBackendMode = '';
+    this._videoCacheDirtyKeys.clear();
+    this._videoCacheRemovedKeys.clear();
+    this._rebuildingClip = false;
+    // 预检测随工作目录取消：旧路径的探测结果不写入新目录缓存
+    this._precheckToken++;
+  }
+
+  // 手动取消进行中的预检测（前端"缩到后台"后点击 ✕、或再次重置/换路径时自动取消防重复）
+  cancelPrecheck() {
+    this._precheckToken++;
+    return { ok: true };
+  }
+
+  // 清理项目/TXT 相关内存缓存（保存配置、重建列表时调用；不清持久化指纹缓存）
+  // dropPersist=true 时连持久化条目一并删除 —— 供「强制重扫」（force）使用：
+  //   否则内存清了、持久化指纹仍在，重扫会直接读回旧缓存，force 语义失效。
+  _invalidateCaches(dropPersist = false) {
+    this._txtTree = null;
+    this._txtTreeRoot = null;
+    this._projectsCache = null;
+    this._projectsInflight = null;
+    this._projectsSeq = (this._projectsSeq || 0) + 1;   // 在跑的旧任务结果作废
+    this._versionsCache.clear();
+    this._versionsFp.clear();
+    this._logCache = null;
+    this._logCacheRoot = '';
+    if (dropPersist && this._useDbCache()) {
+      try { this._cacheStore.removeKv('log_index:' + this.root); } catch (e) {}
+      try { this._cacheStore.removeKv('txt_tree:' + this.root); } catch (e) {}
+    }
+  }
+
+  // 配置文件写操作统一收口：清缓存 + 广播，前端据此即时自愈版本/日期分支/侧栏徽章。
+  // ⚠ 关键是「刚存的配置前端必须立刻能看到」：用户已在交互，此后按真实语义读取，不能继续吃启动期缓存。
+  _markConfigModified(...paths) {
+    const list = paths.filter(Boolean);
+    // 主流水印按项目统计，配置变更后重算
+    for (const p of list) {
+      try {
+        const pr = this._projectOf(p);
+        if (pr && this._wmCache) delete this._wmCache[this.root + '\u0000' + pr];
+      } catch (e) {}
+    }
+    let merged = 0;
+    for (const p of list) { try { if (this._upsertTxtTreeEntry(p)) merged++; } catch (e) {} }
+    if (!list.length || merged < list.length) {
+      // 有未并入的变更（或批量变更）→ 丢弃持久化配置树，保证下次读取是真扫结果
+      try { if (this._useDbCache()) this._cacheStore.removeKv('txt_tree:' + this.root); } catch (e) {}
+      this._invalidateCaches();
+    } else {
+      // ✅ 并入完整：**保留**更新后的配置树（_upsertTxtTreeEntry 已把它写回持久化）。
+      //    ⚠ 这里不要无条件 _invalidateCaches()：会把刚并入并落盘的树清掉 —— 而新增/改动配置
+      //    常发生在二级/三级目录、**不改变一级目录 mtime**（见上方注释）→ 指纹不变 → 只能失效「项目列表 / 版本 / 日志」等派生缓存。
+      this._projectsCache = null;
+      this._projectsInflight = null;
+      this._projectsSeq = (this._projectsSeq || 0) + 1;   // 在跑的旧任务结果作废
+      this._versionsCache.clear();
+      this._versionsFp.clear();
+      this._logCache = null;
+      this._logCacheRoot = '';
+    }
+    if (typeof this.onVersionsChanged === 'function') { try { this.onVersionsChanged(); } catch (e) {} }
+  }
+
+  // 配置写操作后把该文件**就地并入**配置树缓存（增量刷新）：列表与版本立刻反映新/改/删的配置，无需等下一次全量扫描。返回是否已并入。
+  _upsertTxtTreeEntry(filePath) {
+    if (!Array.isArray(this._txtTree) || this._txtTreeRoot !== this.root) return false;
+    const full = path.resolve(String(filePath || ''));
+    const rel = path.relative(this.root, full);
+    if (!rel || rel.startsWith('..')) return false;
+    const segs = rel.split(path.sep);
+    if (segs.length < 2) return false;                        // 必须位于一级项目目录下才算配置
+    const pdir = path.join(this.root, segs[0]);
+    const name = path.basename(full, path.extname(full));
+    const parts = segs.slice(1, -1);
+    const idx = this._txtTree.findIndex((t) => t && t.full === full);
+    let st = null;
+    try { st = fs.statSync(full); } catch (e) { st = null; }
+    if (!st) {                                                // 文件已不在 → 从缓存移除
+      if (idx < 0) return false;
+      this._txtTree.splice(idx, 1);
+    } else {
+      const entry = { pdir, name, full, parts, mtimeMs: st.mtimeMs, size: st.size, hash: this._hashFor(full, st.mtimeMs, st.size) };
+      if (idx >= 0) this._txtTree[idx] = entry; else this._txtTree.push(entry);
+    }
+    this._saveTxtTree(this._txtTree, '');                     // 增量更新不带全量指纹
+    this._projectsCache = null;                               // 项目列表缓存作废，下次重建即含新项
+    return true;
+  }
+
+  // ── 扫描指纹缓存（scan_cache 表）：文件 (mtime,size) 未变则复用已算的 hash，变了才重读 ──
+  // 库不可用时退化为纯内存：本次会话内仍可复用，仅跨启动失效（代价只是首次扫描重算指纹）
+  _loadScanCache() {
+    if (this._scanLoadedRoot === this.root) return;
+    this._scanLoadedRoot = this.root;
+    this._scanCache = new Map();
+    this._scanDirtyKeys.clear();
+    this._scanRemovedKeys.clear();
+    if (!this._useDbCache()) return;
+    try {
+      for (const row of this._cacheStore.listScans(this.root + '\n')) {
+        let extra = {};
+        try { extra = JSON.parse(row.payload || '{}') || {}; } catch (e) { extra = {}; }
+        this._scanCache.set(row.key, Object.assign({ mtimeMs: 0, size: 0 }, extra, { hash: row.fingerprint }));
+      }
+    } catch (e) {}
+  }
+
+  // 增量落盘：只写新增/变更的键、删失效键（不重写整份 JSON）
+  _saveScanCache() {
+    this._scanDirty = false;
+    if (!this._useDbCache()) { this._scanDirtyKeys.clear(); this._scanRemovedKeys.clear(); return; }
+    const store = this._cacheStore;
+    try {
+      store.transaction(() => {
+        for (const k of this._scanDirtyKeys) {
+          const v = this._scanCache.get(k);
+          if (!v) continue;
+          store.setScan(k, String(v.hash == null ? '' : v.hash), JSON.stringify({ mtimeMs: v.mtimeMs || 0, size: v.size || 0 }));
+        }
+        if (this._scanRemovedKeys.size) store.deleteScans(Array.from(this._scanRemovedKeys));
+      });
+    } catch (e) {}
+    this._scanDirtyKeys.clear();
+    this._scanRemovedKeys.clear();
+  }
+
+  // ── 日志 txt 缓存（cache_kv，键 log_index:<root>）：刷新配置时一并收集 ──
+  // 存 { files, fp }：fp 仅供排查参考，不做指纹比对。
+  // 兼容旧格式（纯数组）——读到数组时视为无指纹，回退一次全量扫描后自动升级。
+  _loadLogCache() {
+    if (this._logCacheRoot === this.root) return;
+    this._logCacheRoot = this.root;
+    this._logCache = { files: [], fp: '' };
+    if (!this._useDbCache()) return;
+    try {
+      const raw = this._cacheStore.getKv('log_index:' + this.root);
+      if (!raw) return;
+      const data = JSON.parse(raw);
+      if (Array.isArray(data)) this._logCache.files = data;                       // 旧格式
+      else if (data && Array.isArray(data.files)) {                               // 新格式
+        this._logCache.files = data.files;
+        this._logCache.fp = String(data.fp || '');
+      }
+    } catch (e) {}
+  }
+
+  _saveLogCache() {
+    if (!this._useDbCache()) return;
+    try {
+      const payload = { files: this._logCache.files || [], fp: this._logCache.fp || '' };
+      this._cacheStore.setKv('log_index:' + this.root, JSON.stringify(payload));
+    } catch (e) {}
+  }
+
+  // 一次性收集根目录下所有非复刻日志 txt（刷新时写入日志缓存）。
+  // 返回 { files:[{ project, name, path, date, config }] }；归属规则：date 取路径中最近的 4 位 MMdd 目录，project 取路径第一级目录。
+  _collectLogFiles(force = false) {
+    // **缓存优先（默认行为）**：内存 → 持久化缓存直接用，随后排入空闲队列做后台校验；
+    // 只有「缓存缺失（首次运行 / 新机器）」或 force（用户主动刷新）才真扫。
+    // 没有「启动期」专有分支：启动与运行走同一条路，行为不随 60 秒边界变化。
+    if (!force) {
+      const cached = (this._logCache && this._logCacheRoot === this.root) ? this._logCache : this._cachedLogFiles();
+      if (cached && cached.files && cached.files.length) { this._enqueueScanVerify(); return cached; }
+    }
+    const files = [];
+    if (this.root && fs.existsSync(this.root)) {
+      const skip = new Set(EXCLUDED_TOP_DIRS);
+      for (const full of walkFiles(this.root)) {
+        const base = path.basename(full);
+        if (!base.toLowerCase().endsWith('.txt')) continue;
+        if (!LOG_NAME_RE.test(base)) continue;
+        const config = this._configNameFromLog(full);
+        if (!config) continue; // 复刻/无归属日志单独处理
+        const rel = path.relative(this.root, full).split(path.sep);
+        if (skip.has(rel[0])) continue;
+        files.push({ project: rel[0], name: base, path: full, date: this._dateBranchOf(full), config });
+      }
+    }
+    this._logCache = { files, fp: this._logTreeFingerprint() };
+    this._logCacheRoot = this.root;
+    this._saveLogCache();
+    return this._logCache;
+  }
+
+  // 日志树指纹：根目录 + 各一级目录（排除项除外）的 mtimeMs 摘要。目录增删子项会更新父目录 mtime —— 够用且只读少量目录（非全量 walkFiles）。
+  _logTreeFingerprint() {
+    try {
+      const parts = [];
+      const st = fs.statSync(this.root);
+      parts.push(String(st.mtimeMs));
+      const skip = new Set(EXCLUDED_TOP_DIRS);
+      for (const ent of fs.readdirSync(this.root, { withFileTypes: true })) {
+        if (!ent.isDirectory()) continue;
+        if (ent.name.startsWith('.') || ent.name.startsWith('_') || skip.has(ent.name)) continue;
+        let m = '';
+        try { m = String(fs.statSync(path.join(this.root, ent.name)).mtimeMs); } catch (e) { m = '?'; }
+        parts.push(ent.name + ':' + m);
+      }
+      return parts.join('|');
+    } catch (e) { return ''; }
+  }
+
+  // 日志树指纹（异步版）：语义与 _logTreeFingerprint 完全一致，供异步路径使用。
+  // ⚠ 启动路径必须用这个：工作目录在机械盘时，系统重启后首次同步访问该盘可冻结主进程上百秒
+  //   （窗口、托盘全都出不来）；异步版只让出等待、不阻塞。
+  async _logTreeFingerprintAsync() {
+    try {
+      const parts = [];
+      const st = await fs.promises.stat(this.root);
+      parts.push(String(st.mtimeMs));
+      const skip = new Set(EXCLUDED_TOP_DIRS);
+      let ents = [];
+      try { ents = await fs.promises.readdir(this.root, { withFileTypes: true }); } catch (e) { ents = []; }
+      for (const ent of ents) {
+        if (!ent.isDirectory()) continue;
+        if (ent.name.startsWith('.') || ent.name.startsWith('_') || skip.has(ent.name)) continue;
+        let m = '';
+        try { m = String((await fs.promises.stat(path.join(this.root, ent.name))).mtimeMs); } catch (e) { m = '?'; }
+        parts.push(ent.name + ':' + m);
+      }
+      return parts.join('|');
+    } catch (e) { return ''; }
+  }
+
+  // 文件所属日期分支：取相对根目录各路径段中「最近的 4 位 MMdd 目录」，否则返回空串
+  _dateBranchOf(full) {
+    const rel = path.relative(this.root, full).split(path.sep);
+    let d = '';
+    for (const seg of rel) if (/^\d{4}$/.test(seg)) d = seg;
+    return d;
+  }
+
+  // 文件所属项目：取相对根目录的第一段目录名
+  _projectOf(p) {
+    try { return path.relative(this.root, path.resolve(String(p))).split(path.sep)[0]; }
+    catch (e) { return ''; }
+  }
+
+  // ⚠ 键分隔符禁用 \u0000：SQLite 的 TEXT 在 NUL 处截断，会把所有文件指的纹键
+  //   压成同一个「根目录」字符串（既互相覆盖、又读不回来），导致指纹缓存全量失效。
+  //   改用 \n —— Windows 路径非法字符，路径中不可能出现，语义等价且可安全持久化。
+  _scanKey(full) { return this.root + '\n' + full; }
+
+  _hashFor(full, mtimeMs, size) {
+    this._loadScanCache();
+    const key = this._scanKey(full);
+    const cached = this._scanCache.get(key);
+    if (cached && cached.mtimeMs === mtimeMs && cached.size === size) return cached.hash;
+    const h = contentHash(full);
+    this._scanCache.set(key, { mtimeMs, size, hash: h });
+    this._scanDirty = true;
+    this._scanDirtyKeys.add(key);
+    return h;
+  }
+
+  // 一次性收集根目录下所有项目的配置 TXT（每项目仅递归扫描一次）：结果按「目录树指纹」持久化复用。
+  // 指纹 = 各一级项目目录的 mtimeMs 摘要：目录增删子项即变化；指纹未变则跳过全部遍历与读文件。
+  _collectAllTxt(force) {
+    // **缓存优先（默认行为）**：内存 → 持久化缓存直接用，并排入空闲队列做后台校验；
+    // 仅「缓存缺失」或 force（用户主动刷新）才真扫。
+    if (!force) {
+      const cached = (this._txtTree && this._txtTreeRoot === this.root) ? this._txtTree : this._cachedTxtTree();
+      if (cached) { this._enqueueScanVerify(); return cached; }
+    }
+    const fp = this._logTreeFingerprint();   // 只有真要扫时才算指纹
+    this._loadScanCache();
+    const out = [];
+    const active = new Set();
+    const stopped = false;   // 同步版不中断（保留同名变量，与异步版共用落盘逻辑）
+    if (fs.existsSync(this.root) && fs.statSync(this.root).isDirectory()) {
+      let entries;
+      try { entries = fs.readdirSync(this.root); } catch (e) { entries = []; }
+      for (const name of entries) {
+        if (name.startsWith('.') || name.startsWith('_')) continue;
+        if (EXCLUDED_TOP_DIRS.has(name)) continue;
+        const pdir = path.join(this.root, name);
+        if (!fs.existsSync(pdir) || !fs.statSync(pdir).isDirectory()) continue;
+        const files = walkFiles(pdir);
+        for (const full of files) {
+          if (!path.basename(full).toLowerCase().endsWith('.txt')) continue;
+          if (LOG_NAME_RE.test(path.basename(full))) continue;
+          if (BACKUP_NAME_RE.test(path.basename(full))) continue;
+          let st;
+          try { st = fs.statSync(full); } catch (e) { continue; }
+          const mtimeMs = st.mtimeMs, size = st.size;
+          const hash = this._hashFor(full, mtimeMs, size);
+          active.add(this._scanKey(full));
+          const rel = path.relative(pdir, path.dirname(full));
+          const parts = rel === '' ? [] : rel.split(path.sep);
+          out.push({ pdir, name: path.basename(full, path.extname(full)), full, parts, mtimeMs, size, hash });
+        }
+      }
+    }
+    this._txtTree = out;
+    this._txtTreeRoot = this.root;
+    this._txtTreeSeq = (this._txtTreeSeq || 0) + 1;   // 作废扫描期间在跑的异步全量结果
+    if (this._scanDirty) {
+      const prefix = this.root + '\n';
+      for (const k of [...this._scanCache.keys()]) {
+        if (k.startsWith(prefix) && !active.has(k)) { this._scanCache.delete(k); this._scanRemovedKeys.add(k); }
+      }
+      this._scanDirty = false;
+      this._saveScanCache();
+    }
+    if (!stopped) this._saveTxtTree(out, fp);   // ★ 被中断则不写缓存（避免残缺结果覆盖完整数据）
+    return out;
+  }
+
+  // 配置 TXT 树缓存原文（items + 指纹）：只读库、零 stat。启动快速路径与指纹校验都用它。
+  _txtTreeCacheRaw() {
+    if (!this._useDbCache()) return null;
+    try {
+      const raw = this._cacheStore.getKv('txt_tree:' + this.root);
+      if (!raw) return null;
+      const data = JSON.parse(raw);
+      if (!data || !Array.isArray(data.items)) return null;
+      return { items: data.items, fp: String(data.fp || '') };
+    } catch (e) { return null; }
+  }
+
+  // 把「配置树 / 日志索引」的后台校验排入空闲队列（后台检测 + 自愈）。
+  // ⚠ 必须**无条件重建**，不能只靠指纹判变：指纹只看「根 + 一级目录 mtime」，而外部新增/删除
+  //   几乎都发生在「项目\月\日」这类**子目录**里 —— 子目录变化不改变父目录 mtime，指纹发现不了。
+  _enqueueScanVerify() {
+    this._verifyEnqueue('scanverify', this.root, async () => {
+      // 频率控制：距上次全量重扫不足间隔就跳过
+      let lastFull = 0;
+      try { if (this._useDbCache()) lastFull = Number(this._cacheStore.getKv('scan_full_at:' + this.root) || 0) || 0; } catch (e) { lastFull = 0; }
+      if (lastFull && (Date.now() - lastFull) < SCAN_FULL_MIN_INTERVAL_MS) return;
+      // 让路/中断：**只在有任务运行/排队时**中断（执行层）——前台活动只影响"何时开始"（队列调度层的 _idleKick），不该让已经开始的重扫半途而废。
+      const shouldStop = () => {
+        try { return !!(this.hasRunningTask() || this.hasQueuedTask()); } catch (e) { return false; }
+      };
+      const _t = Date.now();
+      let rebuilt = false;
+      // 收走送站中断留下的 `.deleting` 临时件（独立于重扫成败，失败了也不影响重扫判定）
+      try { await this._sweepDeletingResidue(); } catch (e) {}
+      try {
+        // 按 truncated 判定成败，不完整不记时间
+        try { await this._collectAllTxtAsync({ force: true, shouldStop }); rebuilt = this._txtTreeTruncated !== true; } catch (e) { rebuilt = false; }
+        if (rebuilt) {
+          try { await this._collectLogFilesAsync({ force: true, shouldStop }); rebuilt = this._logTruncated !== true; } catch (e) { rebuilt = false; }
+        }
+      } catch (e) { /* 重建失败不记时间，留待下次空闲重试 */ }
+      if (!rebuilt) return;                                          // 被中断/不完整：不记时间，下次继续补
+      try { if (this._useDbCache()) this._cacheStore.setKv('scan_full_at:' + this.root, String(Date.now())); } catch (e) {}
+      this._projectsCache = null;
+      this._replicaLogCache = null;   // 复刻日志清单同步重算
+      try { this._emitTasks(); } catch (e) {}
+      this._notifyTreeChanged();   // 后台重建完成 → 前端重拉列表（外部改动/自愈的最终可见结果）
+      try {
+        if (this._lg) this._lg('MOD', 'scan.verify',
+          '空闲期已重建配置/日志索引（无条件重扫，不依赖目录树指纹）· ' + (Date.now() - _t) + 'ms',
+          { ms: Date.now() - _t });
+      } catch (e) {}
+    });
+  }
+
+  // 配置 TXT 树持久化（cache_kv，键 txt_tree:<root>）：存 { fp, items }
+  // fp 为"上次扫描时目录长什么样"的记录，仅供排查；读取不做指纹比对
+  // （指纹粒度与写入粒度不匹配，比对反而会命中旧值）——校验统一交给 _enqueueScanVerify。
+
+  _saveTxtTree(items, fp) {
+    if (!this._useDbCache()) return;
+    try {
+      this._cacheStore.setKv('txt_tree:' + this.root, JSON.stringify({ fp: fp || '', items: items || [] }));
+    } catch (e) {}
+  }
+
+  // ── 启动期只读缓存（「直接用缓存里的内容渲染前端，不要动 磁盘，
+  //    哪怕 磁盘里的内容全没了，也是之后再自愈/重新检测的事」）──
+  // 缓存命中 → 立即返回；**缓存没有 → 返回 null，由调用方按空列表渲染**，绝不回退到扫描。
+  _cachedTxtTree() {
+    if (this._txtTree && this._txtTreeRoot === this.root) return this._txtTree;
+    const raw = this._txtTreeCacheRaw();
+    if (raw) {
+      this._txtTree = raw.items;
+      this._txtTreeRoot = this.root;
+      this._enqueueScanVerify();
+      return raw.items;
+    }
+    return null;
+  }
+
+  _cachedLogFiles() {
+    if (this._logCache && this._logCacheRoot === this.root) return this._logCache;
+    this._loadLogCache();
+    if (this._logCache && this._logCacheRoot === this.root && this._logCache.files && this._logCache.files.length) {
+      this._enqueueScanVerify();
+      return this._logCache;
+    }
+    return null;
+  }
+
+  // 缓存缺失（首次运行 / 新机器 / 缓存被清）→ 后台重建（扫描在空闲队列里做，不阻塞渲染）
+  _enqueueScanRebuild() {
+    this._verifyEnqueue('scanrebuild', this.root, async () => {
+      try {
+        try { await this._collectAllTxtAsync({ force: true }); } catch (e) {}
+        try { await this._collectLogFilesAsync({ force: true }); } catch (e) {}
+      } catch (e) { /* 失败留待下次空闲重试 */ }
+      this._projectsCache = null;
+      try { this._emitTasks(); } catch (e) {}
+      this._notifyTreeChanged();   // 通知前端重拉项目/配置列表（否则界面继续吃旧列表）
+      try {
+        if (this._lg) this._lg('ADD', 'scan.rebuild', '配置树/日志索引缺失 → 已后台重建并刷新界面', { root: this.root });
+      } catch (e) {}
+    });
+  }
+
+  // 配置树/日志索引发生实质变化后通知前端重拉列表（main 注入 onVersionsChanged → versions_changed）
+  _notifyTreeChanged() {
+    try { if (typeof this.onVersionsChanged === 'function') this.onVersionsChanged(); } catch (e) {}
+  }
+
+  // 扫描缓存是否新鲜（异步版，启动专用）：判定缓存是否可直接用。
+  async isScanCacheFreshAsync() {
+    const timing = { db: 0, fp: 0, kv: 0, total: 0 };
+    const _all = process.hrtime.bigint();
+    const _ms = (t0) => Math.round(Number(process.hrtime.bigint() - t0) / 1e6);
+    // 判定结果落进 _lastFreshTiming.reason：缓存命中（hit:idx / hit:tree）或未命中的具体分支。
+    // 未命中时把关键量（fp 长度、缓存 fp、kv 长度）一并带上，便于一次冷启动就定位到根因。
+    let reason = '';
+    try {
+      if (!this.root) { reason = 'no-root'; return false; }
+      let t0 = process.hrtime.bigint();
+      const useDb = this._useDbCache();
+      timing.db = _ms(t0);
+      if (!useDb) { reason = 'no-db'; return false; }
+      // **不算指纹（默认行为）**：指纹要 stat 根 + 各一级目录，冷态机械盘上开销明显。
+      // 有持久化缓存即视为新鲜 → 主窗口直接显示、扫描小窗不弹；真正的校验交给空闲队列
+      // （_enqueueScanVerify：无条件重扫 + 频率控制 + 前台让路），发现变化再重建并刷新界面（自愈）。
+      t0 = process.hrtime.bigint();
+      const rawIdx = this._cacheStore.getKv('log_index:' + this.root);
+      const rawTree = this._cacheStore.getKv('txt_tree:' + this.root);
+      timing.kv = _ms(t0);
+      timing.idxLen = rawIdx ? rawIdx.length : 0;
+      timing.treeLen = rawTree ? rawTree.length : 0;
+      if (rawIdx || rawTree) { this._enqueueScanVerify(); reason = 'hit:cache'; return true; }
+      reason = 'no-cache';
+      return false;
+    } catch (e) {
+      reason = 'throw:' + ((e && e.message) || e);
+      return false;
+    } finally {
+      timing.total = _ms(_all);
+      timing.reason = reason;
+      this._lastFreshTiming = timing;
+    }
+  }
+
+  // 是否已有完整的项目列表结果（供 main 判断「唤起时是否还需要扫描」）
+  get hasProjectsCache() { return !!this._projectsCache; }
+
+  // ── 异步扫描路径（启动专用）──
+  // 与同步版同语义，但全程用 fs.promises + 分片让位，不阻塞主进程事件循环。
+  // 缓存未命中（首次启动 / 目录结构变化）时走这里，窗口可先显示、扫描期间 UI 不卡。
+  async _collectAllTxtAsync(opts) {
+    const force = !!(opts && opts.force);
+    // **缓存优先（默认行为）**：内存 → 持久化缓存直接用，并排入空闲队列做后台校验；
+    // 仅「缓存缺失」或 force（用户主动刷新配置）才真扫 —— 启动与运行同一条路。
+    if (!force) {
+      const cached = (this._txtTree && this._txtTreeRoot === this.root) ? this._txtTree : this._cachedTxtTree();
+      if (cached) { this._enqueueScanVerify(); return cached; }
+    }
+    // 只有真要扫时才计算指纹（读取路径不算 —— 那是"启动期零 IO"的前提）：指纹随扫描结果一起落库，仅作为"上次扫描时目录长什么样"的记录。
+    const fp = await this._logTreeFingerprintAsync();
+    this._loadScanCache();
+    const out = [];
+    const active = new Set();
+    const onTick = (opts && opts.onTick) || null;
+    const shouldStop = (opts && opts.shouldStop) || null;
+    const seq0 = this._txtTreeSeq || 0;   // 扫描期间若有定向更新，本次结果作废
+    let stopped = false;   // 被中断（用户操作/任务抢占）→ 本次结果不覆盖内存、不落盘
+    let rootOk = false;
+    try { const st = await fs.promises.stat(this.root); rootOk = st.isDirectory(); } catch (e) { rootOk = false; }
+    if (rootOk) {
+      let entries = [];
+      try { entries = await fs.promises.readdir(this.root); } catch (e) { entries = []; }
+      for (const name of entries) {
+        if (shouldStop && shouldStop()) { stopped = true; break; }
+        if (name.startsWith('.') || name.startsWith('_')) continue;
+        if (EXCLUDED_TOP_DIRS.has(name)) continue;
+        const pdir = path.join(this.root, name);
+        let isDir = false;
+        try { isDir = (await fs.promises.stat(pdir)).isDirectory(); } catch (e) { isDir = false; }
+        if (!isDir) continue;
+        const files = await walkFilesAsync(pdir, { onTick, shouldStop, onTruncated: () => { stopped = true; } });
+        for (const full of files) {
+          if (!path.basename(full).toLowerCase().endsWith('.txt')) continue;
+          if (LOG_NAME_RE.test(path.basename(full))) continue;
+          if (BACKUP_NAME_RE.test(path.basename(full))) continue;
+          let st2;
+          try { st2 = await fs.promises.stat(full); } catch (e) { continue; }
+          const mtimeMs = st2.mtimeMs, size = st2.size;
+          const hash = await this._hashForAsync(full, mtimeMs, size);
+          active.add(this._scanKey(full));
+          const rel = path.relative(pdir, path.dirname(full));
+          const parts = rel === '' ? [] : rel.split(path.sep);
+          out.push({ pdir, name: path.basename(full, path.extname(full)), full, parts, mtimeMs, size, hash });
+        }
+      }
+    }
+    // 被中断或有定向更新时不覆盖内存树
+    const stale = stopped || (this._txtTreeSeq || 0) !== seq0;
+    if (!stale) {
+      this._txtTree = out;
+      this._txtTreeRoot = this.root;
+      this._txtTreeSeq = seq0 + 1;
+    }
+    this._txtTreeTruncated = stopped;
+    if (this._scanDirty) {
+      const prefix = this.root + '\n';
+      for (const k of [...this._scanCache.keys()]) {
+        if (k.startsWith(prefix) && !active.has(k)) { this._scanCache.delete(k); this._scanRemovedKeys.add(k); }
+      }
+      this._scanDirty = false;
+      this._saveScanCache();
+    }
+    if (!stopped) this._saveTxtTree(out, fp);   // ★ 被中断则不写缓存（避免残缺结果覆盖完整数据）
+    return out;
+  }
+
+  // 异步指纹：命中 (mtime,size) 直接复用；未命中才读文件内容算 hash，并周期性让位
+  async _hashForAsync(full, mtimeMs, size) {
+    this._loadScanCache();
+    const key = this._scanKey(full);
+    const cached = this._scanCache.get(key);
+    if (cached && cached.mtimeMs === mtimeMs && cached.size === size) return cached.hash;
+    let h = null;
+    try { h = crypto.createHash('md5').update(await fs.promises.readFile(full)).digest('hex'); } catch (e) { h = null; }
+    this._scanCache.set(key, { mtimeMs, size, hash: h });
+    this._scanDirty = true;
+    this._scanDirtyKeys.add(key);
+    return h;
+  }
+
+  // 异步版 listProjects：缓存命中时与同步版等价；未命中走异步扫描，不阻塞主进程。
+  // 返回值与 listProjects 完全一致（供 IPC / HTTP 路由替换）。
+  // 前台活动打点：渲染/读取等前台请求会让空闲队列让路（照预检测的「行内优先、后台让路」）
+  _touchForeground() { this._lastForegroundAt = Date.now(); }
+
+  async listProjectsAsync(force = false, opts) {
+    // 缓存读不打前台时间戳
+    if (force) {
+      this._emitScan('clear');
+      // force = 用户主动「刷新配置」：读取端天然绕过缓存（force 透传给收集器），此处只做必要清场。
+      // 只清内存缓存、**持久化缓存保留**：异步扫描期间旧数据仍可兜底（扫描完成后覆盖写回；
+      // 即使扫描中断也不会把列表清空）。
+      this._invalidateCaches(false);
+      this._rebuildClipIndexAsync();
+      try { setImmediate(() => { this._emitScan('mark'); this._warmWatermarkCache(); }); } catch (e) {}
+    }
+    if (!force && this._projectsCache) return this._projectsCache;
+    // 并发合并：启动预热、托盘唤起、前端 IPC / HTTP 首次加载几乎同时调用，不合并则同一份扫描并发跑多遍（各自遍历工作目录 + 读文件），冷态下代价成倍放大。
+    if (!force && this._projectsInflight) return this._projectsInflight;
+    const seq = this._projectsSeq || 0;
+    // ⚠ force 必须**透传给收集器**：否则它们会「指纹未变 → 命中持久化缓存」，刷新等于什么都没做（新增配置位于日期子目录，只改变子目录 mtime，一级目录指纹发现不了）。
+    const copts = force ? Object.assign({}, opts, { force: true }) : opts;
+    const run = (async () => {
+      this._emitScan('walk');
+      await this._collectLogFilesAsync(copts);
+      this._emitScan('log');
+      await this._collectAllTxtAsync(copts);
+      this._emitScan('list');
+      const data = this._buildProjectsData();
+      if (seq === (this._projectsSeq || 0)) this._projectsCache = data;   // 期间被 force 刷新过则丢弃本次结果
+      return data;
+    })();
+    if (!force) {
+      this._projectsInflight = run;
+      const clear = () => { if (this._projectsInflight === run) this._projectsInflight = null; };
+      run.then(clear, clear);
+    }
+    return run;
+  }
+
+  // 异步版日志收集：**缓存优先（默认）**；缓存缺失或 force 才异步遍历
+  async _collectLogFilesAsync(opts) {
+    const forceA = !!(opts && opts.force);
+    if (!forceA) {
+      const cached = (this._logCache && this._logCacheRoot === this.root) ? this._logCache : this._cachedLogFiles();
+      if (cached && cached.files && cached.files.length) { this._enqueueScanVerify(); return cached; }
+    }
+    const files = [];
+    let rootOk = false;
+    let stopped = false;
+    try { rootOk = (await fs.promises.stat(this.root)).isDirectory(); } catch (e) { rootOk = false; }
+    if (rootOk) {
+      const skip = new Set(EXCLUDED_TOP_DIRS);
+      const all = await walkFilesAsync(this.root, Object.assign({}, opts, { onTruncated: () => { stopped = true; } }));
+      for (const full of all) {
+        const base = path.basename(full);
+        if (!base.toLowerCase().endsWith('.txt')) continue;
+        if (!LOG_NAME_RE.test(base)) continue;
+        const config = this._configNameFromLog(full);
+        if (!config) continue;
+        const rel = path.relative(this.root, full).split(path.sep);
+        if (skip.has(rel[0])) continue;
+        files.push({ project: rel[0], name: base, path: full, date: this._dateBranchOf(full), config });
+      }
+    }
+    // 被中断 → 残缺清单不覆盖内存、不落盘
+    this._logTruncated = stopped;
+    if (!stopped) {
+      this._logCache = { files, fp: await this._logTreeFingerprintAsync() };
+      this._logCacheRoot = this.root;
+      this._saveLogCache();
+    }
+    return this._logCache;
+  }
+
+  // 扫描/重建环节状态上报：phase ∈ clear/walk/log/clip/mark/list/done，前端按阶段映射中文提示
+  _emitScan(phase, done, total) {
+    if (typeof this.onScanProgress !== 'function') return;
+    try { this.onScanProgress({ phase: String(phase || ''), done: done || 0, total: total || 0 }); } catch (e) {}
+  }
+
+  listProjects(force = false) {
+    if (force) {
+      this._emitScan('clear');
+      // 同 listProjectsAsync：force 由读取端绕过缓存，此处只清内存缓存、保留持久化兜底
+      this._invalidateCaches(false);
+      // 重建成片索引：后台分批重建（解析日志+写大缓存），不阻塞本次列表返回；搜索仍走按目录惰性命中
+      this._rebuildClipIndexAsync();
+      // 刷新配置时预填充水印缓存：缺失项目归属补算，已有条目不动（后台，不阻塞本次列表返回）
+      try { setImmediate(() => { this._emitScan('mark'); this._warmWatermarkCache(); }); } catch (e) {}
+    }
+    if (!force && this._projectsCache) {
+      return this._projectsCache;
+    }
+    this._emitScan('walk');
+    this._collectLogFiles(force); // 刷新配置时一并收集日志 txt 缓存（force 透传：真扫）
+    this._emitScan('log');
+    const data = this._buildProjectsData(force);
+    this._emitScan('list');
+    this._projectsCache = data;
+    return data;
+  }
+
+  // ── 项目登记表：软件内新建、但还没有任何 TXT 配置的项目 ──
+  // 项目列表按扫描到的 TXT 反推（见 _buildProjectsData），新建项目在放素材前扫不到，故登记进 cache_kv：
+  // 键 = proj_reg:<kind>:<工作根>（batch / mask 是两套工作根，分开存）；只登记名字，路径按当前根现拼。
+  _projRegKey(root, kind) { return root ? ('proj_reg:' + (kind || 'batch') + ':' + root) : ''; }
+  _loadProjReg(root, kind) {
+    const k = this._projRegKey(root, kind);
+    if (!k) return [];
+    if (!this._projRegMem) this._projRegMem = {};
+    if (!this._useDbCache()) return this._projRegMem[k] || [];
+    try {
+      const raw = this._cacheStore.getKv(k);
+      const o = raw ? JSON.parse(raw) : null;
+      return (o && Array.isArray(o.names)) ? o.names.map(String).filter(Boolean) : (this._projRegMem[k] || []);
+    } catch (e) { return this._projRegMem[k] || []; }
+  }
+  _saveProjReg(root, kind, names) {
+    const uniq = Array.from(new Set((names || []).map((x) => String(x || '').trim()).filter(Boolean)));
+    const k = this._projRegKey(root, kind);
+    if (!k) return;
+    if (!this._projRegMem) this._projRegMem = {};
+    this._projRegMem[k] = uniq;                 // 内存兜底：库缓存不可用时本会话内仍生效
+    if (!this._useDbCache()) return;
+    try { this._cacheStore.setKv(k, JSON.stringify({ names: uniq })); } catch (e) {}
+  }
+  _addProjReg(root, kind, name) {
+    const n = String(name || '').trim();
+    if (!n) return;
+    const cur = this._loadProjReg(root, kind);
+    if (!cur.includes(n)) { cur.push(n); this._saveProjReg(root, kind, cur); }
+  }
+  _removeProjReg(root, kind, name) {
+    const n = String(name || '').trim();
+    if (!n) return;
+    const cur = this._loadProjReg(root, kind);
+    if (cur.includes(n)) this._saveProjReg(root, kind, cur.filter((x) => x !== n));
+  }
+  // 核验登记项（批量侧）：目录仍在 → 保留登记（并回报其中「扫描结果里没有的」= 待合并的新建项目）；目录已消失 → 就地摘除（自愈）。
+  _survivingProjReg(scannedNames) {
+    const reg = this._loadProjReg(this.root, 'batch');
+    if (!reg.length) return [];
+    const scanned = scannedNames || new Set();
+    const alive = [], keep = [];
+    for (const n of reg) {
+      let ok = false;
+      try { ok = fs.existsSync(path.join(this.root, n)); } catch (e) { ok = false; }
+      if (ok) { keep.push(n); if (!scanned.has(n)) alive.push(n); }
+    }
+    if (keep.length !== reg.length) this._saveProjReg(this.root, 'batch', keep);
+    return alive;
+  }
+
+  _buildProjectsData(force) {
+    // 未配置工作路径：项目列表为空（连"复刻"虚拟项目也不显示），交给前端引导态
+    if (!this.root) return [];
+    const all = this._collectAllTxt(force);
+    const byProject = new Map();
+    for (const t of all) {
+      if (!byProject.has(t.pdir)) byProject.set(t.pdir, []);
+      byProject.get(t.pdir).push(t);
+    }
+    const dupNames = this._dupNames();
+    const projects = [];
+    for (const [pdir, txs] of byProject) {
+      const names = [...new Set(txs.map((t) => t.name))].sort((a, b) => a.localeCompare(b, 'zh-CN'));
+      const txts = [];
+      for (const name of names) {
+        const versions = this._buildVersionsFromList(name, txs);
+        const latest = versions.length ? versions[0].label : '';
+        // 最新版本无素材路径 → 空白配置（侧栏置顶排序依据）；带水印/排除仍视为空白
+        let empty = false;
+        if (versions.length) {
+          try {
+            // peek：列表渲染只需知道"是否空配置"，缓存未命中时**不读文件**（渲染路径不该有磁盘读）
+            const cfg = this.readConfig(versions[0].path, { peek: true });
+            // ⚠ 只有**命中缓存**的 peek 才可信：未命中时 readConfig 返回乐观结构（带 `_peek`），
+            //   此时"读不出素材路径"只代表**这份配置还没被读过**，不代表它是空白配置。
+            //   不区分会把「还没读过」误判成「空白配置」（前端空白配置恒置顶 → 刷新后置顶、再刷新才回位）。
+            if (cfg && !cfg._peek) {
+              empty = !(cfg.folders || []).some((f) => String(f && typeof f === 'object' ? f.path : f).trim() !== '');
+            }
+          } catch (e) {}
+        }
+        txts.push({ name, latest, count: versions.length, dup: dupNames.has(name), empty });
+      }
+      let mtime = 0;
+      // 项目 mtime：用缓存里各 TXT 的 mtime 聚合（前端只拿它做排序，语义足够），
+      // **不 stat 项目目录** —— 列表渲染路径保持零磁盘访问，与是否"启动期"无关。
+      for (const t of txs) mtime = Math.max(mtime, Number(t.mtimeMs) || 0);
+      projects.push({ name: path.basename(pdir), mtime, txts });
+    }
+    projects.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+    // 合并「软件内新建、尚无 TXT」的项目（项目登记表）：扫描结果里已有的同名项跳过，其余作为空项目加入 —— 用户从软件新建后立刻可见（登记表方法见上方说明）
+    const _scannedNames = new Set(projects.map((p) => p.name));
+    for (const nm of this._survivingProjReg(_scannedNames)) {
+      projects.push({ name: nm, mtime: 0, txts: [], isEmptyProject: true });
+    }
+    projects.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+    // 追加“复刻”虚拟项目：其下两个配置名对应两种复刻模式，仅含日志无配置
+    projects.push(this._buildReplicaProject());
+    return projects;
+  }
+
+  _buildReplicaProject() {
+    const txts = REPLICA_MODES.map((mode) => {
+      const files = this._replicaLogFiles(mode);
+      const latest = files.length ? path.basename(files[files.length - 1]).slice(0, 4) : '';
+      return { name: mode, latest, count: files.length, dup: false, replica: true };
+    });
+    return { name: REPLICA_PROJECT, mtime: 0, txts, replica: true };
+  }
+
+  _dupNames() {
+    const counter = new Map();
+    const seenByProject = new Map();
+    for (const t of this._collectAllTxt()) {
+      if (!seenByProject.has(t.pdir)) seenByProject.set(t.pdir, new Set());
+      seenByProject.get(t.pdir).add(t.name);
+    }
+    for (const names of seenByProject.values()) {
+      for (const n of names) counter.set(n, (counter.get(n) || 0) + 1);
+    }
+    return new Set([...counter.entries()].filter(([, c]) => c > 1).map(([n]) => n));
+  }
+
+  // 只重扫**一个项目目录**，就地替换内存树与持久化树里该项目的条目（运行期指纹自愈用）。
+  // 配置与日志同一次扫完一起换
+  _rescanProjectTxt(project) {
+    const pdir = path.join(this.root, project);
+    const pdirAbs = path.resolve(pdir);
+    const rows = [];
+    const logs = [];
+    let files = [];
+    try { if (fs.statSync(pdir).isDirectory()) files = walkFiles(pdir); } catch (e) { files = []; }
+    for (const full of files) {
+      const base = path.basename(full);
+      if (!base.toLowerCase().endsWith('.txt')) continue;
+      if (LOG_NAME_RE.test(base)) {
+        const config = this._configNameFromLog(full);
+        if (config) logs.push({ project, name: base, path: full, date: this._dateBranchOf(full), config });
+        continue;
+      }
+      if (BACKUP_NAME_RE.test(base)) continue;
+      let st;
+      try { st = fs.statSync(full); } catch (e) { continue; }
+      const rel = path.relative(pdir, path.dirname(full));
+      const parts = rel === '' ? [] : rel.split(path.sep);
+      rows.push({
+        pdir, name: path.basename(full, path.extname(full)), full, parts,
+        mtimeMs: st.mtimeMs, size: st.size, hash: this._hashFor(full, st.mtimeMs, st.size),
+      });
+    }
+    this._txtTree = (this._txtTree || []).filter((t) => path.resolve(t.pdir) !== pdirAbs).concat(rows);
+    this._txtTreeRoot = this.root;
+    this._txtTreeSeq = (this._txtTreeSeq || 0) + 1;   // 作废扫描期间在跑的异步全量结果
+    this._projectsCache = null;
+    this._saveTxtTree(this._txtTree, '');   // 增量更新不带全量指纹
+    // 日志索引同步替换该项目的条目（内存已加载时才动；未加载则交给下次真扫）
+    if (this._logCache && this._logCacheRoot === this.root) {
+      this._logCache.files = (this._logCache.files || []).filter((f) => f.project !== project).concat(logs);
+      try { this._saveLogCache(); } catch (e) {}
+    }
+    // 该项目的版本列表结论全部作废（指纹一并清，交给调用方重新算）
+    const pfx = this.root + '\u0000' + project + '\u0000';
+    for (const k of [...this._versionsCache.keys()]) if (k.startsWith(pfx)) this._versionsCache.delete(k);
+    for (const k of [...this._versionsFp.keys()]) if (k.startsWith(pfx)) this._versionsFp.delete(k);
+    return rows;
+  }
+
+  // 从配置树缓存派生版本列表（零磁盘 IO）：项目列表页就用这条路径取版本，这里让 listVersions 在启动期也走同一条路。
+  _versionsFromTreeCache(project, name) {
+    const all = this._cachedTxtTree();
+    if (!Array.isArray(all) || !all.length) return null;
+    const pdir = path.join(this.root, project);
+    const txs = all.filter((t) => t.pdir === pdir && t.name === name);
+    if (!txs.length) return null;
+    try { return this._buildVersionsFromList(name, txs); } catch (e) { return null; }
+  }
+
+  // ⚠ force 的语义（**这条是性能红线，别随手改成恒真**）：
+  //   · 默认 false = 走日志索引缓存。**启动/渲染路径必须用它** ——
+  //     恒真会让启动预热直接打出上千次素材盘 IO。
+  listVersions(project, name, force) {
+  // 缓存命中直接返回，指纹不符时同步失效重扫
+    const fromCache = this._versionsFromTreeCache(project, name);
+    // 每版本是否有可跳日志：force 真扫；非 force 用内存日志索引（零磁盘读）
+    const logs = force
+      ? this._collectLogFiles(true).files
+      : ((this._logCache && this._logCacheRoot === this.root) ? (this._logCache.files || []) : []);
+    const pdir = path.join(this.root, project);
+    const key = this.root + '\u0000' + project + '\u0000' + name;
+    if (fromCache && !force) {
+      // 读取即核对目录指纹：外部增删后当场自愈，不等后台周期
+      const fp = this._versionFingerprint(pdir, name);
+      if (this._versionsFp.get(key) === fp) {
+        const alive = fromCache.filter((v) => { try { return fs.existsSync(v.path); } catch (e) { return false; } });
+        alive.forEach((v) => { v.hasLog = this._versionHasLog(v, project, name, logs); });
+        // 回写本次算出的指纹：否则本进程后续查询每次都要重算指纹、重扫整棵项目目录
+        this._versionsFp.set(key, fp);
+        return alive;
+      }
+      // 指纹不符：只重扫这个项目并就地更新缓存，重新派生后直接返回
+      this._rescanProjectTxt(project);
+      // 重扫已把该项目的日志条目一起换掉，这里必须重取，不能沿用重扫前的 logs
+      const freshLogs = (this._logCache && this._logCacheRoot === this.root) ? (this._logCache.files || []) : [];
+      const fresh = this._versionsFromTreeCache(project, name);
+      if (fresh) {
+        const alive = fresh.filter((v) => { try { return fs.existsSync(v.path); } catch (e) { return false; } });
+        alive.forEach((v) => { v.hasLog = this._versionHasLog(v, project, name, freshLogs); });
+        this._versionsCache.set(key, alive);
+        this._versionsFp.set(key, this._versionFingerprint(pdir, name));
+        return alive;
+      }
+    }
+    if (!fs.existsSync(pdir) || !fs.statSync(pdir).isDirectory()) return [];
+    // force：先定向重扫本项目
+    if (force) this._rescanProjectTxt(project);
+    if (this._versionsCache.has(key)) {
+      // 自动失效：目录级指纹核对——成片夹/日期目录 mtime 变化（新增成片、外部 * 被挪走等），说明缓存树过期，失效重扫一次让版本列表自愈（排队任务渐进 -1/-2 无需手动刷新）
+      if (this._versionsFp.get(key) === this._versionFingerprint(pdir, name)) {
+        // 防御：命中缓存仍校验磁盘存在性（指纹竞态等极端情况兜底），已删除/迁移的版本决不返回
+        const cached = this._versionsCache.get(key);
+        const alive = cached.filter((v) => { try { return fs.existsSync(v.path); } catch (e) { return false; } });
+        // hasLog 按当前日志清单重算
+        alive.forEach((v) => { v.hasLog = this._versionHasLog(v, project, name, logs); });
+        if (alive.length === cached.length) return alive;
+        this._versionsCache.set(key, alive);
+        return alive;
+      }
+      this._invalidateCaches();
+    }
+    const versions = this._buildVersions(pdir, name);
+    // 安全网：磁盘已不存在的版本（删除/迁移）一律过滤，缓存不返回残留分支
+    const alive = versions.filter((v) => { try { return fs.existsSync(v.path); } catch (e) { return false; } });
+    // 每版本是否有可跳日志：配对锚点是「成片文件夹」，外部 * 配置一律不可跳
+    alive.forEach((v) => { v.hasLog = this._versionHasLog(v, project, name, logs); });
+    this._versionsCache.set(key, alive);
+    this._versionsFp.set(key, this._versionFingerprint(pdir, name));
+    return alive;
+  }
+
+  // 该配置所有相关目录（成片夹→日期→月份→项目，逐级上溯）的 mtime 摘要，作为版本列表自愈指纹。
+  // mtime 对子目录/文件增减敏感：新增成片夹、外部 * 被挪走都会体现在父目录 mtime 上
+  _versionFingerprint(pdir, name) {
+    const pdirAbs = path.resolve(pdir);
+    const target = name.toLowerCase();
+    const dirs = new Set();
+    for (const t of this._collectAllTxt()) {
+      if (path.resolve(t.pdir) !== pdirAbs || t.name.toLowerCase() !== target) continue;
+      let d = path.resolve(path.dirname(t.full));
+      dirs.add(d);
+      while (true) {
+        const up = path.dirname(d);
+        dirs.add(up);
+        if (up === d || path.resolve(up) === pdirAbs) break;
+        d = up;
+      }
+    }
+    const arr = [...dirs].sort();
+    const sig = arr.map((d) => { try { return fs.statSync(d).mtimeMs; } catch (e) { return null; } });
+    return arr.join('|') + '\u0000' + sig.join(',');
+  }
+
+  _versionHasLog(v, project, name, logs) {
+    const d = String(v.label || '').slice(0, 4);
+    if (!/^\d{4}$/.test(d)) return false;
+    const match = (f) => f.project === project && f.config === name && f.date === d;
+    // ★ 0 字节日志不算「有日志」—— 与 _configHasEffectiveLog 必须是**同一口径**。
+    //   hasLog 同时驱动前端「禁用覆盖当前配置」与后端「拒绝覆盖请求」两个决定；两处不一致会出现
+    //   「按钮看起来禁用了、请求发出去却被放行」的错位。空日志没有配对价值（复刻读它同样是空）。
+    const alive = (f) => { try { return fs.statSync(f.path).size > 0; } catch (e) { return false; } };
+    // 外部 * 配置没有对应日志
+    if (v.isExternal) return false;
+    // 成片内：必须与配置位于同一成片文件夹的日志才能跳
+    const cfgDir = path.dirname(v.path);
+    return logs.some((f) => match(f) && path.dirname(f.path) === cfgDir && alive(f));
+  }
+
+  _buildVersions(projectDir, name) {
+    const txs = this._collectAllTxt().filter((t) => t.pdir === projectDir);
+    return this._buildVersionsFromList(name, txs);
+  }
+
+  _buildVersionsFromList(name, txs) {
+    const target = name.toLowerCase();
+    const sources = [];
+    const copies = [];
+    for (const t of txs) {
+      if (t.name.toLowerCase() !== target) continue;
+      if (isChengpianFile(t.parts)) copies.push({ full: t.full, parts: t.parts, hash: t.hash });
+      else sources.push({ full: t.full, parts: t.parts, hash: t.hash });
+    }
+    const groups = new Map();
+    // 顺序稳定化：
+    // txs 可能来自「增量并入」（新条目追加在末尾）或「全量扫描」（目录遍历序），两者顺序不同，
+    // 会让下面 dedupeByDir 的 -1/-2 编号互换 → 同一份配置在两次刷新间位置跳动。
+    const byFull = (a, b) => String(a.full).localeCompare(String(b.full), 'zh-CN');
+    sources.sort(byFull);
+    copies.sort(byFull);
+    for (const s of sources) {
+      const label = relativeDateLabel(s.parts);
+      if (!groups.has(label)) groups.set(label, { source: null, copies: [] });
+      groups.get(label).source = s;
+    }
+    for (const c of copies) {
+      const label = relativeDateLabel(c.parts);
+      if (!groups.has(label)) groups.set(label, { source: null, copies: [] });
+      groups.get(label).copies.push(c);
+    }
+    const versions = [];
+    const labels = [...groups.keys()].sort((a, b) => compareDateSortKey(b, a));
+    for (const label of labels) {
+      const g = groups.get(label);
+      // 同一日期分支下按「成片文件夹」去重（升序即旧→新）：多个夹全部序号化（最旧 <MMdd>-1，依次 -2…）；单个夹用无后缀 <MMdd>；夹外单独配置为 <MMdd>*（isExternal）。
+      const chengpian = dedupeByDir(g.copies);
+      // 外部 * 配置若与任一成片文件夹正本内容完全一致，则被正体覆盖、不显示（不一致时才同时显示）
+      const outsideSrc = g.source;
+      const outside = outsideSrc && !chengpian.some((c) => c.hash === outsideSrc.hash) ? [outsideSrc] : [];
+      if (chengpian.length > 1) {
+        chengpian.forEach((c, i) => versions.push({ label: `${label}-${i + 1}`, path: c.full, isExternal: false }));
+      } else if (chengpian.length === 1) {
+        versions.push({ label, path: chengpian[0].full, isExternal: false });
+      }
+      outside.forEach((s) => versions.push({ label: `${label}*`, path: s.full, isExternal: true }));
+    }
+    versions.forEach((v, i) => { v.is_latest = i === 0; });
+    return versions;
+  }
+
+  // 清理历史遗留的重复外部 * 配置：仅当「同项目+同配置名+同日期分支」有成片文件夹正本，
+  // 且正本与外部 * 内容 hash 完全一致时才删除该外部 *。按 label 分组隔离，不影响其他日期分支。
+  // commit=false 仅扫描报告；commit=true 物理删除（菜单「刷新配置列表」清理历史残留）
+  cleanDuplicateStar(commit) {
+    const groups = new Map(); // key = 项目\0配置名\0日期label -> { copies: [], sources: [] }
+    for (const t of this._collectAllTxt()) {
+      const label = relativeDateLabel(t.parts);
+      if (!label) continue;
+      const key = t.pdir + '\u0000' + t.name + '\u0000' + label;
+      if (!groups.has(key)) groups.set(key, { copies: [], sources: [] });
+      const g = groups.get(key);
+      (isChengpianFile(t.parts) ? g.copies : g.sources).push(t);
+    }
+    const pending = [];
+    const deleted = [];
+    for (const g of groups.values()) {
+      if (!g.copies.length) continue;
+      for (const s of g.sources) {
+        const dup = g.copies.some((c) => c.hash === s.hash);
+        if (!dup) continue;
+        pending.push(s.full);
+        if (commit) {
+          // soft 级：与成片文件夹正本内容 hash 完全一致，但它是用户列表里独立可见的条目，保留可还原性
+          this._recycleFile(s.full, '与正本内容一致的重复外部配置：' + path.basename(s.full));
+          deleted.push(s.full);
+        }
+      }
+    }
+    if (commit && deleted.length) {
+      const info = this._describeForLog(deleted);
+      this._lg('DEL', 'clean.duplicate.sources',
+        '清理重复星标素材 · ' + info.count + ' 个文件 · 共 ' + this._humanSize(info.bytes), info);
+      this._markConfigModified();
+    }
+    return { ok: true, pending, deleted };
+  }
+
+  // 配置内容缓存：打开配置 = 一次主键查询 + 一次 stat 校验，内容直接取缓存（免读文件、免解析）；指纹不同才回退读文件并更新缓存。
+  _configFromCacheRow(filePath, row) {
+    const raw = row.raw || '';
+    let parsed = {};
+    try { parsed = JSON.parse(row.parsed || '{}') || {}; } catch (e) { parsed = {}; }
+    return {
+      path: filePath,
+      raw,
+      lines: raw.split(/\r?\n/),
+      folders: parsed.folders || [],
+      excludes: parsed.excludes || [],
+      watermark: parsed.watermark || '',
+      name: parsed.name || path.basename(filePath, path.extname(filePath)),
+      _cached: true,
+    };
+  }
+
+  // 纯解析（无 IO）：从原文得出 folders / excludes / watermark / name
+  _parseConfigText(filePath, text) {
+    const lines = String(text || '').split(/\r?\n/);
+    const folders = [];
+    const excludes = [];
+    let watermark = '';
+    for (const ln of lines) {
+      const s = ln.trim();
+      if (!s) continue;
+      if (s.startsWith('=')) folders.push({ path: stripQuotes(s.slice(1)), nonround: true });
+      else if (s.startsWith('-')) excludes.push(stripQuotes(s.slice(1)));
+      else folders.push({ path: stripQuotes(s), nonround: false });
+    }
+    if (folders.length) {
+      const last = folders[folders.length - 1];
+      if (last.path.toLowerCase().endsWith('.png') && !last.nonround) watermark = stripQuotes(folders.pop().path);
+    }
+    return { folders, excludes, watermark, name: path.basename(filePath, path.extname(filePath)) };
+  }
+
+  _configFingerprint(filePath) {
+    try { const st = fs.statSync(filePath); return String(st.mtimeMs) + ':' + String(st.size); } catch (e) { return ''; }
+  }
+
+  _putConfigCache(filePath, text, parsed) {
+    const store = this._useDbCache() ? this._cacheStore : null;
+    if (!store || typeof store.txtPut !== 'function') return;
+    try { store.txtPut(filePath, this._configFingerprint(filePath), text, JSON.stringify(parsed), Date.now()); } catch (e) {}
+  }
+
+  readConfig(filePath, opts) {
+    this._touchForeground();
+    filePath = path.resolve(filePath);
+    const peek = !!(opts && opts.peek);
+    const store = this._useDbCache() ? this._cacheStore : null;
+    const row = (store && typeof store.txtGet === 'function') ? store.txtGet(filePath) : null;
+    if (row && row.parsed) {
+      // peek（项目列表渲染：只想知道"这份配置是不是空的"）：直接信缓存、**不做 stat** ——
+      // 列表渲染路径必须零磁盘访问。免 IO 的依据是**调用方语义**，不是"是否启动期"。
+      if (peek) return this._configFromCacheRow(filePath, row);
+      // 正常打开配置：缓存 + 一次 stat 校验（指纹一致即免读整份文件、免解析）
+      const fp = this._configFingerprint(filePath);
+      if (fp && fp === row.fp) return this._configFromCacheRow(filePath, row);
+    }
+    // peek 且无缓存：给乐观结构（非空），**不读文件** —— 同上，渲染路径不该有磁盘 IO
+    if (peek) {
+      return { path: filePath, raw: '', lines: [], folders: [{ path: '', nonround: false }], excludes: [], watermark: '', name: path.basename(filePath, path.extname(filePath)), _peek: true };
+    }
+    const text = readText(filePath);
+    const parsed = this._parseConfigText(filePath, text);
+    // 文件不存在（stat 失败）时**不落缓存**：否则会把"不存在"缓存成空内容，掩盖之后新建的同名配置
+    if (this._configFingerprint(filePath)) this._putConfigCache(filePath, text, parsed);
+    return Object.assign({ path: filePath }, parsed, { raw: text, lines: text.split(/\r?\n/) });
+  }
+
+  _rewriteText(folders, excludes, watermark) {
+    const out = [];
+    for (const f of folders) {
+      const isDict = f && typeof f === 'object';
+      const p = (isDict ? f.path : f).trim();
+      if (!p) continue;
+      const nonround = isDict ? !!f.nonround : false;
+      out.push(nonround ? '=' + p : p);
+    }
+    for (const e of excludes) { const s = e.trim(); if (s) out.push('-' + s); }
+    if (watermark && watermark.trim()) { out.push(''); out.push(watermark.trim()); }
+    return out.join('\r\n') + '\r\n';
+  }
+
+  // 「该配置是否已有**有效**日志」—— 配置与日志强联动判定的唯一入口（改名、覆盖保存共用）。
+  // ⚠ 必须真扫：结论用于**拒绝用户**，只能依据磁盘真相；_collectLogFiles() 的缓存指纹只覆盖一级项目目录 mtime，子目录里删日志察觉不到。
+  // ⚠ 0 字节日志不算（与 _versionHasLog 同一口径）：没有配对价值，却会把改名/覆盖两条出口全堵死。
+  _configHasEffectiveLog(abs, project, baseName, dir) {
+    try {
+      this._collectLogFiles(true);                        // ← 无条件真扫：先把缓存刷成磁盘真相
+      const logs = (this._collectLogFiles().files) || [];  // 刚真扫过，此处内存缓存即真相
+      const v = (this.listVersions(project, baseName) || [])
+        .find((x) => x && x.path && path.resolve(x.path).toLowerCase() === path.resolve(abs).toLowerCase());
+      const pairing = logs.filter((f) => f.project === project
+        && String(f.config || '').trim() === baseName
+        && ((v && v.isExternal) ? true : path.dirname(f.path).toLowerCase() === path.resolve(dir).toLowerCase()));
+      // 判空只对"配对上的这少数几条"做 stat，代价可忽略
+      return pairing.some((f) => { try { return fs.statSync(f.path).size > 0; } catch (e) { return false; } });
+    } catch (e) { return false; }
+  }
+
+  // 就地改名**当前这一个**配置文件：不做「配置级改名」（不波及其它日期分支的历史版本，只改用户指定的这个文件）。
+  _renameConfigFile(filePath, newName) {
+    const abs = path.resolve(filePath);
+    const ext = path.extname(abs) || '.txt';
+    const oldBase = path.basename(abs, ext);
+    const bad = this._validProjectName(newName);
+    if (bad) return { ok: false, error: bad };
+    const dir = path.dirname(abs);
+    const dest = path.join(dir, newName + ext);
+    try { if (fs.existsSync(dest)) return { ok: false, error: '该目录下已有同名配置：' + newName }; } catch (e) {}
+    // 有对应日志 → 拒绝改名：日志与配置按名字配对，改名会让这份日志再也配不上本配置
+    const project = this._projectOf(abs);
+    const hasLog = this._configHasEffectiveLog(abs, project, oldBase, dir);
+    if (hasLog) {
+      return { ok: false, error: '该配置已有对应日志（配置与日志按名字配对，复刻依赖它），改名会让日志失去关联；如需改名请先处理掉日志' };
+    }
+    // 任务占用保护：非终态任务把它记在 env.REPLICA_TXT 上（续跑也直接读这个路径）——改名会让任务读不到配置，故有引用即拒绝，让用户等任务结束后再改。
+    const busyStates = ['running', 'queued', 'paused', 'interrupted', 'stopped'];
+    const busy = [...((this.tasks && this.tasks.values) ? this.tasks.values() : [])]
+      .filter((t) => t && busyStates.indexOf(t.status) >= 0);
+    for (const t of busy) {
+      const p = t.env && t.env.REPLICA_TXT;
+      if (p && path.resolve(String(p)).toLowerCase() === abs.toLowerCase()) {
+        return { ok: false, error: '该配置正被任务「' + (t.title || '') + '」使用，请等任务结束后再改名' };
+      }
+    }
+    // 仅大小写不同时，Windows 上 renameSync 目标被视为已存在 → 经临时名两步走（失败改回）
+    const caseOnly = oldBase.toLowerCase() === newName.toLowerCase();
+    try {
+      if (caseOnly) {
+        const tmp = path.join(dir, '.vl-rename-' + Date.now() + ext);
+        fs.renameSync(abs, tmp);
+        try { fs.renameSync(tmp, dest); } catch (e) { try { fs.renameSync(tmp, abs); } catch (e2) {} throw e; }
+      } else {
+        fs.renameSync(abs, dest);
+      }
+    } catch (e) { return { ok: false, error: '改名失败：' + ((e && e.message) || e) }; }
+    return { ok: true, path: dest };
+  }
+
+  saveConfig(filePath, folders, excludes, watermark, newName) {
+    filePath = path.resolve(filePath);
+    const ext = path.extname(filePath) || '.txt';
+    const oldBase = path.basename(filePath, ext);
+    // 配置名改了就地改名（可选）：名字规范化与「保存为当日配置」一致（允许用户带 .txt 输入）
+    const want = String(newName == null ? '' : newName).trim().replace(/\.txt$/i, '').trim();
+    let target = filePath;
+    let renamed = false;
+    if (want && want !== oldBase) {
+      const rn = this._renameConfigFile(filePath, want);
+      if (!rn || !rn.ok) return rn || { ok: false, error: '改名失败' };
+      target = rn.path; renamed = true;
+    } else {
+      // ★ 强联动保护（最后一道防线）：**已有有效日志的配置，禁止就地覆盖**。
+      //   配置名嵌在日志名里，两者是一对一的「任务正本 + 运行记录」；就地覆盖会让配置内容与该日志脱钩，
+      //   复刻按旧日志结构生成、产出会不符合「复刻」定义，且不留痕迹。正确出口是「保存为当日配置」。
+      const project = this._projectOf(target);
+      const dir = path.dirname(target);
+      if (this._configHasEffectiveLog(target, project, oldBase, dir)) {
+        return { ok: false, error: '该配置已有对应日志，不能覆盖（复刻按「日志的结构 + 本配置的素材池」生成，覆盖会让两者脱钩）。请改用「保存为当日配置」' };
+      }
+    }
+    const text = this._rewriteText(folders, excludes, watermark);
+    fs.writeFileSync(target, text, 'utf-8');
+    this._putConfigCache(target, text, this._parseConfigText(target, text));   // 保存即更新内容缓存（下次打开零 IO）
+    // 传入路径 → 就地并入配置树，列表/版本立刻可见（无需重扫）；改名时把旧路径一并传入，旧条目并入失败会触发配置树整体作废（比手工摘条目更稳）
+    if (renamed) this._markConfigModified(target, filePath);
+    else this._markConfigModified(target);
+    if (renamed) {
+      // 内容缓存以路径为键：旧路径那行必须删（否则残留一份"旧名"的解析结果）
+      try {
+        const store = this._useDbCache() ? this._cacheStore : null;
+        if (store && typeof store.txtDelete === 'function') store.txtDelete(filePath);
+      } catch (e) {}
+    }
+    return { ok: true, path: target, name: path.basename(target, ext), renamed };
+  }
+
+  saveConfigToday(project, name, configName, folders, excludes, watermark) {
+    const pdir = path.join(this.root, project);
+    const now = new Date();
+    const monthDir = String(now.getMonth() + 1) + '月';
+    const dayDir = String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0');
+    const targetDir = path.join(pdir, monthDir, dayDir);
+    fs.mkdirSync(targetDir, { recursive: true });
+    let finalName = (configName || name || 'config').trim();
+    if (!finalName.toLowerCase().endsWith('.txt')) finalName += '.txt';
+    const filePath = path.join(targetDir, finalName);
+    const text = this._rewriteText(folders, excludes, watermark);
+    fs.writeFileSync(filePath, text, 'utf-8');
+    this._putConfigCache(filePath, text, this._parseConfigText(filePath, text));
+    this._markConfigModified(filePath);
+    // 新配置写进了新日期目录，界面上的日期分支就是旧的 —— 必须广播，否则左侧仍停在改动前的那个分支，用户要手动切过去才看得见刚保存的配置。
+    try { this._notifyTreeChanged(); } catch (e2) {}
+    return { ok: true, path: filePath };
+  }
+
+  // 新增空白配置：今日目录下创建无素材路径的 TXT（与保存为当日配置同目录规则）；项目启用主流水印时自动一并写上新配置的水印行
+  newEmptyConfig(project) {
+    try {
+      if (!this.root || !project) return { ok: false, error: '未指定项目' };
+      const pdir = path.resolve(path.join(this.root, project));
+      if (!fs.existsSync(pdir) || !fs.statSync(pdir).isDirectory()) return { ok: false, error: '项目目录不存在：' + pdir };
+      const now = new Date();
+      const monthDir = String(now.getMonth() + 1) + '月';
+      const dayDir = String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0');
+      const targetDir = path.join(pdir, monthDir, dayDir);
+      fs.mkdirSync(targetDir, { recursive: true });
+      // 默认文件名唯一：新建配置.txt → 新建配置 (1).txt → …
+      let name = '新建配置';
+      for (let i = 1; fs.existsSync(path.join(targetDir, name + '.txt')); i++) { name = '新建配置 (' + i + ')'; }
+      const filePath = path.join(targetDir, name + '.txt');
+      const wm = this.getProjectWatermark(project);
+      const watermark = (wm && wm.ok && wm.enabled && wm.main) ? wm.main : '';
+      const text = this._rewriteText([], [], watermark);
+      fs.writeFileSync(filePath, text, 'utf-8');
+      this._putConfigCache(filePath, text, this._parseConfigText(filePath, text));
+      this._markConfigModified(filePath);
+      // 同上：新建配置会产生新的日期分支，界面要立刻看到
+      try { this._notifyTreeChanged(); } catch (e2) {}
+      return { ok: true, path: filePath, name, watermark };
+    } catch (e) { return { ok: false, error: String(e) }; }
+  }
+
+  // 移除日期分支（配置/日志 TXT）：
+  // scope=txt 仅删当前文件；both 删除所在目录下全部 TXT（双模式配置+日志，成片保留）；folder 删除整个日期文件夹（含成片）
+  // 删除后若目录为空则逐级向上清理空目录（以工作根为边界）
+  removeBranch(filePath, scope) {
+    try {
+      if (!this.root) return { ok: false, error: '未配置工作路径' };
+      filePath = path.resolve(filePath);
+      const root = path.resolve(this.root);
+      if (filePath !== root && !filePath.startsWith(root + path.sep)) return { ok: false, error: '目标不在工作路径内' };
+      if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) return { ok: false, error: '文件不存在：' + filePath };
+      const dir = path.dirname(filePath);
+      const mode = scope === 'folder' ? 'folder' : (scope === 'both' ? 'both' : 'txt');
+      // 外部 * 配置：位于成片文件夹之外（路径不含「成片」段），其「成片」不在本分支目录内，
+      // 整体删除会连累同目录下其它任务的产物 → 拒绝 folder 整体删除，仅允许 txt/both
+      const inChengpian = String(filePath).split(/[\\/]/).some((p) => p.endsWith('成片'));
+      if (mode === 'folder' && !inChengpian) return { ok: false, error: '该配置不在成片文件夹内（外部配置），不能整体删除；请选「仅移除该配置」' };
+      if (mode === 'folder') {
+        if (dir.length <= root.length) return { ok: false, error: '不允许删除工作根目录' };
+        // 用户主动移除：整文件夹（配置 + 成片）一律 soft 级，可还原
+        if (!this._recycleFile(dir, '用户移除整个成片文件夹：' + path.basename(dir))) return { ok: false, error: '移入回收站失败' };
+      } else {
+        if (mode === 'both') {
+          let entries = [];
+          try { entries = fs.readdirSync(dir); } catch (e) {}
+          for (const ent of entries) {
+            const full = path.join(dir, String(ent));
+            let st;
+            try { st = fs.statSync(full); } catch (e) { continue; }
+            if (st.isFile() && String(ent).toLowerCase().endsWith('.txt')) this._recycleFile(full, '用户移除配置与日志：' + String(ent));
+          }
+        } else {
+          if (!filePath.toLowerCase().endsWith('.txt')) return { ok: false, error: '仅支持移除 TXT 分支' };
+          this._recycleFile(filePath, '用户移除单个配置：' + path.basename(filePath));
+        }
+      }
+      // 逐级向上删除空目录：任一目录非空即停止；到工作根为止，不会越界
+      let cur = mode === 'folder' ? path.dirname(dir) : dir;
+      while (cur.length > root.length && cur !== root) {
+        let entries = [];
+        try { entries = fs.readdirSync(cur); } catch (e) { break; }
+        if (entries.length) break;
+        try { fs.rmdirSync(cur); } catch (e) { break; }
+        cur = path.dirname(cur);
+      }
+      // ★ 删除 TXT 后必须刷新**日志索引缓存**：配置与日志同属一批被索引的 TXT，删掉任何一个都会让 log_index 过期。
+      //   而 _collectLogFiles() 默认吃缓存（内存 → 持久化），持久化指纹只覆盖「一级项目目录」mtime，
+      //   删子目录里的文件它察觉不到 → 此处就地真扫一次，把缓存刷成磁盘真相。
+      try { this._collectLogFiles(true); } catch (e) {}
+      this._markConfigModified();
+      return { ok: true };
+    } catch (e) { return { ok: false, error: String(e) }; }
+  }
+
+  // 判断给定分支的所在目录是否存在「另一模式」的 TXT（配置↔日志；如 * 外部配置无对应日志）
+  branchOtherTxt(filePath) {
+    try {
+      const dir = path.dirname(path.resolve(String(filePath || '')));
+      if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) return { ok: true, hasOther: false };
+      const currentIsLog = LOG_NAME_RE.test(path.basename(filePath));
+      let txts = [];
+      try {
+        txts = fs.readdirSync(dir).filter((n) => String(n).toLowerCase().endsWith('.txt'))
+          .filter((n) => { let st; try { st = fs.statSync(path.join(dir, n)); } catch (e) { return false; } return st.isFile(); });
+      } catch (e) {}
+      const logs = txts.filter((n) => LOG_NAME_RE.test(n));
+      const confs = txts.filter((n) => !LOG_NAME_RE.test(n));
+      const hasOther = currentIsLog ? confs.length > 0 : logs.length > 0;
+      return { ok: true, hasOther };
+    } catch (e) { return { ok: false, error: String(e), hasOther: false }; }
+  }
+
+  // ── 数据缓存持久层（<storageDir>\cache.db）──
+  // 唯一持久层：Ticks 以 TEXT 精确承载（INTEGER 列读 Int64 会抛 RangeError）、
+  // 支持增量写与 backend↔引擎跨进程并发（WAL）。
+
+  // 作用域位掩码：与 engines/base/cache.js 的 SCOPES 同源（惰性取用，避免构造期依赖引擎目录）；取不到时用等价内联值兜底，行为不随加载失败而改变。
+  get _scopes() {
+    if (!this._scopesCache) {
+      try { this._scopesCache = require(path.join(this.enginesDir, 'base', 'cache.js')).SCOPES; }
+      catch (e) { this._scopesCache = { batch: 1, replica: 2, mask: 4 }; }
+    }
+    return this._scopesCache;
+  }
+
+  // 选择数据缓存后端（进程内只判定一次）
+  _useDbCache() {
+    if (this._cacheBackendMode) return this._cacheBackendMode === 'db';
+    const dbPath = this.cacheDbPath;
+    if (!dbPath) { this._cacheBackendMode = 'mem'; return false; }
+    let store = null;
+    try {
+      const CacheStore = require(path.join(this.enginesDir, 'base', 'cache.js'));
+      store = new CacheStore(dbPath, { root: this.root });
+      store.open();
+    } catch (e) { store = null; }
+    this._cacheStore = store;
+    this._cacheBackendMode = store ? 'db' : 'mem';
+    if (!store) console.error('[cache] 缓存库不可用，本次会话退化为纯内存（出片不受影响）');
+    // 注入文本内容缓存后端：此后所有 readText（配置/日志/索引）命中即零文件读取。
+    // 与 readConfig 共用 txt_content 表：写回时**保留已有的解析结果**（指纹一致才保留），互不破坏。
+    if (store) {
+      _textCacheBackend = {
+        get: (p, fp) => {
+          const row = store.txtGet(p);
+          return (row && row.fp === fp && row.raw) ? row.raw : null;
+        },
+        put: (p, fp, text) => {
+          const prev = store.txtGet(p);
+          const parsed = (prev && prev.fp === fp) ? (prev.parsed || '') : '';
+          store.txtPut(p, fp, text, parsed, Date.now());
+        },
+      };
+    }
+    return !!store;
+  }
+
+  // 设置库（<storageDir>\settings.db）：批量 / 遮罩等项目设置的持久层，不可用时同样退化纯内存
+  _useSettings() {
+    if (this._settingsMode) return this._settingsMode === 'db';
+    const dbPath = this.settingsDbPath;
+    if (!dbPath) { this._settingsMode = 'mem'; return false; }
+    let store = null;
+    try {
+      const SettingsStore = require(path.join(this.enginesDir, 'base', 'settings.js'));
+      store = new SettingsStore(dbPath);
+      store.open();
+    } catch (e) { store = null; }
+    this._settingsStore = store;
+    this._settingsMode = store ? 'db' : 'mem';
+    if (!store) console.error('[settings] 设置库不可用，本次会话退化为纯内存（出片不受影响）');
+    return !!store;
+  }
+
+  // ── 删除总入口（集中式：分级 + 统一降级落点 + 统一日志）─────────────
+  // 两级语义：
+  //   hard —— 直接删。用于程序自产、可完全再生的中间产物与缓存（0 字节日志、.tmp、死快照、旧缓存 JSON…）。
+  //   soft —— 送系统回收站。用于用户资产与不可再生内容（配置 TXT、成片 mp4、原始视频备份）。
+  // 删除动作一律经这三个方法，调用处只声明级别与对象，不再各写各的：
+  //   _hardDelete(p, why)   直接删
+  //   _recycleFile(p, why)  送回收站（可还原）
+  //   _deleteMany(ps, lv)   批量
+  // 送站分两步：① 同步改名成 `<名>.<时间戳>.deleting` 摘除原路径（调用方需要立刻空出该路径）；
+  // ② 异步送站。临时名带 .deleting 后缀 —— 命名即归属程序，不会与用户自己的 .bak 备份混淆；
+  // ① 与 ② 之间进程被杀留下的这类文件，由启动清理按后缀自动收走（见 _sweepDeletingResidue）。
+
+  // 送站失败的降级落点：数据目录下的暂存区（不留用户工作目录）
+  _recycleFailDir() {
+    const d = this.storageDir ? path.join(this.storageDir, 'recycle-failed') : '';
+    if (d) { try { fs.mkdirSync(d, { recursive: true }); } catch (e) {} }
+    return d;
+  }
+
+  // 直接删（hard 级）
+  _hardDelete(p) {
+    if (!p) return false;
+    try {
+      if (fs.lstatSync(p).isDirectory()) fs.rmSync(p, { recursive: true, force: true });
+      else fs.unlinkSync(p);
+      return true;
+    } catch (e) { return false; }
+  }
+
+  // 送回收站（soft 级）。why 只进日志，供事后追溯删的是什么东西。
+  _recycleFile(p, why) {
+    if (!p || !fs.existsSync(p)) return false;
+    let target = p;
+    try {
+      const staged = p + '.' + Date.now() + '.deleting';
+      fs.renameSync(p, staged);
+      target = staged;
+    } catch (e) { /* 改名失败：直接送站 */ }
+    try {
+      const { shell } = require('electron');
+      if (shell && typeof shell.trashItem === 'function') {
+        shell.trashItem(target).catch(() => { this._stashRecycleFailed(target, why); });
+        return true;
+      }
+    } catch (e) {}
+    this._stashRecycleFailed(target, why);
+    return true;
+  }
+
+  // 送站失败：把临时件移出用户目录，进数据目录暂存区并记日志
+  _stashRecycleFailed(staged, why) {
+    if (!staged || !fs.existsSync(staged)) return false;
+    const dir = this._recycleFailDir();
+    if (!dir) return false;
+    const dest = path.join(dir, path.basename(staged));
+    try {
+      fs.renameSync(staged, dest);
+    } catch (e) {
+      try { fs.copyFileSync(staged, dest); fs.unlinkSync(staged); }   // 跨卷：复制后删除
+      catch (e2) { return false; }
+    }
+    try {
+      this._lg('DEL', 'recycle.failed',
+        '移入回收站失败，已暂存到数据目录 · ' + String(why || path.basename(dest)).slice(0, 80),
+        { to: dest });
+    } catch (e) {}
+    return true;
+  }
+
+  // 批量：level ∈ 'hard' | 'soft'
+  _deleteMany(paths, level, why) {
+    const hard = level === 'hard';
+    const list = (Array.isArray(paths) ? paths : [paths]).filter(Boolean);
+    let n = 0;
+    for (const p of list) {
+      if (hard ? this._hardDelete(p) : this._recycleFile(p, why)) n++;
+    }
+    return n;
+  }
+
+  // 自动收走「改名后、送站前」被进程中断留下的 `.deleting` 临时件。
+  // 该后缀由程序独占（用户文件不会这么命名），因此可直接清空，不需人工介入。
+  // 挂在空闲队列里跑：既避开了启动关键路径，又保证「重启后下一轮空闲必然收干净」。
+  _enqueueDeletingSweep() {
+    try {
+      this._verifyEnqueue('deleting.sweep', this.root, async () => {
+        const n = await this._sweepDeletingResidue();
+        if (!n) return;
+        try { this._lg('DEL', 'recycle.sweep', '自动清理送站中断残留 · ' + n + ' 个临时件', { count: n }); } catch (e) {}
+      });
+    } catch (e) {}
+  }
+
+  // 扫工作根 + 数据根的 `.deleting` 临时件并清空。递归下探到配置所在层级即止（工作根结构是 根\项目\月\日\）。
+  async _sweepDeletingResidue() {
+    let n = 0;
+    const seen = new Set();
+    const DEL_RE = /\.deleting$/;
+    const walk = async (dir, depth) => {
+      let names = [];
+      try { names = await fs.promises.readdir(dir); } catch (e) { return; }
+      for (const nm of names) {
+        const p = path.join(dir, nm);
+        if (DEL_RE.test(nm)) { if (this._hardDelete(p) && !seen.has(p)) { n++; seen.add(p); } continue; }
+        if (depth <= 0) continue;
+        // 不进成片目录（那里本来就可能是用户产物区），也不进明显的缓存子目录
+        if (nm.endsWith('成片') || nm === 'preview' || nm === 'txt-snap') continue;
+        let isDir = false;
+        try { isDir = (await fs.promises.stat(p)).isDirectory(); } catch (e) { continue; }
+        if (!isDir) continue;
+        await walk(p, depth - 1);
+      }
+    };
+    for (const r of [String(this.root || ''), String(this.storageDir || '')]) {
+      if (r) await walk(r, 3);
+    }
+    // 暂存区里的降级件：本次启动再送一次回收站；送不掉就留在数据目录（不污染用户工作目录）
+    const failDir = this._recycleFailDir();
+    if (failDir) {
+      let ns = [];
+      try { ns = await fs.promises.readdir(failDir); } catch (e) { ns = []; }
+      for (const nm of ns) this._recycleFile(path.join(failDir, nm), '暂存区重试送站');
+    }
+    return n;
+  }
+
+  // 标记缓存变更：记录具体键，据此做增量写（避免每次全量 upsert）
+  _markVideoCacheDirty(vPath) {
+    this._videoCacheDirty = true;
+    if (vPath) this._videoCacheDirtyKeys.add(String(vPath));
+  }
+
+  _markVideoCacheRemoved(vPath) {
+    this._videoCacheDirty = true;
+    const k = String(vPath);
+    this._videoCacheDirtyKeys.delete(k);
+    this._videoCacheRemovedKeys.add(k);
+  }
+
+  _loadVideoCache() {
+    if (this._videoCache !== null) return this._videoCache;
+    let cache = {};
+    if (this._useDbCache()) {
+      // 默认作用域：批量 + 复刻。遮罩素材必须由调用方显式声明掩码才会被读到。
+      try { cache = this._cacheStore.loadVideoMap({ scopesMask: this._scopes.batch | this._scopes.replica }); }
+      catch (e) { cache = {}; }
+    }
+    // 库不可用时不落盘：探测结果仅在本会话内复用（重新打开应用后重探一次）
+    this._videoCache = cache;
+    this._videoCacheDirty = false;
+    this._videoCacheDirtyKeys.clear();
+    this._videoCacheRemovedKeys.clear();
+    return cache;
+  }
+
+  // 文件写入时间 → 与 PowerShell 一致的 100ns ticks（自 0001-01-01）。
+  // 必须用 bigint(mtimeNs) 精确换算：浮点 mtimeMs*10000 会超过 double 精确整数范围(2^53)丢低位精度，
+  // 导致与脚本 Get-Item LastWriteTimeUtc.Ticks 比对永远不等，缓存全部失效重测
+  _mtimeToTicks(videoPath) {
+    try {
+      const st = fs.statSync(videoPath, { bigint: true });
+      return (st.mtimeNs / 100n) + 621355968000000000n;
+    } catch (e) { return 0n; }
+  }
+  // 缓存命中/写入统一用字符串承载 ticks：JSON number 无法表达 19 位整数，会再次丢精度；
+  // 脚本侧 PowerShell 的 string -eq long 会自动转换比较，仍能正确命中
+  _ticksToStr(v) { return String(v == null ? '' : v); }
+
+  // 文件指纹：mtime（Ticks）+ 字节大小。
+  // ⚠ 只比 mtime 不足以判断"素材是否被替换"：Windows CopyFile / 解压 / 同步工具都会保留源文件修改时间，
+  //   覆盖同名素材后时间戳可能分毫不变；size 与 mtime 一起比（一次 statSync 同时取到，内容变过大小几乎必变）。
+  _fileFingerprint(p) {
+    try {
+      const st = fs.statSync(p, { bigint: true });
+      return { ticks: String((st.mtimeNs / 100n) + 621355968000000000n), size: Number(st.size) || 0 };
+    } catch (e) { return null; }
+  }
+  // 缓存条目是否仍与当前文件一致（size 缺失或为 0 的旧条目退化为只比 mtime）
+  _fingerprintMatches(fp, ticks, size) {
+    if (!fp) return false;
+    if (this._ticksToStr(ticks) !== fp.ticks) return false;
+    const sz = Number(size) || 0;
+    return sz === 0 || sz === fp.size;
+  }
+
+  // ffprobe 异步探测（并发限流使用，不阻塞主线程）
+  _probeVideoAsync(videoPath) {
+    return new Promise((resolve) => {
+      const { execFile } = require('child_process');
+      // 与主进程统一口径：必须走 _resolveFfmpegBin（唯一来源 = 自愈目录）。
+      // ⚠ 不要用裸名 `ffprobe` 依赖系统 PATH —— 与主进程判定不一致，且 PATH 缺失时会直接失败。
+      const ffprobe = this._resolveFfmpegBin().ffprobePath;
+      if (!ffprobe) return resolve({ valid: false, duration: 0, width: 0, height: 0 });
+      execFile(
+        ffprobe,
+        ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', videoPath],
+        { encoding: 'utf8', timeout: 60000, windowsHide: true },
+        (err, stdout) => {
+          if (err) return resolve({ valid: false, duration: 0, width: 0, height: 0 });
+          const lines = String(stdout).split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+          if (lines.length >= 3) {
+            const width = parseInt(lines[0], 10);
+            const height = parseInt(lines[1], 10);
+            const duration = parseFloat(lines[2]);
+            const valid = width === 1080 && height === 1920 && isFinite(duration) && duration > 0;
+            return resolve({ valid, duration: isFinite(duration) ? duration : 0, width, height });
+          }
+          resolve({ valid: false, duration: 0, width: 0, height: 0 });
+        }
+      );
+    });
+  }
+
+  // 并发限流执行器：同一时刻最多并发 limit 个，全部完成后按输入顺序返回结果数组。
+  _runWithLimit(items, worker, limit) {
+    return new Promise((resolve) => {
+      const n = items.length;
+      if (n === 0) return resolve([]);
+      const limitN = Math.max(1, limit | 0);
+      const results = new Array(n);
+      let i = 0, running = 0, done = 0;
+      const pump = () => {
+        while (running < limitN && i < n) {
+          const idx = i++;
+          running++;
+          Promise.resolve()
+            .then(() => worker(items[idx], idx))
+            .catch(() => undefined)
+            .then((v) => { results[idx] = v; })
+            .then(() => {
+              running--; done++;
+              if (done === n) resolve(results);
+              else pump();
+            });
+        }
+      };
+      pump();
+    });
+  }
+
+  // 读取缓存视频信息：命中且指纹（mtime + 大小）未变则复用，否则返回 null（交由并发探测）
+  _fetchCachedVideoInfo(videoPath) {
+    const fp = this._fileFingerprint(videoPath);
+    if (!fp) return null;
+    const hit = this._videoInfoCache.get(videoPath);
+    if (hit) {
+      // 内存条目不带指纹，必须回缓存核对后才能复用 —— 否则同名覆盖后一直返回旧结论
+      const c0 = this._loadVideoCache()[videoPath];
+      if (this._fingerprintMatches(fp, c0 && c0.LastWriteTime, c0 && c0.FileSize)) return hit;
+      this._videoInfoCache.delete(videoPath);
+    }
+    const cache = this._loadVideoCache();
+    const cached = cache[videoPath];
+    if (this._fingerprintMatches(fp, cached && cached.LastWriteTime, cached && cached.FileSize)) {
+      const info = { valid: !!cached.Valid, duration: Number(cached.Duration) || 0, width: cached.Width || 0, height: cached.Height || 0 };
+      this._videoInfoCache.set(videoPath, info);
+      return info;
+    }
+    if (cached) { delete cache[videoPath]; this._markVideoCacheRemoved(videoPath); } // 指纹变化，丢弃旧缓存交由重新探测
+    return null;
+  }
+
+  // 按作用域读取探测结果：指纹未变才命中；命中写入内存缓存键（含作用域，避免与其它模式串用）
+  _fetchScopedVideoInfo(videoPath, scope) {
+    const key = scope + '\u0000' + videoPath;
+    const fp = this._fileFingerprint(videoPath);
+    if (!fp) return null;
+    const hit = this._videoInfoCache.get(key);
+    if (hit) {
+      // 同 _fetchCachedVideoInfo：内存条目不带指纹，须回库核对后才能复用
+      let r0 = null;
+      try { r0 = this._useDbCache() ? this._cacheStore.getVideo(videoPath, { scopesMask: scope }) : null; } catch (e) { r0 = null; }
+      if (this._fingerprintMatches(fp, r0 && r0.last_write, r0 && r0.file_size)) return hit;
+      this._videoInfoCache.delete(key);
+    }
+    if (!this._useDbCache()) return null;
+    let row = null;
+    try { row = this._cacheStore.getVideo(videoPath, { scopesMask: scope }); } catch (e) { return null; }
+    if (!this._fingerprintMatches(fp, row && row.last_write, row && row.file_size)) return null;
+    const info = {
+      valid: !!row.valid, duration: Number(row.duration) || 0,
+      width: Number(row.width) || 0, height: Number(row.height) || 0,
+    };
+    this._videoInfoCache.set(key, info);
+    return info;
+  }
+
+  // 按作用域写入探测结果：scopes 按位或累加，不覆盖其它模式已有的来源标记
+  _saveScopedVideoInfo(videoPath, info, scope) {
+    if (!this._useDbCache()) return false;
+    try {
+      this._cacheStore.upsertVideo(videoPath, {
+        lastWrite: this._ticksToStr(this._mtimeToTicks(videoPath)),
+        duration: info.duration, width: info.width, height: info.height,
+        valid: info.valid, scopes: scope, fileSize: this._fileSize(videoPath),
+      });
+      this._videoInfoCache.set(scope + '\u0000' + videoPath, {
+        valid: !!info.valid, duration: Number(info.duration) || 0,
+        width: Number(info.width) || 0, height: Number(info.height) || 0,
+      });
+      return true;
+    } catch (e) { return false; }
+  }
+
+  // 文件字节大小（计数认领的多命中消歧依据；取不到记 0，不影响其它逻辑）
+  _fileSize(p) {
+    try { return Number(fs.statSync(p).size) || 0; } catch (e) { return 0; }
+  }
+
+  // 遮罩素材信息：先按「遮罩作用域」查缓存，命中直接用时长；未命中才 ffprobe 并写回缓存。遮罩列表会被反复打开，接缓存后不必每次启动 ffprobe 全量探测。
+  async _maskMediaInfo(videoPath) {
+    const cached = this._fetchScopedVideoInfo(videoPath, this._scopes.mask);
+    if (cached) return cached;
+    const info = await this._probeVideoAsync(videoPath);
+    this._saveScopedVideoInfo(videoPath, info, this._scopes.mask);
+    return info;
+  }
+
+  // 计数认领：缓存未命中的路径（本轮新素材）先尝试从既有条目继承使用计数。
+  // 素材改名 / 移位后不会被当作全新素材重新计数；与任务引擎共用持久层的同一实现，
+  // 保证「刷新预检测」与「跑任务」两条路径行为一致。
+  _claimUsageForPaths(paths, scopesMask) {
+    if (!paths || !paths.length || !this._useDbCache()) return 0;
+    const store = this._cacheStore;
+    const mask = Number(scopesMask) || (this._scopes.batch | this._scopes.replica);
+    let n = 0;
+    for (const p of paths) {
+      try {
+        const r = store.claimUsage(p, this._ticksToStr(this._mtimeToTicks(p)), {
+          fileSize: this._fileSize(p), scopesMask: mask, scopes: mask,
+        });
+        if (r && r.adopted && Number(r.usageCount) > 0) n++;
+      } catch (e) { /* 单条认领失败不影响预检测 */ }
+    }
+    return n;
+  }
+
+  // 并发探测缺失缓存的视频并写回缓存；返回 path -> info 映射；onProbe(done) 可选：每完成一个视频（含缓存命中）回报累计计数
+  async _resolveVideoInfos(videoPaths, onProbe) {
+    const result = new Map();
+    const needProbe = [];
+    let doneCount = 0;
+    const tick = () => { doneCount++; if (onProbe) { try { onProbe(doneCount); } catch (e) {} } };
+    for (const p of videoPaths) {
+      const c = this._fetchCachedVideoInfo(p);
+      if (c) { result.set(p, c); tick(); }
+      else needProbe.push(p);
+    }
+    const claimed = this._claimUsageForPaths(needProbe); // 新路径先认领既有条目的使用计数
+    if (claimed > 0) console.log('[video_cache] 已识别 ' + claimed + ' 个素材的既有使用计数（路径变化）');
+    const infos = await this._runWithLimit(needProbe, (p) => this._probeVideoAsync(p).then((info) => { tick(); return info; }), this.probeConcurrency);
+    const cache = this._loadVideoCache();
+    for (let i = 0; i < needProbe.length; i++) {
+      const p = needProbe[i];
+      const info = infos[i] || { valid: false, duration: 0, width: 0, height: 0 };
+      cache[p] = {
+        LastWriteTime: this._ticksToStr(this._mtimeToTicks(p)), Duration: info.duration,
+        Valid: info.valid, Width: info.width, Height: info.height, FileSize: this._fileSize(p),
+      };
+      this._videoInfoCache.set(p, info);
+      result.set(p, info);
+      this._markVideoCacheDirty(p);
+    }
+    return result;
+  }
+
+  // 缓存落盘：只写脏键（增量事务），不做同步写（大缓存序列化会推迟同期 IPC 响应）。
+  async _saveVideoCache(full) {
+    const snapshot = this._videoCache;
+    // 纯内存态（库不可用）：无需落盘，清脏标记即可
+    if (!(this._cacheBackendMode === 'db' && this._cacheStore)) {
+      if (this._videoCache === snapshot) {
+        this._videoCacheDirty = false;
+        this._videoCacheDirtyKeys.clear();
+        this._videoCacheRemovedKeys.clear();
+      }
+      return;
+    }
+    const upserts = {};
+    if (snapshot) for (const k of this._videoCacheDirtyKeys) if (snapshot[k]) upserts[k] = snapshot[k];
+    const deletes = Array.from(this._videoCacheRemovedKeys);
+    if (!full && !Object.keys(upserts).length && !deletes.length) { this._videoCacheDirty = false; return; }
+    try {
+      if (full) this._cacheStore.replaceVideoMap(snapshot || {});
+      else this._cacheStore.applyVideoDelta(upserts, deletes);
+    } catch (e) { return; } // 写入失败保留脏标记，下次再试
+    if (this._videoCache === snapshot) {
+      this._videoCacheDirty = false;
+      this._videoCacheDirtyKeys.clear();
+      this._videoCacheRemovedKeys.clear();
+    }
+  }
+
+  // 失效清理「判定分区」：分出「当场可判」与「需核验文件是否存在」两组。
+  // 免 IO 是本函数的意义：本轮刚枚举过的路径（knownPaths）必然存在，无需再 stat；
+  // 非当前 root 的残留条目直接判删，同样无需 stat。只有两者都不适用（手动清理、目录已从配置移除）
+  _videoCacheGcPlan(knownPaths) {
+    const c = this._videoCache;
+    const verify = [];
+    if (!c) return { drop: [], verify, missing: new Set(), expired: new Set() };
+    for (const f of Object.keys(c)) {
+      if (knownPaths && knownPaths.has(f)) continue; // 刚枚举到 → 文件必然存在
+      verify.push(f);
+    }
+    return { drop: [], verify, missing: new Set(), expired: new Set() };
+  }
+
+  // video_cache 失效清理（异步分批）：核验「文件是否仍存在」，不存在只置位、不删除。
+  // 保留期内的条目仍留在库中 —— 素材移位后新路径才有机会认领它的使用计数；
+  // 到期仍不存在才真删；文件重新出现则清除置位（复活），计数一并保留。
+  async _gcVideoCache(knownPaths, opts) {
+    if (!this.storageDir) return 0;
+    const limit = Number(opts && opts.limit) > 0 ? Number(opts.limit) : 0;   // 0 = 不限量（手动入口）
+    const store = (this._cacheBackendMode === 'db' && this._cacheStore) ? this._cacheStore : null;
+    this._loadVideoCache();
+    const c = this._videoCache;
+    if (!c) return 0;
+    let plan;
+    try { plan = store ? store.gcPlan(knownPaths, { now: Date.now(), limit: limit || 0 }) : this._videoCacheGcPlan(knownPaths); }
+    catch (e) { if (store) return 0; plan = this._videoCacheGcPlan(knownPaths); }
+    const all = plan.verify || [];
+    const list = (limit > 0 && all.length > limit) ? all.slice(0, limit) : all;
+    // 批次在入队时算死，跑到这里待核验项可能已被前面的批次清空 —— 无事可做就直接退出
+    if (!list.length) return 0;
+    const _t = Date.now();
+    const gone = [], back = [];
+    // ⚠ 让路粒度 24（不要再放大）：冷态下一次让路前最多 24 次随机 IO，再多会把机械盘队列打满、连带冻住主线程。
+    const YIELD = 24;
+    let yields = 0;
+    // 阶段 5：接入统一让路查询（_verifyEnqueue 提供的 ctx.shouldYield）——
+    // 前台刚有活动/有任务在跑时多喘一口。纯增量：不改变原有让路节奏，只在忙时把间隔从 10ms 提到 30ms。
+    const shouldYield = (opts && typeof opts.shouldYield === 'function') ? opts.shouldYield : null;
+    for (let i = 0; i < list.length; i++) {
+      // 让路期间缓存可能已被重置/重载（取消预检测、切工作目录）→ 放弃本次清理，避免写回陈旧快照
+      if (this._videoCache !== c) return 0;
+      let missing = false;
+      try { await fs.promises.stat(list[i]); } catch (e) { missing = true; }
+      if (missing) gone.push(list[i]);
+      else back.push(list[i]);
+      if ((i + 1) % YIELD === 0) {
+        await new Promise((r) => setImmediate(r));
+        yields++;
+        let busy = false;
+        try { busy = shouldYield ? !!shouldYield() : false; } catch (e) { busy = false; }
+        if (busy || yields % 4 === 0) await new Promise((r) => setTimeout(r, busy ? 30 : 10));   // 每 4 批让磁盘喘一口
+      }
+    }
+    // 记录「这批刚核验过」→ 有效期内（默认 7 天）不重复访问磁盘：冷启动 IO 总量与过期条数成正比，而非库大小。
+    if (store && store.markVerified && list.length) { try { store.markVerified(list, Date.now()); } catch (e) {} }
+    if (this._lg && (limit > 0 || (opts && opts.idle))) {
+      this._lg('SYS', 'cache.gc',
+        '数据缓存失效清理（空闲' + (limit > 0 ? '增量' : '全量') + '） · 核验 ' + list.length + ' / ' + all.length + ' 条 · 失效 ' + gone.length
+        + ' · ' + (Date.now() - _t) + 'ms · 让路 ' + yields + ' 次'
+        + (limit > 0 ? '（冷启动限量）' : '（热启动全量）'),
+        { verify: list.length, total: all.length, gone: gone.length, ms: Date.now() - _t, yields, limit });
+    }
+    if (this._videoCache !== c) return 0;
+    if (!store) {
+      // 纯内存态没有保留期概念（会话结束即消失）：核验不存在的条目直接丢弃
+      for (const f of plan.drop.concat(gone)) delete c[f];
+      if (!gone.length) return 0;
+      this._videoCacheDirty = true;
+      await this._saveVideoCache();
+      return gone.length;
+    }
+    const expired = plan.expired || new Set();
+    const stillMissing = gone.filter((p) => !expired.has(p));
+    // 到期回收**不依赖本次核验**：missing_since 已把「文件不在了」记在库里，到期与否纯看时间，无需再 stat。
+    // 不可写成 `gone ∩ expired`：那建立在「每次都会重验所有 missing 条目」的前提上，
+    // TTL 免重验后前提不成立，到期条目会永远删不掉。
+    const remove = Array.from(expired);
+    let removed = 0;
+    try {
+      if (stillMissing.length) store.markMissing(stillMissing, Date.now());
+      if (back.length) store.clearMissing(back); // 文件已放回 → 复活并保留计数
+      if (remove.length) removed = store.deleteVideos(remove);
+    } catch (e) { return 0; }
+    for (const f of remove) delete c[f];
+    return removed;
+  }
+
+  // 触发一次失效清理：启动时与「清理数据缓存」手动入口调用（无定时器，全部为显式触发）
+  async _gcVideoCacheNow() {
+    if (!this.storageDir) return 0;
+    try { return await this._gcVideoCache(); } catch (e) { return 0; }
+  }
+
+  // 前台接口：清理 video_cache 失效条目（手动入口，返回删除数）
+  async cleanVideoCache() {
+    const removed = await this._gcVideoCacheNow();
+    return { ok: true, removed: removed || 0 };
+  }
+
+  // ── 缓存治理：自动清理（保守 + 保留期）· 构成统计 · 手动清理 ──
+  // 口径：① 只删「指向已不存在目录/文件」的条目（客观失效，绝不误删仍在用的缓存）；
+  //   ② 内容缓存超 cache_keep_days 未更新也清理（任务记录与运行日志不在此列）；③ 启动后空闲期触发 +
+  //   库体积超阈值；④ 释放显著时 VACUUM 回收页碎片（必须留在空闲期执行）。
+  _cacheKeepDays() {
+    const n = parseInt(this.config && this.config.cache_keep_days, 10);
+    return (Number.isFinite(n) && n >= 0) ? n : 30;
+  }
+  _cacheGcState() {
+    try { return JSON.parse(this._cacheStore.getMeta('cache_gc') || '{}') || {}; } catch (e) { return {}; }
+  }
+  // 概览（设置页显示：体积 / 保留天数 / 上次自动清理）
+  cacheInfo() {
+    try {
+      const st = this._cacheGcState();
+      return { ok: true, size: this._cacheStore ? this._cacheStore.dbSizeBytes() : 0,
+        keepDays: this._cacheKeepDays(), lastAt: st.at || 0, lastRemoved: st.removed || 0, lastFreed: st.freed || 0 };
+    } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+  }
+  // 构成（设置页「查看构成」）
+  cacheStats() {
+    try { return { ok: true, stats: this._cacheStore.stats() }; }
+    catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+  }
+  // 清理实现（自动/手动共用）。limit>0 时只处理前 limit 条（空闲期分批，避免冷态机械盘冻住界面）
+  async _gcStaleCaches(opts) {
+    if (!this._useDbCache() || !this._cacheStore) return { removed: 0, freed: 0, size: 0 };
+    const store = this._cacheStore;
+    const limit = Number(opts && opts.limit) > 0 ? Number(opts.limit) : 0;
+    const keepDays = this._cacheKeepDays();
+    const keepMs = keepDays > 0 ? keepDays * 86400000 : 0;
+    const now = Date.now();
+    const before = store.dbSizeBytes();
+    let removed = 0;
+    const exists = (p) => { try { fs.statSync(p); return true; } catch (e) { return false; } };
+    // ① clip_index：**只删「目录已不存在」的条目**。
+    //    ⚠ 这里存的是「成片 → 该成片用过的片段清单」的业务映射，不是可再生缓存 ——
+    //      绝不能按保留期清理：目录还在就说明成片还在，映射必须留着。
+    try {
+      const del = [];
+      for (const d of store.listClips('')) {
+        if (!exists(d)) del.push(d);
+        if (limit && del.length >= limit) break;
+      }
+      if (del.length) removed += store.deleteClips(del);
+    } catch (e) {}
+    // ② txt_content：文件不存在 / 超保留期（updated_at）→ 删
+    try {
+      const rows = store.open().prepare('SELECT path, updated_at FROM txt_content').all();
+      const del = [];
+      for (const r of rows) {
+        const p = String(r.path);
+        if (!exists(p)) { del.push(p); continue; }
+        if (keepMs && Number(r.updated_at) > 0 && now - Number(r.updated_at) > keepMs) del.push(p);
+        if (limit && del.length >= limit) break;
+      }
+      if (del.length) removed += store.deleteTxtPaths(del);
+    } catch (e) {}
+    // ③ scan_cache：键（盘符开头的目录/根）不存在 → 删
+    try {
+      const del = [];
+      for (const r of store.listScans('')) {
+        const k = String(r.key);
+        if (/^[A-Za-z]:[\\/]/.test(k) && !exists(k)) del.push(k);
+        if (limit && del.length >= limit) break;
+      }
+      if (del.length) removed += store.deleteScans(del);
+    } catch (e) {}
+    // ④ cache_kv：txt_tree:<root> / log_index:<root> 等指向的 root 已不存在 → 删（含历史异写法与错位残留）
+    //    proj_reg 同理 —— 工作根消失后，它登记的项目名已无意义（各项目目录的存在性
+    //    由 _survivingProjReg / listMaskProjects 在每次重建列表时单独核验）
+    try {
+      const kv = store.listKv('');
+      for (const k of Object.keys(kv)) {
+        const m = /^(txt_tree|log_index|replica_logs|scan_full_at):(.+)$/.exec(k);
+        // proj_reg 的键是 proj_reg:<kind>:<工作根>（kind = batch|mask），根路径要从第二个冒号后取
+        const mReg = /^proj_reg:(?:batch|mask):(.+)$/.exec(k);
+        if ((m && !exists(m[2])) || (mReg && !exists(mReg[1]))) removed += store.deleteKvPrefix(k);
+      }
+    } catch (e) {}
+    // ⑤ video_cache 的失效条目沿用既有 GC（missing_since 超期回收）
+    try { removed += (await this._gcVideoCacheNow()) || 0; } catch (e) {}
+    // ⚠ VACUUM 的条件**不能**是「删除后文件是否立即变小」—— SQLite 删除只把页释放进 freelist，
+    //   文件大小不变（移除大量条目后大小几乎不变）；只有 VACUUM（并截断 WAL）才真正回收。
+    if (removed > 0) { try { store.vacuum(); } catch (e) {} }
+    const size = store.dbSizeBytes();
+    const out = { at: now, removed, freed: Math.max(0, before - size), size };
+    try { store.setMeta('cache_gc', JSON.stringify(out)); } catch (e) {}
+    return out;
+  }
+  // 启动后空闲期触发：节流 ≥24h；库体积超阈值（40MB）时不受节流限制
+  async gcCachesIdle() {
+    if (!this._useDbCache() || !this._cacheStore) return { ok: true, skipped: 'no-store' };
+    const IDLE_MS = 24 * 3600 * 1000, BIG = 40 * 1024 * 1024;
+    let size = 0;
+    try { size = this._cacheStore.dbSizeBytes(); } catch (e) { return { ok: true, skipped: 'stat-fail' }; }
+    const st = this._cacheGcState();
+    const due = !st.at || (Date.now() - st.at > IDLE_MS);
+    if (!due && size < BIG) return { ok: true, skipped: 'not-due', size };
+    const r = await this._gcStaleCaches({ limit: 0 });
+    try {
+      this._lg('SYS', 'cache.gc.run',
+        '缓存自动清理 · 移除 ' + (r.removed || 0) + ' 条 · 释放 ' + this._humanSize(r.freed || 0)
+        + ' · 现 ' + this._humanSize(r.size || 0) + '（保留期 ' + this._cacheKeepDays() + ' 天 · 触发 ' + (due ? '到期' : '体积超阈值') + '）',
+        { removed: r.removed || 0, freed: r.freed || 0, size: r.size || 0, keepDays: this._cacheKeepDays(), due });
+    } catch (e) {}
+    return { ok: true, ...r, due };
+  }
+  // 前台接口：立即清理（设置页按钮）
+  async cleanCaches() {
+    const r = await this._gcStaleCaches({ limit: 0 });
+    try {
+      this._lg('SYS', 'cache.gc.manual',
+        '手动清理缓存 · 移除 ' + (r.removed || 0) + ' 条 · 释放 ' + this._humanSize(r.freed || 0) + ' · 现 ' + this._humanSize(r.size || 0),
+        { removed: r.removed || 0, freed: r.freed || 0, size: r.size || 0 });
+    } catch (e) {}
+    return { ok: true, removed: r.removed || 0, freed: r.freed || 0, size: r.size || 0 };
+  }
+
+  // ── A6（「内置FFmpeg与数据目录自维护·方案」§五）：数据目录清理 ──
+  // 口径：**宁少勿多，绝不误伤** —— 只清可再生的内部产物与历史残留，成片、备份、日志一律不碰。
+  _ddSize(p) {
+    try { const st = fs.statSync(p); return st.isFile() ? st.size : 0; } catch (e) { return 0; }
+  }
+  // 递归汇总目录内的文件清单与体积
+  _ddWalk(d) {
+    const files = [];
+    const w = (x) => {
+      let ns = [];
+      try { ns = fs.readdirSync(x, { withFileTypes: true }); } catch (e) { return; }
+      for (const e2 of ns) {
+        const p = path.join(x, e2.name);
+        if (e2.isDirectory()) w(p); else files.push(p);
+      }
+    };
+    w(d);
+    return files;
+  }
+  // 扫描数据目录 → 可清项清单（含体积 / 条数 / 不可清原因）
+  // 注入「历史数据根」（main.js 的 legacyDataDirs() 提供）。见 dataDirScan 里 roots 的注释。
+  setLegacyDataDirs(dirs) {
+    try {
+      this._legacyDirs = (Array.isArray(dirs) ? dirs : []).map(String).filter(Boolean);
+    } catch (e) { this._legacyDirs = []; }
+  }
+
+  // 清理旧版本留下的产物：独立缓存 JSON、便携包 zip（含分卷）、脚本时代残留、config.json 副本
+  cleanupLegacyArtifacts() {
+    const dir = String(this.storageDir || '');
+    if (!dir) return { removed: 0, freed: 0 };
+    const roots = [dir];
+    for (const d of (this._legacyDirs || [])) {
+      try {
+        if (!d) continue;
+        const a = path.resolve(d);
+        if (roots.every((x) => path.resolve(x) !== a)) roots.push(d);
+      } catch (e) { /* 无效路径：跳过 */ }
+    }
+    // 旧版独立缓存 JSON（别名表见 engines/base/migrate.js 的 ALIASES），内容已并入 settings.db / cache.db
+    const JSON_RE = /^(scan_cache|video_lab_scan_cache|scan-cache|log_cache|video_cache|usage_cache|task_cache|task_snapshot|mask_cache|mask_session|Batch|watermark_cache|Mask|mask_default_dir|clip_cache)\.json(\.bak)?$/i;
+    let removed = 0, freed = 0;
+    // hard 级：这些全是程序自产、可完全再生的旧产物，删除不可感知、不进回收站
+    const drop = (p) => {
+      try {
+        if (!fs.existsSync(p)) return;
+        const sz = this._ddSize(p);
+        this._hardDelete(p);
+        removed++;
+        freed += sz;
+      } catch (e) {}
+    };
+    for (const r of roots) {
+      let ns = [];
+      try { ns = fs.readdirSync(r); } catch (e) { continue; }
+      for (const n of ns) {
+        const p = path.join(r, n);
+        // 便携包 zip（含 .001/.002 分卷）：旧版「下载更新」落地物，解压覆盖后即无用途
+        if (/^Video-Lab-.*-x64-Portable\.zip(\.\d{3,})?$/i.test(n)) { drop(p); continue; }
+        if (JSON_RE.test(n)) { drop(p); continue; }
+        // 已退休的 config.json 的改名副本（回收失败时的兜底产物，内容与 config.json 相同）
+        if (/^config\.json\.bak/i.test(n)) { drop(p); continue; }
+        // 脚本版（PS1 时代）残留：报表文件与备份目录
+        if (/^usage_report\.txt$/i.test(n)) { drop(p); continue; }
+        if (/^(QuickAccessBackup|帧删除备份_.*)$/i.test(n)) {
+          try {
+            if (!fs.statSync(p).isDirectory()) continue;
+            let sub = [];
+            try { sub = fs.readdirSync(p); } catch (e) {}
+            // soft 级：目录名表明内容是原始视频副本，保留回收站
+            for (const q of sub) this._recycleFile(path.join(p, q), '脚本时代备份目录残留');
+            try { if (!fs.readdirSync(p).length) this._recycleFile(p, '脚本时代备份目录残留（空壳）'); } catch (e) {}
+          } catch (e) {}
+        }
+      }
+    }
+    if (removed) {
+      try {
+        this._lg('SYS', 'data.legacy.clean',
+          '启动清理历史遗留产物 · ' + removed + ' 项 · ' + this._humanSize(freed),
+          { removed, freed });
+      } catch (e) {}
+    }
+    return { removed, freed };
+  }
+
+  dataDirScan() {
+    const dir = String(this.storageDir || '');
+    const tasks = this.tasks || new Map();
+    const items = [];
+    const add = (o) => items.push(Object.assign(
+      { key: '', label: '', count: 0, bytes: 0, files: [], cleanable: true, reason: '', desc: '' }, o));
+    // ── 扫描根 = 当前数据根 + 历史数据根 ─────────────────────────────────
+    // 程序目录里可能仍留着更早版本写入的 ffmpeg\ / preview\ / txt-snap\ / log\ 等，只扫 <storageDir> 看不见。
+    // ⚠ 同一 key 下**合并所有根的文件**（当前根在前），用 legacyN 标注来源；用户勾一次即可连旧版残留一起清。
+    const roots = [dir];
+    for (const d of (this._legacyDirs || [])) {
+      try {
+        if (!d) continue;
+        const a = path.resolve(d);
+        if (roots.every((x) => path.resolve(x) !== a)) roots.push(d);
+      } catch (e) { /* 无效路径：跳过 */ }
+    }
+    const legacyN = Math.max(0, roots.length - 1);
+    const abs = (n) => path.join(dir, n);
+    // 各根下同名目录里符合过滤条件的文件（绝对路径）；缺目录/无权限都静默跳过
+    const walkRoots = (name, filter) => {
+      const out = [];
+      for (const r of roots) {
+        try {
+          const p = path.join(r, name);
+          if (!fs.existsSync(p) || !fs.statSync(p).isDirectory()) continue;
+          for (const n of fs.readdirSync(p)) {
+            try { if (!filter || filter(n)) out.push(path.join(p, n)); } catch (e) {}
+          }
+        } catch (e) {}
+      }
+      return out;
+    };
+
+    // ① 画布预览中间产物（含旧版本数据根里的残留）
+    try {
+      const files = walkRoots('preview', (n) => /\.(png|jpe?g)$/i.test(n));
+      add({ key: 'preview', label: '画布预览中间产物', files, legacyN,
+        desc: '预览图，用完即删'
+          + (legacyN ? '；另含程序目录里的遗留文件' : '') });
+    } catch (e) {}
+
+    // ② TXT 提交快照：只清「任务记录已不存在 / 任务已完成」两类（含旧版本数据根里的残留）。
+    //   ⚠ 不按时间清理：失败 / 停止 / 中断的任务会常驻列表，可能很久后才续跑，快照删了配置就还原不出来。
+    try {
+      // ⚠ 用绝对路径列表（跨根）：旧版本数据根里的快照，其任务必然已不在当前任务表内，会落到 dead 分支 —— 正是我们要的；仍在跑/排队的（跨根同名）照旧保留。
+      const all = walkRoots('txt-snap', (n) => /\.txt$/i.test(n));
+      const dead = [], keep = [];
+      for (const p of all) {
+        const n = path.basename(p);
+        const t = tasks.get(n.replace(/\.txt$/i, ''));
+        // 任务没了 ⇒ 孤儿；已完成 ⇒ 不可能再续跑（续跑只对失败/中断/停止开放）
+        if (!t || t.status === 'done') dead.push(p);
+        else keep.push(n);              // 失败/中断/停止/暂停/在跑：续跑与启动前还原还要用
+      }
+      // ⚠ 必须显式写 `files: dead`（该作用域无此变量）：写错会 ReferenceError 并被外层 catch 静默吞掉，导致整项从清单里消失且毫无提示。
+      add({ key: 'txtsnap', label: 'TXT 提交快照（已无用）', files: dead, legacyN,
+        desc: '已完成任务的配置快照'
+          + (legacyN ? '；另含程序目录里的遗留文件' : '') });
+      if (keep.length) {
+        add({ key: 'txtsnap-live', label: 'TXT 提交快照（保留中）', cleanable: false, count: keep.length,
+          reason: '有 ' + keep.length + ' 个任务未完成（失败/中断/停止/暂停/在跑），它们续跑时要按快照还原配置',
+          desc: '完成任务后自动清除' });
+      }
+    } catch (e) {}
+
+    // ③ 配置备份残留（如 config.json.bak-rootswitch：切换保存位置时留下的旧副本）
+    try {
+      const files = fs.existsSync(dir)
+        ? fs.readdirSync(dir).filter((n) => /\.bak(-|$)/i.test(n)).map((n) => abs(n)) : [];
+      add({ key: 'cfgbak', label: '配置备份残留', files,
+        desc: '切换位置时留下的配置副本' });
+    } catch (e) {}
+
+    // ④ 数据搬迁残留（*.migrated）：数据搬进 AppData 后，旧位置三个库改名留下的副本
+    try {
+      const files = [];
+      for (const d of roots) {
+        let ns = [];
+        try { ns = fs.readdirSync(d); } catch (e) { continue; }
+        for (const n of ns) if (/\.migrated$/.test(n)) files.push(path.join(d, n));
+      }
+      add({ key: 'migrated', label: '数据搬迁残留', files,
+        desc: '搬迁前原位置的库副本' });
+    } catch (e) {}
+
+    // ⑤ FFmpeg 组件目录：**只有当前没在用它**的那一份才可清（逐个根判，混在一起会误清在用的那份）
+    try {
+      const active = String(this._resolveFfmpegBin().cfgDir || '');
+      const files = [];
+      let usedN = 0;
+      for (const r of roots) {
+        const ffDir = path.join(r, 'ffmpeg');
+        try {
+          if (!fs.existsSync(ffDir) || !fs.statSync(ffDir).isDirectory()) continue;
+          let inUse = true;   // 判不出来时按"在用"处理 —— 宁可少清，不能把软件清坏
+          try { inUse = !!active && path.resolve(active) === path.resolve(ffDir); } catch (e) { inUse = true; }
+          if (inUse) { usedN++; continue; }
+          for (const p of this._ddWalk(ffDir)) files.push(p);
+        } catch (e) {}
+      }
+      add({ key: 'ffmpeg', label: 'FFmpeg 组件目录', files, cleanable: files.length > 0,
+        reason: files.length ? '' : '正在使用，清理后无法处理视频',
+        desc: files.length
+          ? '另一份组件 + 程序目录遗留的下载组件'
+          : (usedN ? '' : '没有可清理的目录') });
+    } catch (e) {}
+
+    // ⑥⑦ 只展示不清理的两项（让用户知道它们的去向）：统计跨根（旧版本数据根里同样有 log\ 与 backup\）。
+    try {
+      const lg = [];
+      for (const r of roots) { try { for (const p of this._ddWalk(path.join(r, 'log'))) lg.push(p); } catch (e) {} }
+      add({ key: 'log', label: '运行日志', files: [], cleanable: false, count: lg.length,
+        bytes: lg.reduce((s, p) => s + this._ddSize(p), 0),
+        reason: '排查问题的证据，不自动清',
+        desc: '自动清理：普通与引擎 7 天、错误 30 天'
+          + (legacyN ? '；另含程序目录里遗留的日志，需要时可自行删除' : '') });
+      const bk = [];
+      for (const r of roots) { try { for (const p of this._ddWalk(path.join(r, 'backup'))) bk.push(p); } catch (e) {} }
+      add({ key: 'backup', label: '处理前备份', files: [], cleanable: false, count: bk.length,
+        bytes: bk.reduce((s, p) => s + this._ddSize(p), 0),
+        reason: '属于你的数据，只能由你决定',
+        desc: '在「视频处理」里设保留天数' });
+    } catch (e) {}
+
+
+    // 体积/条数只在可清项上按文件清单算（不可清项已自行给出）
+    for (const it of items) {
+      if (!it.files.length) continue;
+      it.count = it.files.length;
+      it.bytes = it.files.reduce((s, p) => s + this._ddSize(p), 0);
+    }
+    const cl = items.filter((it) => it.cleanable && it.files.length);
+    return {
+      ok: true, dir, items,
+      cleanableCount: cl.reduce((s, it) => s + it.count, 0),
+      cleanableBytes: cl.reduce((s, it) => s + it.bytes, 0),
+    };
+  }
+  // 执行清理：一律进回收站（可还原，遵循项目硬约束）；清完重新扫描，返回最新状态。
+  // ⚠ 刻意**不用** `_recycleFile`：它会先把文件改名成 `*.bak` 再异步送站 —— 紧接的复扫会把 `*.bak`
+  //   当成「配置备份残留」（读数不准），送站失败时还会留下清不掉的残渣；这里直接对原路径送站并 await 结果。
+  async dataDirClean(keys) {
+    // 容错：单个键也可以直接传字符串（避免"参数形状不对 → 静默清 0 项"的哑失败）
+    const want = (Array.isArray(keys) ? keys : (keys === undefined || keys === null ? [] : [keys])).map(String);
+    const scan = this.dataDirScan();
+    const picked = scan.items.filter((it) => want.indexOf(it.key) >= 0 && it.cleanable && it.files.length);
+    // 删除分级：程序自产的可再生件直接删；用户资产与需重新下载的组件走回收站
+    //   hard —— preview / txt-snap（死快照）/ cfgbak / migrated / log（运行日志）
+    //   soft —— ffmpeg（删了要重新下载）/ backup（处理前备份 = 原始视频副本）
+    const HARD_KEYS = new Set(['preview', 'txtsnap', 'cfgbak', 'migrated', 'log']);
+    let removed = 0, freed = 0;
+    for (const it of picked) {
+      const hard = HARD_KEYS.has(it.key);
+      for (const f of it.files) {
+        if (!fs.existsSync(f)) continue;
+        const sz = this._ddSize(f);
+        const ok = hard ? this._hardDelete(f) : this._recycleFile(f, '数据目录清理：' + it.label);
+        if (ok) { removed++; freed += sz; }
+      }
+    }
+    // 空目录顺手收掉：只收「整目录都是可清项」的那两个（preview / ffmpeg），否则清完会留下空文件夹。
+    // **txt-snap 绝不整目录动**：里面可能还有在跑/排队任务的快照（它们不在本次可清清单里）。
+    try {
+      // 跨根收空壳：历史数据根里的 preview\ / ffmpeg\ 清空后同样要收回，否则旧目录里会留下空文件夹。
+      const bases = [String(this.storageDir || '')].concat(this._legacyDirs || []);
+      for (const base of bases) {
+        for (const n of ['preview', 'ffmpeg']) {
+          try {
+            const p = path.join(base, n);
+            if (fs.existsSync(p) && fs.statSync(p).isDirectory() && fs.readdirSync(p).length === 0) fs.rmdirSync(p);
+          } catch (e) {}
+        }
+      }
+    } catch (e) {}
+    try {
+      this._lg('SYS', 'datadir.clean',
+        '清理数据目录 · 移除 ' + removed + ' 项 · 释放 ' + this._humanSize(freed),
+        { keys: picked.map((it) => it.key), removed, freed });
+    } catch (e) {}
+    // wanted 一并回传：调用方据此区分「没勾选任何项」与「勾了但都被保护/已不存在」，后者不能默不作声。
+    const after = this.dataDirScan();
+    return Object.assign({ ok: true, removed, freed, wanted: want.length }, after);
+  }
+
+  // 启动后空闲期的失效清理：**入队**（不分冷热），由空闲队列串行 + 自适应节流执行；剩下的条目留给后续轮次 —— 清理是维护任务，慢一点没有代价，但绝不能把界面冻住。
+  async gcVideoCacheIdle(perJob) {
+    // **入队**：队列串行单发 + 自适应节流（慢盘自动放慢、快盘自动加速），因此不需要事先判断冷热；
+    // 剩余条目留给后续轮次（自愈逐步收敛）。
+    const N = Number(perJob) > 0 ? Number(perJob) : 4;      // 每条 job 核验的路径数
+    const ROUND = 8;                                         // 每轮排入的 job 数；跑完再排下一轮
+    const store = this._useDbCache() ? this._cacheStore : null;
+    if (!store || typeof store.gcPendingCount !== 'function') return { queued: 0, pending: 0 };
+    let pending = 0;
+    try { pending = store.gcPendingCount(Date.now()); } catch (e) { pending = 0; }
+    if (!pending) return { queued: 0, pending: 0 };
+    const jobs = Math.min(ROUND, Math.ceil(pending / N));
+    let queued = 0;
+    for (let i = 0; i < jobs; i++) {
+      const last = i === jobs - 1;
+      if (this._verifyEnqueue('cachegc', i, async (ctx) => {
+        await this._gcVideoCache(null, { limit: N, idle: true, shouldYield: ctx.shouldYield });
+        if (last) { try { await this.gcVideoCacheIdle(); } catch (e) {} }
+      })) queued++;
+    }
+    try {
+      if (this._lg) this._lg('SYS', 'cache.gc.queue',
+        '失效清理已排入空闲队列（待核验 ' + pending + ' 条 · 本轮 ' + queued + ' 个批次 × ' + N + ' 条）',
+        { pending, queued, perJob: N });
+    } catch (e) {}
+    return { queued, pending };
+  }
+
+  _isExcludedPath(target, excludes) {
+    if (!excludes || excludes.length === 0) return false;
+    for (const ex of excludes) {
+      const clean = stripQuotes(String(ex)).replace(/[\\/]+$/, '');
+      if (!clean) continue;
+      if (target.toLowerCase().indexOf(clean.toLowerCase()) >= 0) return true;
+    }
+    return false;
+  }
+
+  // .lnk 目标解析：直接读二进制（不 spawn pwsh，避免进程启动开销）。
+  // 解析器与 batch 模块共用底座实现（engines/base/lnk.js）；失败一律降级为空串，不中断预检测。
+  _parseLnkTarget(lnk) {
+    if (this._lnkParser === undefined) {
+      try { this._lnkParser = require(path.join(this.enginesDir, 'base', 'lnk.js')).parseLnkTarget || null; }
+      catch (e) { this._lnkParser = null; }
+    }
+    if (typeof this._lnkParser !== 'function') return '';
+    try { return String(this._lnkParser(lnk) || '').trim(); } catch (e) { return ''; }
+  }
+
+  // 解析结果缓存读取：命中且 lnk 文件未变（mtime 相同）直接复用；未缓存返回 null，缓存了「无目标」返回 ''
+  _lnkCached(lnk) {
+    const c = this._lnkCache.get(lnk);
+    if (!c) return null;
+    let mtimeMs = null;
+    try { mtimeMs = fs.statSync(lnk).mtimeMs; } catch (e) { mtimeMs = null; }
+    if (mtimeMs === null || mtimeMs === c.mtimeMs) return c.target;
+    this._lnkCache.delete(lnk);
+    return null;
+  }
+
+  _lnkStore(lnk, target) {
+    let mtimeMs = null;
+    try { mtimeMs = fs.statSync(lnk).mtimeMs; } catch (e) { mtimeMs = null; }
+    this._lnkCache.set(lnk, { mtimeMs, target: String(target || '') });
+  }
+
+  // 分流：命中缓存的直接给结果，其余交给解析器
+  _lnkSplit(paths) {
+    const out = {};
+    const todo = [];
+    for (const p of paths) {
+      const hit = this._lnkCached(p);
+      if (hit !== null) { if (hit) out[p] = hit; continue; }
+      todo.push(p);
+    }
+    return { out, todo };
+  }
+
+  // 批量解析 .lnk 快捷方式目标（与视频批量脚本语义一致）：返回 { lnkPath: targetPath }；
+  // 解析失败/失效返回空对象降级，不影响预检测其余流程。纯内存操作，同步即可（无 pwsh 进程开销）。
+  _resolveShortcutTargets(paths) {
+    if (!paths || !paths.length) return {};
+    const { out, todo } = this._lnkSplit(paths);
+    for (const p of todo) {
+      const target = this._parseLnkTarget(p);
+      this._lnkStore(p, target);
+      if (target) out[p] = target;
+    }
+    return out;
+  }
+
+  // 保留异步入口：预检测/重置等调用方无需改动；内部为纯内存解析、不阻塞主线程。
+  async _resolveShortcutTargetsAsync(paths) {
+    return this._resolveShortcutTargets(paths);
+  }
+
+  async _precheckFolder(dir, excludes, nonround) {
+    // 第一遍：仅同步收集候选视频，按"根目录 + 各子目录(+快捷方式目标)"分组，暂不探测
+    const groups = [];
+    try {
+      const items = fs.readdirSync(dir, { withFileTypes: true });
+      const rootVideos = [];
+      const subDirs = [];
+      const lnks = [];
+      for (const ent of items) {
+        const full = path.join(dir, ent.name);
+        if (ent.isDirectory()) subDirs.push(full);
+        else if (ent.isFile() && path.extname(ent.name).toLowerCase() === '.lnk') lnks.push(full);
+        else if (ent.isFile() && VIDEO_EXTS.has(path.extname(ent.name).toLowerCase())) rootVideos.push(full);
+      }
+      const rootCands = [];
+      for (const v of rootVideos) if (!this._isExcludedPath(v, excludes)) rootCands.push(v);
+
+      // 快捷方式（与批量脚本一致）：解析目标，目录→独立组递归收集；视频文件→并入根组；失效/非视频→跳过
+      let rootCandsExtra = null;
+      const lnkGroups = [];
+      if (lnks.length) {
+        const map = await this._resolveShortcutTargetsAsync(lnks);
+        if (map) {
+          const extra = [];
+          for (const l of lnks) {
+            const t = map[l];
+            if (!t) continue;
+            let st;
+            try { st = fs.statSync(t); } catch (e) { continue; }
+            if (st.isDirectory()) {
+              const cands = [];
+              for (const f of walkFiles(t)) {
+                if (!VIDEO_EXTS.has(path.extname(f).toLowerCase())) continue;
+                if (this._isExcludedPath(f, excludes)) continue;
+                cands.push(f);
+              }
+              lnkGroups.push(cands);
+            } else if (st.isFile() && VIDEO_EXTS.has(path.extname(t).toLowerCase())) {
+              if (!this._isExcludedPath(t, excludes)) extra.push(t);
+            }
+          }
+          if (extra.length) rootCandsExtra = extra;
+        }
+      }
+      if (rootCandsExtra) rootCands.push.apply(rootCands, rootCandsExtra);
+      groups.push(rootCands);
+      for (const sub of subDirs) {
+        const cands = [];
+        for (const f of walkFiles(sub)) {
+          if (!VIDEO_EXTS.has(path.extname(f).toLowerCase())) continue;
+          if (this._isExcludedPath(f, excludes)) continue;
+          cands.push(f);
+        }
+        groups.push(cands);
+      }
+      for (const g of lnkGroups) groups.push(g);
+    } catch (e) { return { total: 0, groupCount: 0 }; }
+
+    // 去重后并发探测（未命中缓存的才跑 ffprobe，限流）
+    const seen = new Set();
+    const all = [];
+    for (const g of groups) for (const f of g) if (!seen.has(f)) { seen.add(f); all.push(f); }
+    const infos = await this._resolveVideoInfos(all);
+
+    let total = 0, groupCount = 0;
+    for (const g of groups) if (g.some((f) => { const i = infos.get(f); return i && i.valid; })) groupCount++;
+    for (const f of all) { const i = infos.get(f); if (i && i.valid) total++; }
+    if (nonround && total > 0) groupCount = 1;
+    return { total, groupCount };
+  }
+
+  async precheck(paths, excludes) {
+    excludes = (Array.isArray(excludes) ? excludes : []).map((s) => stripQuotes(s)).filter(Boolean);
+    const results = [];
+    const dedup = new Map();
+    for (const item of paths) {
+      const isObj = item && typeof item === 'object';
+      const key = stripQuotes(isObj ? item.path : item);
+      const nonround = isObj ? !!item.nonround : false;
+      if (!key) { results.push({ status: 'pending', text: '未检测', total: 0, groupCount: 0, exists: false }); continue; }
+      if (dedup.has(key)) { results.push(dedup.get(key)); continue; }
+      let r;
+      try {
+        const st = fs.statSync(key);
+        if (st.isDirectory()) {
+          const s = await this._precheckFolder(key, excludes, nonround);
+          if (s.total === 0) r = { status: 'warn', text: '无合格视频', total: 0, groupCount: 0, exists: true };
+          else {
+            const grouped = s.groupCount > 1;
+            const text = grouped ? `${s.total}个视频，共${s.groupCount}组` : `${s.total} 个视频`;
+            r = { status: grouped ? 'group' : 'ok', text, total: s.total, groupCount: s.groupCount, exists: true };
+          }
+        } else if (st.isFile()) {
+          if (VIDEO_EXTS.has(path.extname(key).toLowerCase())) {
+            let info = this._fetchCachedVideoInfo(key);
+            if (!info) {
+              // 行内预检测优先：探测期间后台大探测遇 _inlineProbing>0 会主动让路
+              this._inlineProbing++;
+              try {
+                info = await this._probeVideoAsync(key);
+                // 新探测结果写入内存缓存（不落盘，后台下次保存时一并合并；避免两种探测互相覆盖）
+                const cc = this._loadVideoCache();
+                cc[key] = { LastWriteTime: this._ticksToStr(this._mtimeToTicks(key)), Duration: info.duration, Valid: info.valid, Width: info.width, Height: info.height, FileSize: this._fileSize(key) };
+                this._videoInfoCache.set(key, info);
+                this._markVideoCacheDirty(key);
+              } finally { this._inlineProbing--; }
+            }
+            const valid = !this._isExcludedPath(key, excludes) && info.valid;
+            r = valid ? { status: 'ok', text: '1 个视频', total: 1, groupCount: 1, exists: true } : { status: 'warn', text: '非合规视频', total: 0, groupCount: 0, exists: true };
+          } else r = { status: 'warn', text: '非视频文件', total: 0, groupCount: 0, exists: true };
+        } else r = { status: 'warn', text: '路径无效', total: 0, groupCount: 0, exists: false };
+      } catch (e) { r = { status: 'warn', text: '路径不存在', total: 0, groupCount: 0, exists: false }; }
+      results.push(r);
+      dedup.set(key, r);
+    }
+    // 仅在有实际变更时落盘：常态（全部命中缓存）下预检测完全不写盘，行内徽章立即出结果
+    if (this._videoCacheDirty) await this._saveVideoCache();
+    return results;
+  }
+
+  // 重置预检测：清除物理缓存，收集所有配置指向的路径并全量探测（跨路径去重），可实时回报进度
+  // 收集所有配置指向的视频候选：跨配置路径去重、目录递归收集、跳过非视频扩展名
+  // 异步：快捷方式解析走非阻塞通道，避免「检测中」期间主线程被 pwsh 启动阻塞
+  async _gatherAllVideos() {
+    const all = this._collectAllTxt();
+    const pathSet = new Set();
+    for (const t of all) {
+      let cfg;
+      try { cfg = this.readConfig(t.full); } catch (e) { continue; }
+      for (const f of (cfg.folders || [])) {
+        const p = stripQuotes(String((f && typeof f === 'object' ? f.path : f) || '').trim());
+        if (p) pathSet.add(p);
+      }
+    }
+    // 遮罩模式登记的素材目录（含手动添加的项目外路径）一并纳入刷新范围 ——增量探测成本低，用户点一次即可同时刷新批量与遮罩的预缓存，不必分两处各点一次
+    for (const p of this._maskSessionDirs()) pathSet.add(p);
+    const seen = new Set();
+    const allVideos = [];
+    for (const p of pathSet) {
+      let st;
+      try { st = fs.statSync(p); } catch (e) { continue; }
+      const cands = [];
+      if (st.isDirectory()) {
+        for (const f of walkFiles(p)) if (VIDEO_EXTS.has(path.extname(f).toLowerCase())) cands.push(f);
+        // 与单路径预检测一致：跟随根目录下 .lnk 快捷方式（目录→收集目标下视频；视频文件→直接计入）
+        let items;
+        try { items = fs.readdirSync(p, { withFileTypes: true }); } catch (e) { items = []; }
+        const lnks = [];
+        for (const ent of items) if (ent.isFile() && path.extname(ent.name).toLowerCase() === '.lnk') lnks.push(path.join(p, ent.name));
+        if (lnks.length) {
+          const map = await this._resolveShortcutTargetsAsync(lnks);
+          if (map) for (const l of lnks) {
+            const t = map[l];
+            if (!t) continue;
+            let ts;
+            try { ts = fs.statSync(t); } catch (e) { continue; }
+            if (ts.isDirectory()) {
+              for (const f of walkFiles(t)) if (VIDEO_EXTS.has(path.extname(f).toLowerCase())) cands.push(f);
+            } else if (ts.isFile() && VIDEO_EXTS.has(path.extname(t).toLowerCase())) cands.push(t);
+          }
+        }
+      } else if (st.isFile() && VIDEO_EXTS.has(path.extname(p).toLowerCase())) cands.push(p);
+      for (const f of cands) if (!seen.has(f)) { seen.add(f); allVideos.push(f); }
+    }
+    return allVideos;
+  }
+
+  async resetPrecheck(onProgress) {
+    // 使用前校验：环境失效时重建必然把全部素材判无效（白跑一遍），先拦住
+    const envG = this._envGuard('reset_precheck');
+    if (envG) return envG;
+    this._videoCache = {};
+    this._videoInfoCache = new Map();
+    // 不在开始时删除物理缓存：探测全部完成后才经 _saveVideoCache 原子替换覆盖原缓存；若中途取消/异常，原缓存文件保持有效可复用，未完成的探测结果不落盘。
+
+    // 收集所有配置指向的素材路径（跨路径去重）
+    const allVideos = await this._gatherAllVideos();
+
+    const report = (s) => { if (onProgress) { try { onProgress(s); } catch (e) {} } };
+    const total = allVideos.length;
+    let probed = 0, valid = 0;
+    const cache = this._loadVideoCache();
+    const token = ++this._precheckToken; // 本次探测的令牌：作废任何更早的后台探测
+    await this._runWithLimit(allVideos, async (f) => {
+      // 行内预检测优先：后台探测遇用户操作让路（每批轮询，短暂让出 IO）
+      if (this._inlineProbing > 0) await new Promise((r) => setTimeout(r, 80));
+      const info = await this._probeVideoAsync(f);
+      cache[f] = { LastWriteTime: this._ticksToStr(this._mtimeToTicks(f)), Duration: info.duration, Valid: info.valid, Width: info.width, Height: info.height, FileSize: this._fileSize(f) };
+      this._videoInfoCache.set(f, info);
+      probed++;
+      if (info.valid) valid++;
+      report({ done: probed, total });
+    }, this.probeConcurrency, () => token !== this._precheckToken);
+
+    const cancelled = token !== this._precheckToken;
+    if (cancelled) { // 取消/中断：丢弃本次内存探测结果，下次从原缓存文件重新加载（不覆盖原文件）
+      this._videoCache = null;
+      this._videoInfoCache = new Map();
+    } else { await this._saveVideoCache(true); } // 全部完成才整体替换缓存；取消/中断时保留原缓存
+    report({ done: probed, total, finished: true, cancelled });
+    return { ok: true, total, valid, invalid: total - probed, cancelled };
+  }
+
+  // 仅刷新预缓存：不删缓存、不重置，只对「缺失或 mtime 已变」的视频重新探测更新；命中（缓存有效）的路径直接跳过，进度按全量候选回报（起始即跳过数）
+  async refreshPrecache(onProgress) {
+    const envG = this._envGuard('refresh_precache');
+    if (envG) return envG;
+    const report = (s) => { if (onProgress) { try { onProgress(s); } catch (e) {} } };
+    const allVideos = await this._gatherAllVideos();
+    const total = allVideos.length;
+    const cache = this._loadVideoCache();
+    const toProbe = [];
+    for (const f of allVideos) {
+      const c = cache[f];
+      // 指纹 = mtime + 大小：覆盖同名素材时时间戳可能被保留（CopyFile / 解压 / 同步工具都如此），
+      // 只比 mtime 会漏判 —— 表现为「刷新预缓存」跳过了其实已被替换的文件
+      const fp = this._fileFingerprint(f);
+      if (c && this._fingerprintMatches(fp, c.LastWriteTime, c.FileSize)) continue; // 已缓存且文件未变：跳过
+      toProbe.push(f);
+    }
+    const base = total - toProbe.length; // 进度起点 = 已跳过数
+    const token = ++this._precheckToken; // 作废旧探测，保证只跑本次
+    let probed = 0, valid = 0;
+    await this._runWithLimit(toProbe, async (f) => {
+      // 行内预检测优先：与全量重置同一让路策略
+      if (this._inlineProbing > 0) await new Promise((r) => setTimeout(r, 80));
+      const info = await this._probeVideoAsync(f);
+      cache[f] = { LastWriteTime: this._ticksToStr(this._mtimeToTicks(f)), Duration: info.duration, Valid: info.valid, Width: info.width, Height: info.height, FileSize: this._fileSize(f) };
+      this._videoInfoCache.set(f, info);
+      this._markVideoCacheDirty(f);
+      probed++;
+      if (info.valid) valid++;
+      report({ done: base + probed, total });
+    }, this.probeConcurrency, () => token !== this._precheckToken);
+
+    const cancelled = token !== this._precheckToken;
+    if (cancelled) { // 取消/中断：丢弃本次内存增量，下次从原缓存重新加载（不覆盖原缓存）
+      this._videoCache = null;
+      this._videoInfoCache = new Map();
+    } else { await this._saveVideoCache(); } // 已完成的增量结果才写入缓存；取消/中断保留原缓存
+    report({ done: base + probed, total, finished: true, cancelled });
+    // 失效清理放到后台执行（用户主动点刷新即清，不受后台 1h 节流限制）。
+    // 传入本次刚枚举出的路径集合：这些文件必然存在，GC 直接判「保留」，不逐条 fs.stat
+    // （同步 existsSync 会占住主线程，堵住紧随其后的行内预检测 IPC）。
+    if (!cancelled) {
+      const maskFiles = [];
+      for (const d of this._maskSessionDirs()) {
+        try {
+          const st = fs.statSync(d);
+          if (st.isDirectory()) { for (const f of walkFiles(d)) if (VIDEO_EXTS.has(path.extname(f).toLowerCase())) maskFiles.push(f); }
+          else if (VIDEO_EXTS.has(path.extname(d).toLowerCase())) maskFiles.push(d);
+        } catch (e) { /* 目录不存在时跳过（软删除留待保留期处理） */ }
+      }
+      if (maskFiles.length) {
+        const claimedMask = this._claimUsageForPaths(maskFiles, this._scopes.mask);
+        if (claimedMask > 0) console.log('[video_cache] 遮罩素材认领既有使用计数 ' + claimedMask + ' 条');
+        for (const f of maskFiles) {
+          const c = cache[f];
+          if (c && typeof c.Duration === 'number') {
+            this._saveScopedVideoInfo(f, { duration: c.Duration, width: c.Width || 0, height: c.Height || 0, valid: !!c.Valid }, this._scopes.mask);
+          }
+        }
+      }
+    }
+    if (!cancelled) {
+      this._gcVideoCache(new Set(allVideos))
+        .then((n) => { if (n > 0) console.log('[video_cache] 后台清理失效条目 ' + n + ' 条'); })
+        .catch(() => { /* 后台清理失败不影响刷新结果 */ });
+    }
+    return { ok: true, total, updated: probed, valid, cancelled, removed: 0 };
+  }
+
+  // 收集某配置目录下的日志候选并解析为成片条目（按目录 mtime 缓存）
+  _collectLogEntries(baseDir) {
+    const candidates = new Set();
+    try {
+      for (const f of fs.readdirSync(baseDir)) {
+        if (!f.toLowerCase().endsWith('.txt')) continue;
+        if (LOG_NAME_RE.test(f)) candidates.add(path.join(baseDir, f));
+      }
+      for (const sub of fs.readdirSync(baseDir)) {
+        const d = path.join(baseDir, sub);
+        if (!fs.existsSync(d) || !fs.statSync(d).isDirectory()) continue;
+        if (!sub.endsWith('成片')) continue;
+        for (const f of fs.readdirSync(d)) if (f.toLowerCase().endsWith('.txt') && LOG_NAME_RE.test(f)) candidates.add(path.join(d, f));
+      }
+    } catch (e) {}
+    let entries = [];
+    for (const lp of [...candidates].sort()) entries = entries.concat(this._parseLog(lp));
+    return entries;
+  }
+
+  // 从日志文件名提取其所归属的配置名（批量拼接日志形如 MMdd-HH时MM分-配置名-拼接日志.txt）
+  _configNameFromLog(logPath) {
+    const m = /^\d{4}-\d+时\d+分-(.+)-(?:拼接|复刻)日志\.txt$/i.exec(path.basename(logPath || ''));
+    return m ? m[1].trim() : '';
+  }
+
+  // 收集根目录下所有属于某复刻模式的日志文件（命名形如 MMdd-模式名日志.txt）
+  // 复刻日志清单：**结果缓存化**（不要直接 walkFiles 全量遍历）—— `_buildProjectsData` 会为
+  // 两种复刻模式各调一次，未缓存时启动期 readdirSync 次数很多。
+  _replicaLogFiles(modeName) {
+    const esc = String(modeName || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pat = new RegExp('^\\d{4}-' + esc + '日志\\.txt$');
+    // ① 内存/持久化缓存（零 IO）——缓存优先是默认行为
+    const cached = this._replicaLogFilesCached(modeName);
+    if (cached) return cached;
+    // ② 缓存缺失（首次运行 / 新机器）：不在这里全量遍历，排队后台重建后刷新界面
+    this._enqueueReplicaLogRebuild();
+    return [];
+  }
+
+  // 复刻日志清单缓存：一次遍历把「所有复刻模式的日志」都算出来存库，之后启动零遍历
+  _replicaLogFilesCached(modeName) {
+    const key = String(modeName || '');
+    const mem = this._replicaLogCache;
+    if (mem && mem.root === this.root && mem.byMode && mem.byMode[key]) return mem.byMode[key];
+    if (!this._useDbCache()) return null;
+    try {
+      const raw = this._cacheStore.getKv('replica_logs:' + this.root);
+      if (!raw) return null;
+      const data = JSON.parse(raw);
+      if (!data || !data.byMode) return null;
+      this._replicaLogCache = { root: this.root, byMode: data.byMode, fp: String(data.fp || '') };
+      this._enqueueScanVerify();
+      return Array.isArray(data.byMode[key]) ? data.byMode[key] : null;
+    } catch (e) { return null; }
+  }
+
+  _saveReplicaLogCache() {
+    if (!this._useDbCache() || !this._replicaLogCache) return;
+    try {
+      this._cacheStore.setKv('replica_logs:' + this.root,
+        JSON.stringify({ fp: this._replicaLogCache.fp || '', byMode: this._replicaLogCache.byMode || {} }));
+    } catch (e) {}
+  }
+
+  // 启动期缓存缺失 → 后台一次性遍历，把所有复刻模式的日志清单都建好并落库
+  _enqueueReplicaLogRebuild() {
+    this._verifyEnqueue('repbuild', this.root, async () => {
+      const byMode = {};
+      let modes = [];
+      try { modes = REPLICA_MODES.slice(); } catch (e) { modes = []; }
+      let fp = '';
+      try { fp = await this._logTreeFingerprintAsync(); } catch (e) {}
+      if (this.root && fs.existsSync(this.root)) {
+        const all = [];
+        try { for (const full of walkFiles(this.root)) { if (path.basename(full).toLowerCase().endsWith('.txt')) all.push(full); } } catch (e) {}
+        for (const m of modes) {
+          const esc = String(m || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const pat = new RegExp('^\\d{4}-' + esc + '日志\\.txt$');
+          byMode[m] = all.filter((f) => pat.test(path.basename(f))).sort();
+        }
+      }
+      this._replicaLogCache = { root: this.root, byMode, fp };
+      this._saveReplicaLogCache();
+      this._projectsCache = null;
+      try { this._emitTasks(); } catch (e) {}
+      try { if (this._lg) this._lg('ADD', 'replica.logs.rebuild', '复刻日志清单已后台重建并落库', { modes: Object.keys(byMode).length }); } catch (e) {}
+    });
+  }
+
+  _replicaLogs(modeName) {
+    let entries = [];
+    for (const lp of this._replicaLogFiles(modeName)) entries = entries.concat(this._parseLog(lp));
+    return entries;
+  }
+
+  // 复刻模式对应的完整日志行内容（与 logContent 同结构，便于右侧继续跳转高亮）
+  _replicaLogContent(modeName) {
+    const files = []; const entries = []; let running = 1;
+    for (const lp of this._replicaLogFiles(modeName)) {
+      let text;
+      try { text = readText(lp); } catch (e) { continue; }
+      const lines = text.split(/\r?\n/);
+      files.push({ path: lp, name: path.basename(lp), lines });
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].trim() !== '使用片段列表：') continue;
+        if (i < 1) continue;
+        let name = lines[i - 1].trim();
+        const m = /第\s*\d+\s*个成片\s*[：:]\s*(.+?)\s*$/.exec(name);
+        if (m) name = m[1].trim().replace(/=+$/, '').trim();
+        entries.push({ video: name, logPath: lp, lineStart: running + i });
+      }
+      running += lines.length;
+    }
+    return { files, entries };
+  }
+
+  listLogs(project, name, versionPath) {
+    if (versionPath && String(versionPath).startsWith(REPLICA_MARK)) {
+      return this._replicaLogs(String(versionPath).slice(REPLICA_MARK.length));
+    }
+    const all = this._clipEntriesFor(path.dirname(path.resolve(versionPath)));
+    const target = String(name == null ? '' : name).trim();
+    if (!target) return all;
+    return all.filter((e) => this._configNameFromLog(e.log_path) === target);
+  }
+
+  // ── 成片名搜索索引：仅索引日志解析出的成片条目（video/clips/watermark/log_path）。
+  //    以「配置目录」为单位按目录 mtime 失效，命中直接读内存，未命中重扫该目录；
+  //    与数据缓存同库（cache.db 的 clip_index 表），冷启动直接复用，避免每次搜索全量读盘解析。
+  _openClipDb() {
+    try {
+      if (!this._useDbCache() || !this._cacheStore) return null;
+      return this._cacheStore.open();
+    } catch (e) { return null; }
+  }
+
+  _loadClipIndex() {
+    if (this._clipIndex && this._clipIndexRoot === this.root) return;
+    this._clipIndexRoot = this.root;
+    this._clipIndex = new Map();
+    const db = this._openClipDb();
+    if (!db) return;
+    try {
+      const rows = db.prepare('SELECT dir, mtime, entries FROM clip_index').all();
+      // 带分隔符比较：`D:\A` 不能把 `D:\A2\...` 的条目也载进来
+      const prefix = String(this.root || '').replace(/[\\/]+$/, '') + path.sep;
+      for (const r of rows) {
+        if (!String(r.dir).startsWith(prefix)) continue; // 仅载入当前工作目录下的条目
+        try { this._clipIndex.set(r.dir, { mtime: r.mtime, entries: JSON.parse(r.entries) }); } catch (e) {}
+      }
+    } catch (e) {}
+  }
+
+  _saveClipIndex() {
+    if (!this._clipIndexDirty) return;
+    if (!this._openClipDb()) { this._clipIndexDirty = false; return; } // 纯内存态：无需落盘
+    const db = this._cacheStore.open();
+    try {
+      this._cacheStore.transaction(() => {
+        const ins = db.prepare('INSERT INTO clip_index(dir, mtime, entries) VALUES (?, ?, ?) ON CONFLICT(dir) DO UPDATE SET mtime=excluded.mtime, entries=excluded.entries');
+        this._clipIndex.forEach((v, k) => { if (Array.isArray(v.entries)) ins.run(k, v.mtime, JSON.stringify(v.entries)); });
+      });
+      this._clipIndexDirty = false;
+    } catch (e) {}
+  }
+
+  // 某配置目录的成片条目：目录 mtime 未变直接命中索引，否则重扫该目录并重建索引条目
+  _clipEntriesFor(baseDir) {
+    this._loadClipIndex();
+    let mtime = 0;
+    try { mtime = fs.statSync(baseDir).mtimeMs; } catch (e) {}
+    const hit = this._clipIndex.get(baseDir);
+    if (hit && hit.mtime === mtime) return hit.entries;
+    const entries = this._collectLogEntries(baseDir);
+    this._clipIndex.set(baseDir, { mtime, entries });
+    this._clipIndexDirty = true;
+    this._saveClipIndex();
+    return entries;
+  }
+
+  // 重新检测配置时全量重建索引并落盘（后续搜索/日志列表直接命中，无需再逐目录解析），onStep(done,total)：每批目录解析完回调一次（供实时进度），末批后落盘
+  _rebuildClipIndex(onStep) {
+    this._loadClipIndex();
+    this._clipIndex.clear();
+    const dirs = new Set();
+    for (const t of this._collectAllTxt()) dirs.add(path.dirname(t.full));
+    const list = [...dirs];
+    const total = list.length;
+    const tick = (done) => { if (typeof onStep === 'function') { try { onStep(done, total); } catch (e) {} } };
+    const step = () => {
+      if (!this._rebuildingClip) { this._saveClipIndex(); return; } // 换工作目录等取消信号：停止并落盘当前进度
+      const batch = list.splice(0, 20);
+      for (const d of batch) {
+        let entries;
+        try { entries = this._collectLogEntries(d); } catch (e) { entries = []; }
+        let mtime = 0;
+        try { mtime = fs.statSync(d).mtimeMs; } catch (e) {}
+        this._clipIndex.set(d, { mtime, entries });
+        this._clipIndexDirty = true;
+      }
+      tick(total - list.length);
+      if (list.length > 0) setImmediate(step);
+      else {
+        this._saveClipIndex();
+        this._rebuildingClip = false;
+        this._emitScan('done');
+      }
+    };
+    setImmediate(step);
+  }
+
+  // 成片索引后台重建入口：防并发重复触发；每 20 目录让出一次事件循环，避免长时间阻塞主线程
+  _rebuildClipIndexAsync() {
+    if (this._rebuildingClip) return;
+    this._rebuildingClip = true;
+    this._rebuildClipIndex((done, total) => this._emitScan('clip', done, total));
+  }
+
+  _logsForTxt(txtFull) {
+    return this._clipEntriesFor(path.dirname(txtFull));
+  }
+
+  // 全局成片名搜索：跨越所有项目/TXT/日期分支，返回包含该成片的日志定位信息
+  searchLogs(query) {
+    const q = String(query == null ? '' : query).trim().toLowerCase();
+    if (!q) return [];
+    const out = [];
+    const seen = new Set();
+    for (const t of this._collectAllTxt()) {
+      const entries = this._logsForTxt(t.full);
+      for (const e of entries) {
+        const v = String(e.video || '');
+        if (!v.toLowerCase().includes(q)) continue;
+        // 日志条目仅归属其同名配置（同日期目录下多配置并存时互不串扰）
+        const cfgName = this._configNameFromLog(e.log_path);
+        if (!cfgName) continue;
+        let tName = t.name;
+        if (tName.charAt(0) === '*') tName = tName.slice(1).trim(); // 当日外部 * 配置：按去前缀名匹配
+        if (cfgName !== tName) continue;
+        const key = e.log_path + '\u0000' + v;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push({
+          project: path.basename(t.pdir),
+          txtName: t.name,
+          label: relativeDateLabel(t.parts),
+          logPath: e.log_path,
+          txtPath: t.full,
+          video: v,
+          clips: e.clips,
+          watermark: e.watermark,
+        });
+      }
+    }
+    return out;
+  }
+
+  // 返回某配置对应的日志文件列表（日志模式下日期分支使用）
+  // 与配置同一判定规则：取 fromPath(配置) 路径中最近的 4 位 MMdd 目录作为日期分支，日志按同项目+同日期+同名匹配
+  listLogFiles(fromPath, configName) {
+    if (fromPath && String(fromPath).startsWith(REPLICA_MARK)) {
+      const mode = String(fromPath).slice(REPLICA_MARK.length);
+      // 排序与普通项目保持一致：按日期降序（最新在前）。⚠ 不能直接返回未排序列表 ——
+      // 那会按「项目名 → 月份目录 → 日期目录」的路径字符串排列，跨月即错乱（如 "10月" < "7月"）。
+      // date 取文件名前 4 位「月日」；跨年不区分（届时再想简洁的区分办法）。
+      const list = this._replicaLogFiles(mode).map((f) => {
+        const name = path.basename(f);
+        const date = name.slice(0, 4);
+        // 分支标签带项目名（MMDD-项目名）：同一天多个项目都做过复刻时，仅凭 MMDD 分辨不出是哪个项目。项目名取相对根目录的第一段目录。
+        const proj = this._projectOf(f);
+        return { path: f, name, date, label: proj ? (date + '-' + proj) : date };
+      });
+      list.sort((a, b) => (b.date.localeCompare(a.date) || a.name.localeCompare(b.name)));
+      return list;
+    }
+    // 使用刷新时写入的日志缓存，按项目 + 配置名过滤（不限定单一日期，展示该配置的全部日志日期分支）
+    // 每条日志附加所属配置版本 label（同成片文件夹的序号化 -N/正本优先，否则当日外部 *），
+    // 使日志分支序号与配置版本序号一一对应
+    const project = this._projectOf(fromPath);
+    const target = String(configName == null ? '' : configName).trim();
+    const versions = this.listVersions(project, target);
+    const files = this._collectLogFiles().files
+      .filter((f) => f.project === project && (!target || f.config === target))
+      .map((f) => {
+        const d = f.date;
+        let label = null;
+        for (const v of versions) {
+          if (v.isExternal) continue;
+          if (String(v.label || '').slice(0, 4) === d && path.dirname(v.path) === path.dirname(f.path)) { label = v.label; break; }
+        }
+        if (!label) {
+          for (const v of versions) {
+            if (v.isExternal && String(v.label || '').slice(0, 4) === d) { label = v.label; break; }
+          }
+        }
+        return { path: f.path, name: f.name, date: f.date, label: label || f.date };
+      });
+    files.sort((a, b) => (b.date.localeCompare(a.date) || a.name.localeCompare(b.name)));
+    return files;
+  }
+
+  // 日志对应的复刻输出目录：取日志路径中首个日期段（月份/MMdd）之前为基址，
+  // 拼接 <月份>/<MMdd>/<模式目录>；返回复刻目录及命中的复刻产物（无匹配文件时仍给目录，供"打开文件夹"使用）
+  findReplicaOutput(logPath, videoName) {
+    const out = { originalDir: '', replicaDir: '', replicaFile: '' };
+    if (!logPath) return out;
+    const abs = path.resolve(String(logPath));
+    out.originalDir = path.dirname(abs);
+    const parts = abs.split(path.sep);
+    let idx = parts.findIndex((p) => /^\d+月$/.test(p));
+    if (idx < 0) idx = parts.findIndex((p) => /^\d{4}$/.test(p));
+    if (idx < 0) return out;
+    const base = parts.slice(0, idx).join(path.sep);
+    const month = parts[idx];
+    const day = parts[idx + 1] && /^\d{4}$/.test(parts[idx + 1]) ? parts[idx + 1] : '';
+    const root = day ? path.join(base, month, day) : path.join(base, month);
+    for (const mode of ['去重复刻', '原片复刻']) {
+      const dir = path.join(root, mode);
+      if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) continue;
+      out.replicaDir = dir;
+      try {
+        const baseName = String(videoName || '').replace(/\.mp4$/i, '').toLowerCase();
+        if (baseName) {
+          const hit = fs.readdirSync(dir).find((n) => /\.mp4$/i.test(n) && (n.toLowerCase().replace(/\.mp4$/i, '') === baseName || n.toLowerCase().replace(/\.mp4$/i, '').replace(/^\d{6}改\d*-/, '') === baseName));
+          if (hit) out.replicaFile = path.join(dir, hit);
+        }
+      } catch (e) {}
+      break;
+    }
+    return out;
+  }
+
+  logContent(fromPath, configName) {
+    if (fromPath && String(fromPath).startsWith(REPLICA_MARK)) {
+      return this._replicaLogContent(String(fromPath).slice(REPLICA_MARK.length));
+    }
+    const baseDir = path.dirname(path.resolve(fromPath));
+    const target = String(configName == null ? '' : configName).trim();
+    const candidates = new Set();
+    try {
+      for (const f of fs.readdirSync(baseDir)) {
+        if (!f.toLowerCase().endsWith('.txt')) continue;
+        if (LOG_NAME_RE.test(f)) candidates.add(path.join(baseDir, f));
+      }
+      for (const sub of fs.readdirSync(baseDir)) {
+        const d = path.join(baseDir, sub);
+        if (!fs.existsSync(d) || !fs.statSync(d).isDirectory()) continue;
+        if (!sub.endsWith('成片')) continue;
+        for (const f of fs.readdirSync(d)) if (f.toLowerCase().endsWith('.txt') && LOG_NAME_RE.test(f)) candidates.add(path.join(d, f));
+      }
+    } catch (e) {}
+    const files = [];
+    const entries = [];
+    let running = 1;
+    for (const lp of [...candidates].sort()) {
+      if (target && this._configNameFromLog(lp) !== target) continue;
+      let text;
+      try { text = readText(lp); } catch (e) { continue; }
+      const lines = text.split(/\r?\n/);
+      files.push({ path: lp, name: path.basename(lp), lines });
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].trim() !== '使用片段列表：') continue;
+        if (i < 1) continue;
+        let name = lines[i - 1].trim();
+        const m = /第\s*\d+\s*个成片\s*[：:]\s*(.+?)\s*$/.exec(name);
+        if (m) name = m[1].trim().replace(/=+$/, '').trim();
+        entries.push({ video: name, logPath: lp, lineStart: running + i });
+      }
+      running += lines.length;
+    }
+    return { files, entries };
+  }
+
+  // 批量检查片段路径是否存在，返回 { 原路径: true/false }
+  checkExists(paths) {
+    const out = {};
+    const arr = Array.isArray(paths) ? paths : [];
+    for (const p of arr) {
+      const s = String(p == null ? '' : p).trim().replace(/^"|"$/g, '');
+      if (!s) continue;
+      try { out[s] = fs.existsSync(s); } catch (e) { out[s] = false; }
+    }
+    return out;
+  }
+
+  _parseLog(logPath, text) {
+    if (text == null) text = readText(logPath);
+    const lines = text.split(/\r?\n/).map((l) => l.trim());
+    const entries = [];
+    let current = { video: '', clips: [], watermark: '', log_path: logPath };
+    for (let idx = 0; idx < lines.length; idx++) {
+      const line = lines[idx];
+      if (line === '使用片段列表：') {
+        if (current.video || current.clips.length) entries.push(current);
+        let name = '';
+        if (idx > 0) name = lines[idx - 1];
+        const m = /第\s*\d+\s*个成片\s*[：:]\s*(.+?)\s*$/.exec(name);
+        if (m) name = m[1].trim().replace(/=+$/, '').trim();
+        current = { video: name, clips: [], watermark: '', log_path: logPath };
+        continue;
+      }
+      if (/^[A-Za-z]:[\\/]/.test(line) || /^\\\\/.test(line)) {
+        const p = line.trim().replace(/^['"]|['"]$/g, '');
+        if (p.toLowerCase().endsWith('.png')) current.watermark = p;
+        else if (VIDEO_EXTS.has(path.extname(p).toLowerCase())) current.clips.push(p);
+        else current.clips.push(p);
+      }
+    }
+    if (current.video || current.clips.length) entries.push(current);
+    return entries;
+  }
+
+  // 任务管理 -------------------------------------------------
+  // 任务定位信息：解析任务来源（配置 TXT / 日志 TXT）供主窗口「定位至配置/日志」
+  taskLocate(taskId) {
+    const t = this.tasks.get(taskId);
+    if (!t) return { ok: false, error: '任务不存在' };
+    const info = { ok: true, project: '', name: '', txtPath: '', logPath: '', mode: t.type === 'replica' ? 'log' : '' };
+    const src = String((t.env && t.env.REPLICA_TXT) || '').trim();
+    if (src) {
+      // 定位前确保配置在位（strict:false：不覆盖原位已有内容）
+      const fixed = this._ensureTaskTxt(t, { strict: false });
+      const abs = path.resolve(fixed || src);
+      info.name = path.basename(abs, path.extname(abs));
+      if (this.root) {
+        const rel = path.relative(this.root, abs).split(path.sep);
+        if (rel.length && rel[0] !== '..') info.project = rel[0];
+      }
+      if (t.type === 'replica') {
+        info.project = REPLICA_PROJECT; // 主窗口定位目标为虚拟复刻项目
+        // 输出目录与复刻日志按提交日期推算（与脚本 Get-TaskDate 一致），模式名来自 REPLICA_MODE
+        const outc = this._replicaOutInfo(t);
+        if (!outc) return { ok: false, error: '缺少复刻源日志，无法定位' };
+        // 复刻输出目录未生成：不允许定位（不得退回源日志日期目录）
+        if (!outc.outDir || !fs.existsSync(outc.outDir) || !fs.statSync(outc.outDir).isDirectory()) {
+          return { ok: false, error: '复刻成片文件夹未生成，无法定位' };
+        }
+        info.replicaMode = outc.mode;
+        // 定位本次复刻生成的输出日志（<MMdd>-<模式名>日志.txt，取同日最新）；无日志文件同样拒绝定位
+        let logFile = '';
+        try {
+          const pat = new RegExp('^\\d{4}-' + outc.mode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '日志\\.txt$');
+          const logs = fs.readdirSync(outc.outDir).filter((n) => pat.test(n)).sort();
+          if (logs.length) logFile = path.join(outc.outDir, logs[logs.length - 1]);
+        } catch (e) {}
+        if (!logFile) return { ok: false, error: '未找到本次复刻的日志文件，无法定位' };
+        info.logPath = logFile;
+      }
+      else info.txtPath = abs;
+    }
+    // 批量任务：成片目录内优先匹配当前配置的日志 TXT
+    if (t.type === 'batch' && t.outDir) {
+      try {
+        const hit = fs.readdirSync(t.outDir).find((n) => LOG_NAME_RE.test(n));
+        if (hit) info.logPath = path.join(t.outDir, hit);
+      } catch (e) {}
+    }
+    return info;
+  }
+
+  // 复刻任务的输出目录推算：与 旧版脚本 的 Get-TaskDate + baseDir 规则完全一致——
+  // 日期用提交时刻（REPLICA_SUBMIT_TS，续跑亦注入），层级 月份/MMdd/模式名；
+  // baseDir 取源日志路径中首个月份/MMdd 段之前，无日期段时回退日志所在目录
+  _replicaOutInfo(t) {
+    const env = (t && t.env) || {};
+    const src = String(env.REPLICA_TXT || '').trim();
+    const mode = String(env.REPLICA_MODE || '1') === '2' ? '去重复刻' : '原片复刻';
+    if (!src) return null;
+    let d = new Date();
+    const ts = Number(env.REPLICA_SUBMIT_TS || 0);
+    if (ts > 0) d = new Date(ts);
+    const month = (d.getMonth() + 1) + '月';
+    const day = String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
+    const parts = path.resolve(src).split(path.sep);
+    let idx = parts.findIndex((p) => /^\d+月$/.test(p));
+    if (idx < 0) idx = parts.findIndex((p) => /^\d{4}$/.test(p));
+    let base;
+    if (idx > 0) base = parts.slice(0, idx).join(path.sep);
+    else if (idx === 0) base = parts[0];
+    else base = path.dirname(path.resolve(src));
+    return { outDir: path.join(base, month, day, mode), mode };
+  }
+
+  // 复刻任务的成片输出目录：按提交日期推算复刻产物目录（月份/MMdd/模式目录）；目录不存在即明确报错「未生成」，绝不退而求其次指向源日志目录（那里是原始日志与素材）
+  taskReplicaOutputDir(taskId) {
+    const t = this.tasks.get(taskId);
+    if (!t) return { ok: false, error: '任务不存在' };
+    if (t.type !== 'replica') return { ok: false, error: '非复刻任务' };
+    const outc = this._replicaOutInfo(t);
+    if (!outc) return { ok: false, error: '缺少复刻源日志' };
+    if (!outc.outDir || !fs.existsSync(outc.outDir) || !fs.statSync(outc.outDir).isDirectory()) {
+      return { ok: false, error: '复刻成片文件夹未生成' };
+    }
+    return { ok: true, dir: outc.outDir };
+  }
+
+  // ── 任务 TXT 快照 ──
+  // 引擎执行成功后会「把 TXT 移入成片目录作为正本」，而 TXT 路径由「项目/月/MMdd/配置名」决定：
+  // 同一配置名在同一天提交多个任务时指向同一个文件，前一个任务把它搬走后，后一个任务就没有 TXT 可用；
+  // 排队期间重新生成配置又会覆盖该文件。故入队时固化一份任务专属副本，启动前按快照还原（原位内容与快照一致则跳过）。
+  _txtSnapPath(taskId) {
+    return this.storageDir ? path.join(this.storageDir, 'txt-snap', String(taskId) + '.txt') : '';
+  }
+  /**
+   * 删掉某个任务的提交快照（任务记录消失后它即成孤儿，且内容可由原 TXT 再生）。
+   * 统一出口：删快照的地方不只一处，各自写一遍 unlink 容易漏判"是否该删"。
+   */
+  _dropTxtSnap(taskId) {
+    try { fs.unlinkSync(this._txtSnapPath(taskId)); } catch (e) { /* 无快照或已清都无妨 */ }
+  }
+  _snapshotTaskTxt(task) {
+    try {
+      const src = String((task && task.env && task.env.REPLICA_TXT) || '').trim();
+      const dst = this._txtSnapPath(task && task.id);
+      if (!src || !dst || !fs.existsSync(src) || !fs.statSync(src).isFile()) return;
+      fs.mkdirSync(path.dirname(dst), { recursive: true });
+      fs.copyFileSync(src, dst);
+    } catch (e) { /* 快照失败不阻断入队，退回原有行为 */ }
+  }
+  _restoreTaskTxt(task) {
+    try {
+      const src = String((task && task.env && task.env.REPLICA_TXT) || '').trim();
+      const snap = this._txtSnapPath(task && task.id);
+      if (!src || !snap || !fs.existsSync(snap)) return; // 无快照（历史任务）保持原行为
+      if (fs.existsSync(src)) {
+        const a = fs.readFileSync(src);
+        const b = fs.readFileSync(snap);
+        if (a.length === b.length && a.equals(b)) return;
+      }
+      fs.mkdirSync(path.dirname(src), { recursive: true });
+      fs.copyFileSync(snap, src);
+      // 仅在真正写回时留痕：此时原位配置已被同名其他任务搬走，或被重新生成的配置覆盖
+      this._taskLog(task, '[已按提交快照还原配置] ' + path.basename(src));
+      this._lg('MOD', 'task.txtsnap', '按提交快照还原配置 · ' + String(task.title || '').slice(0, 50),
+        { id: task.id, txt: src });
+    } catch (e) { /* 还原失败则交由引擎按原样报错 */ }
+  }
+
+  // 把该任务的配置放回原位。来源只有 env.REPLICA_TXT 的原位与本任务 id 的提交快照。
+  // opts.strict === false：原位有内容时直接返回，不比对快照。
+  _ensureTaskTxt(task, opts) {
+    const strict = !(opts && opts.strict === false);
+    const src = String((task && task.env && task.env.REPLICA_TXT) || '').trim();
+    if (!src) return '';
+    const snap = task && task.id ? this._txtSnapPath(task.id) : '';
+    const hasSnap = !!(snap && fs.existsSync(snap));
+    let alive = false;
+    try { alive = fs.existsSync(src) && fs.statSync(src).size > 0; } catch (e) { alive = false; }
+    if (!strict && alive) return src;
+    if (hasSnap) {
+      let same = false;
+      if (alive) {
+        try { same = fs.readFileSync(src).equals(fs.readFileSync(snap)); } catch (e) { same = false; }
+      }
+      if (!same) {
+        try {
+          fs.mkdirSync(path.dirname(src), { recursive: true });
+          fs.copyFileSync(snap, src);
+          this._lg('MOD', 'task.txtsnap', '按提交快照还原配置 · ' + String(task.title || '').slice(0, 50),
+            { id: task.id, txt: src });
+        } catch (e) { return ''; }   // 还原不了就如实报缺，不拿别的配置凑
+      }
+      return src;
+    }
+    // 无快照：原位在就用，不在即返回空
+    return alive ? src : '';
+  }
+
+  _createTask(type, title, env, srcPath) {
+    const id = 'task_' + (++this.taskSeq) + '_' + Date.now().toString(36);
+    const task = {
+      id, type, title, env: Object.assign({}, env),
+      pid: null, status: 'queued', lockState: 'unknown', progress: { current: 0, total: 0 },
+      failReason: '', log: [],
+      createdAt: Date.now(), startedAt: null, endedAt: null, _stopRequested: false,
+      accumMs: 0, runStartAt: 0,   // 实际耗时：累计制（见 taskElapsed）
+      planPos: 0,
+      outDir: this._taskOutDir(type, srcPath, env),
+      groupDate: this._taskGroupDate(type, env, Date.now()), // 业务归属日 MMDD：凌晨0-4点完成/提交归前一天（仅前端排序使用，不展示）
+    };
+    this.tasks.set(id, task);
+    this._snapshotTaskTxt(task);
+    // 任务参数快照 → 既有 app-<date>.log（**不另开文件种类**）：.log 族按 app/engine 划分职责，不按任务另开一类。
+    try {
+      if (env && typeof env === 'object' && !env.TOOL_SPEC) {
+        this._lg('RUN', 'task.spec', '任务参数快照 · ' + title, { spec: this._taskSpecTextEnv(task, title, env) });
+      }
+    } catch (e4) { /* 快照失败不影响任务 */ }
+    this._emitTasks();
+    return task;
+  }
+
+  // 任务成片文件夹：批量任务按提交时刻+配置名精确推算（与脚本实际输出目录一致）；
+  // 其余类型取源 TXT 所在目录下以「成片」结尾的子目录。
+  // 找不到即返回空串：绝不回退成源目录 —— 源目录放着原始日志与素材，一旦被当成成片目录用于打开/删除会误伤业务文件。
+  _taskOutDir(type, srcPath, env) {
+    // 视频处理工具没有「成片目录」概念 —— 必须显式返回空串。否则会落到下面的「找以成片结尾的子目录」分支，把源目录旁的成片目录当成工具任务的产物目录，而那正是后续删除类操作的目标。
+    if (type === 'tool') return '';
+    if (type === 'mask') {
+      const out = String((env && env.MASK_OUTPUT_DIR) || '').trim();
+      return out ? path.resolve(out) : '';
+    }
+    if (type === 'batch') {
+      const detail = this._batchTaskOutDetail({ env: env || {}, createdAt: Date.now() });
+      if (detail && detail.outDir) return detail.outDir;
+      return '';
+    }
+    const d = path.dirname(path.resolve(srcPath));
+    try {
+      for (const e of fs.readdirSync(d)) {
+        if (String(e).endsWith('成片')) {
+          const f = path.join(d, e);
+          if (fs.statSync(f).isDirectory()) return f;
+        }
+      }
+    } catch (e2) {}
+    return '';
+  }
+
+  // 业务归属日（MMDD）：按任务提交/创建时刻，凌晨 0-4 点归入前一天（跨日任务视同昨天产出）。
+  // 批量/遮罩任务优先取提交时刻（*_SUBMIT_TS），缺失时用创建时刻兜底；仅用于前端排序，不展示。
+  _taskGroupDate(type, env, createdAt) {
+    if (type !== 'batch' && type !== 'mask') return '';
+    const ts = Number(env && env.MASK_SUBMIT_TS) || Number(env && env.BATCH_SUBMIT_TS) || Number(env && env.REPLICA_SUBMIT_TS) || Number(createdAt) || Date.now();
+    const d = new Date(ts);
+    if (d.getHours() < 4) d.setDate(d.getDate() - 1);
+    const p = (n) => (n < 10 ? '0' : '') + n;
+    return p(d.getMonth() + 1) + p(d.getDate());
+  }
+
+  // 计时段开始：首次开始时记 startedAt（后续继续不再改），并起一个运行段
+  _markRunStart(t) {
+    if (!t) return;
+    const now = Date.now();
+    if (!t.startedAt) t.startedAt = now;
+    if (!t.runStartAt) t.runStartAt = now;
+    t.endedAt = null;
+  }
+
+// 计时段结束：把这一段并入累计值
+  _markRunStop(t) {
+    if (!t || !t.runStartAt) return;
+    t.accumMs = (Number(t.accumMs) || 0) + (Date.now() - Number(t.runStartAt));
+    t.runStartAt = 0;
+  }
+
+  // 排队执行：无运行任务则立即启动，否则进入队列（软件安排制作顺序）
+  _enqueueTask(task) {
+    // 分配计划序号（新建任务/恢复任务都经由此处或 resumeTask 分配）
+    if (!task.planPos) task.planPos = ++this._planSeq;
+    if (!this._runningTaskId) {
+      this._runningTaskId = task.id;
+      task.status = 'running';
+      this._markRunStart(task);
+      this._taskLog(task, '[开始运行]');
+      this._emitTasks();
+      this._spawnEngine(task.type, task.env, task);
+    } else {
+      task.status = 'queued';
+      this._markRunStop(task);   // 排队等待不算运行耗时
+      this._taskLog(task, '[已加入执行队列，等待前序任务完成]');
+      this._taskQueue.push(task.id);
+      this._emitTasks();
+    }
+    return task;
+  }
+
+  // 当前任务结束（正常/失败/停止）后启动队列中的下一个任务
+  _startNextQueued() {
+    while (this._taskQueue.length) {
+      const id = this._taskQueue.shift();
+      const t = this.tasks.get(id);
+      if (!t || t.status === 'stopped' || t._cancelled) continue;
+      this._runningTaskId = id;
+      t.status = 'running';
+      this._markRunStart(t);
+      this._taskLog(t, '[前序任务完成，开始运行本任务]');
+      this._emitTasks();
+      this._spawnEngine(t.type, t.env, t);
+      return;
+    }
+  }
+
+  // 置顶排队任务：让它成为下一个执行的任务（软件安排顺序）
+  pinTask(id) {
+    const t = this.tasks.get(id);
+    if (!t) return { ok: false, error: '任务不存在' };
+    if (t.status !== 'queued') return { ok: false, error: '仅排队中的任务可置顶' };
+    const i = this._taskQueue.indexOf(id);
+    if (i > 0) { this._taskQueue.splice(i, 1); this._taskQueue.unshift(id); }
+    // 重算队列计划序号，使显示顺序与执行顺序一致
+    this._taskQueue.forEach((qid, k) => { this.tasks.get(qid).planPos = k + 1; });
+    this._taskLog(t, '[已置顶，成为下一个执行的任务]');
+    this._emitTasks();
+    return { ok: true };
+  }
+
+  // 手动重排待运行顺序（拖拽排序）：ids 为「排队+暂停」任务的完整混合序列（不含运行中/已结束）
+  //   按 ids 顺序重建执行队列并重算所有待运行任务的计划序号；暂停任务的冻结顺位（resumeIdx）同步刷新
+  reorderTasks(ids) {
+    if (!Array.isArray(ids)) return { ok: false, error: '参数无效' };
+    const waiting = [];
+    this.tasks.forEach((t, id) => {
+      if (t.status === 'queued' || t.status === 'paused') waiting.push(id);
+    });
+    const cur = new Set(waiting);
+    const given = new Set(ids.filter((id) => cur.has(id)));
+    if (cur.size !== given.size || ids.length !== waiting.length) return { ok: false, error: '排序参数与待运行任务不一致' };
+    for (const id of ids) if (!cur.has(id)) return { ok: false, error: '排序参数包含不可排序的任务' };
+    const queue = [];
+    let ord = 0;
+    for (const id of ids) {
+      const t = this.tasks.get(id);
+      t.planPos = ++ord;
+      // 暂停任务：前方待运行任务数 = 它在 ids 序列中的位置，作为新的冻结顺位
+      if (t.status === 'paused') t.resumeIdx = ord - 1;
+      else if (t.status === 'queued') queue.push(id);
+    }
+    this._taskQueue = queue;
+    this._emitTasks();
+    return { ok: true };
+  }
+
+  // 从任务日志中提取人类可读的失败原因（不展示代码/堆栈）
+  _deriveFailReason(task) {
+    const lines = task.log || [];
+    // 环境是否仍可用：决定「无合格视频」到底是环境问题还是素材问题 —— ⚠ 探测失败与「确实不合规」共用同一句引擎日志，不加区分会把人引向分辨率/时长排查。
+    const envBad = !this.quickEnvCheck().ok;
+    const rules = [
+      [/连续\s*\d+\s*次重试无法找到满足时长的组合/, '多次尝试仍无法找到符合时长要求的视频组合'],
+      [/部分输入文件不存在/, '部分输入视频文件不存在'],
+      [/无有效视频片段/, '没有可用于拼接的有效视频片段'],
+      [/一次性编码失败/, '视频编码失败（请检查源视频与 ffmpeg）'],
+      [/无法自动修复/, '存在缺失的视频片段且无法自动修复'],
+      [/检测到\s*\d+\s*个片段不存在/, '存在缺失的视频片段'],
+      // ⚠ 两个分支都要留：新文案（里没有可用素材）+ 旧文案（过滤后无任何合规视频）——历史任务的日志里写的是旧句，去掉旧分支会让「重开旧任务」的原因归类失效。
+      [/路径\s*.+?\s*(过滤后无任何合规视频|里没有可用素材)/, envBad ? 'FFmpeg / FFprobe 不可用' : '没有可用素材（只认竖版 1080×1920 且有时长的视频）'],
+      [/以下路径无法通过索引自动修复/, '存在无法解析的视频路径，请检查 TXT 配置'],
+      [/水印必须是有效PNG文件/, '水印文件无效（必须为 PNG 图片）'],
+      [/无有效视频文件夹/, '没有可用的视频文件夹'],
+      [/不是TXT格式/, '指定的文件不是 TXT 格式'],
+      [/检测到重复成片名/, '存在重复的成片名'],
+      [/全局异常/, '运行过程中出现异常'],
+      [/(脚本|任务)完成（有错误）/, '运行出错'],
+      [/ffmpeg|ffprobe/, 'FFmpeg 组件不可用'],
+    ];
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i];
+      for (const [re, msg] of rules) {
+        if (re.test(line)) return msg;
+      }
+    }
+    return '运行失败';
+  }
+
+  // 任务的成片是否还在磁盘上：仅对「已产出过」的已结束任务判定。
+  // 用途是列表提示（成片消失时标题置灰），任务行本身始终保留；
+  // 从未产出的任务（未开始即失败等）不参与判定，避免把正常状态显示为异常。
+  _taskOutputProbes(t) {
+    if (!t) return null;
+    const st = String(t.status || '');
+    if (st !== 'done' && st !== 'stopped' && st !== 'error' && st !== 'interrupted') return null;
+    // 产出证据：标记清单 / 日志中的「成片完成」/ 批量任务的真实输出目录记录
+    const marker = this._loadMarker(t);
+    const marked = (marker && Array.isArray(marker.videos)) ? marker.videos.filter(Boolean) : [];
+    const logged = [];
+    for (const ln of (t.log || [])) {
+      const m = /✅ 成片完成：(.+)$/.exec(ln);
+      if (m) logged.push(String(m[1]).trim());
+    }
+    const outDirAuth = this._taskOutDirFromLog(t);
+    const hadOutput = marked.length > 0 || logged.length > 0 || (t.type === 'batch' && !!outDirAuth);
+    if (!hadOutput) return null;
+    return { files: marked.concat(logged).filter(Boolean), dir: outDirAuth || t.outDir || '' };
+  }
+  _taskHasOutput(t) {
+    if (!t) return true;
+    // 纯内存判定（零 IO）：结论来自 verify_cache（启动只读库）+ 空闲队列的后台校验。
+    // 无结论 / 已过期 → 乐观返回 true，该任务已在队列里（见 _prewarmHasOutputAsync），
+    // 校验完成后写回库并增量刷新界面（自愈）。**任何情况下都不做同步磁盘探测**（同步 stat/readdir 是冷启动冻结的源头）。
+    const memo = this._hasOutputMemo && this._hasOutputMemo.get(t.id);
+    const ttl = (memo && memo.ttl) || HAS_OUTPUT_PERSIST_TTL_MS;
+    if (memo && (Date.now() - memo.at) < ttl) return memo.v;
+    return true;
+  }
+
+  snapshotTasks() {
+    const list = [];
+    this.tasks.forEach((t) => {
+      // 首次进入运行态时打点（惰性：覆盖直接启动/队列轮到/恢复启动所有路径）
+      if (t.status === 'running' && !t.startedAt) t.startedAt = Date.now();
+      list.push({
+        id: t.id, type: t.type, title: t.title, pid: t.pid,
+        status: t.status, lockState: t.lockState, paused: !!t.paused,
+        progress: t.progress || { current: 0, total: 0 }, failReason: t.failReason || '',
+        createdAt: t.createdAt, startedAt: t.startedAt || null, endedAt: t.endedAt, outDir: t.outDir || '',
+        groupDate: typeof t.groupDate === 'string' ? t.groupDate : '', // 业务归属日（前端排序用，不展示）
+        softPaused: t._softPaused === true,   // 软暂停待续任务（继续时按类型补缺片/接续）
+        // 任务总用时（秒）：首次开始至今的墙钟时间；已结束任务取结束时间
+        elapsedSec: taskElapsed(t),
+        // 计划序号：排队任务=队列第几位；暂停任务=冻结的显示顺位；显示与恢复插队都以此为准
+        pos: t.planPos || 0,
+        resumeIdx: typeof t.resumeIdx === 'number' ? t.resumeIdx : null,
+        queueTotal: this._taskQueue.length,
+        // 成片是否仍在磁盘（仅产出过的已结束任务会为 false）：前端据此提示，不影响任务行本身
+        hasOutput: this._taskHasOutput(t),
+        log: t.log.slice(-500),
+      });
+    });
+    // 展示排序：运行中 → 待运行区 → 已结束（按创建时间）。
+    // 待运行区显示顺序：按「恢复所有暂停任务后的最终队列顺序」呈现 ——
+    // 排队任务保持执行队列次序，暂停任务按冻结顺位（resumeIdx）插入到对应位置，与「暂停时几号、继续后几号」一致。
+    const ordered = [];
+    this._taskQueue.forEach((qid) => { if (this.tasks.get(qid)) ordered.push(qid); });
+    list.filter((t) => t.status === 'paused')
+      .sort((x, y) => (x.resumeIdx ?? 1e9) - (y.resumeIdx ?? 1e9))
+      .forEach((p) => { ordered.splice(Math.min(p.resumeIdx ?? ordered.length, ordered.length), 0, p.id); });
+    const orderIdx = new Map();
+    ordered.forEach((id, k) => orderIdx.set(id, k));
+    list.sort((a, b) => {
+      const rank = (s) => (s === 'running' ? 0 : s === 'queued' || s === 'paused' ? 1 : 2);
+      const ra = rank(a.status), rb = rank(b.status);
+      if (ra !== rb) return ra - rb;
+      if (ra === 1) {
+        const ia = orderIdx.has(a.id) ? orderIdx.get(a.id) : 1e9;
+        const ib = orderIdx.has(b.id) ? orderIdx.get(b.id) : 1e9;
+        if (ia !== ib) return ia - ib;
+        return a.createdAt - b.createdAt;
+      }
+      return a.createdAt - b.createdAt;
+    });
+    // 待运行区显示序号：仅排队任务连续编号（暂停任务显示圆点、不占号，不影响队伍正常序号展示）
+    let waitN = 0;
+    for (const it of list) {
+      if (it.status === 'queued') { waitN++; it.displayPos = waitN; }
+    }
+    return list;
+  }
+
+  _emitTasks() {
+  if (this.onTasksChanged) this.onTasksChanged(this.snapshotTasks());
+  this._schedulePersist();
+  }
+
+  // ── 任务列表持久化（tasks + task_logs 分表 + cache_kv.plan_seq）──
+  // 状态变化节流落盘，回收/正常退出时保证落盘；重启后保留任务直到手动清空。
+  // 日志按行独立存储：状态变更只重写任务主体，日志仅在追加时写新增行（日志是任务数据里体积最大的部分）。
+  _schedulePersist() {
+    if (this._persistTimer) return;
+    this._persistTimer = setTimeout(() => { this._persistTimer = null; this.persistTasks(); }, 200);
+  }
+  persistTasks() {
+    if (this._persistTimer) { clearTimeout(this._persistTimer); this._persistTimer = null; }
+    if (!this._useDbCache()) return; // 纯内存态：任务列表本次会话不落盘
+    const store = this._cacheStore;
+    try {
+      store.transaction(() => {
+        // 列表中已不存在的任务：连同其日志行与提交快照一并删除
+        // ⚠ 快照必须跟着任务走：它只在任务启动前用于还原配置，任务没了就永远用不上；
+        //   而删任务的路径不止一条（单条清除 / 重新开始 / 续跑 / 批量清除），在这里统一回收最不容易漏。
+        const keep = new Set(this.tasks.keys());
+        for (const id of store.listTaskIds()) {
+          if (keep.has(id)) continue;
+          store.removeTask(id);
+          this._dropTxtSnap(id);
+        }
+        for (const t of this.tasks.values()) {
+          const body = {
+            id: t.id, type: t.type, title: t.title, env: t.env || {},
+            status: t.status, lockState: t.lockState, progress: t.progress || { current: 0, total: 0 },
+            failReason: t.failReason || '', paused: !!t.paused,
+            createdAt: t.createdAt, startedAt: t.startedAt || null, endedAt: t.endedAt, planPos: t.planPos || 0,
+            // 实际运行耗时累计（毫秒）：与 runStartAt 配对构成耗时，续跑/重启都靠它接续
+            accumMs: Number(t.accumMs) || 0,
+            resumeIdx: typeof t.resumeIdx === 'number' ? t.resumeIdx : null,
+            outDir: t.outDir || '', _stopRequested: !!t._stopRequested,
+      // 软暂停标记落盘
+      _softPaused: t._softPaused === true,
+            groupDate: typeof t.groupDate === 'string' ? t.groupDate : '',
+            failedVideos: Array.isArray(t.failedVideos) ? t.failedVideos.slice(-100) : [],
+            // 失败成片【序号】：续跑按序号补做的唯一依据，**必须随任务落盘** ——
+            // 否则实例重启后续跑会退化成「按成片名解析」，而 failedVideos 里的「第N个」是占位名，必然解析失败。
+            failedIndices: Array.isArray(t.failedIndices)
+              ? t.failedIndices.filter((n) => Number.isInteger(n) && n > 0).slice(-500) : [],
+          };
+          store.upsertTask({
+            id: t.id, seq: parseInt(String(t.id).replace(/\D/g, ''), 10) || 0,
+            type: t.type || '', status: t.status || '', title: t.title || '',
+            createdAt: t.createdAt || 0, updatedAt: t.endedAt || t.startedAt || t.createdAt || Date.now(),
+            payload: JSON.stringify(body),
+          });
+          // 日志：保留末尾 500 行。新增且未溢出窗口时只追加新行；否则整体重写。
+          const all = t.log || [];
+          const saved = typeof t._savedLogLen === 'number' ? t._savedLogLen : 0;
+          if (all.length !== saved) {
+            if (all.length > saved && all.length <= 500) store.appendTaskLog(t.id, saved, all.slice(saved));
+            else store.setTaskLog(t.id, all.slice(-500));
+            t._savedLogLen = all.length;
+          }
+        }
+        store.setKv('plan_seq', String(this._planSeq));
+      });
+    } catch (e) {
+      // 不静默吞错：任务列表写坏会导致整批任务记录丢失，必须能从日志定位
+      console.error('[tasks] 任务列表落盘失败（本次变更已丢弃，下次状态变化会重试）：' + ((e && e.message) || e));
+    }
+  }
+  // 启动时恢复上次会话的任务列表（退出前已做 running→interrupted、queued→paused 转换）
+  restoreTasks() {
+    // 待异步校验输出目录的批量任务（见 _verifyBatchOutDirs）：声明在 try 外，保证同步段即使异常，已收集的目录校验仍会继续（校验本身失败也被吞掉，不影响任务恢复）
+    const pendingOut = [];
+    try {
+      if (!this._useDbCache()) return;
+      const store = this._cacheStore;
+      const _t0 = Date.now();
+      const rows = store.listTasks();
+      const _t1 = Date.now();
+      for (const row of rows) {
+        let t = null;
+        try { t = JSON.parse(row.payload); } catch (e) { continue; }
+        if (!t || typeof t.id !== 'string') continue;
+        if (this.tasks.has(t.id)) continue;
+        if (t.status !== 'paused' && t.status !== 'done' && t.status !== 'stopped' && t.status !== 'error' && t.status !== 'interrupted'
+          && t.status !== 'queued' && t.status !== 'running') continue;
+        t.log = store.getTaskLog(t.id);
+        const restored = Object.assign({}, t, { env: t.env || {}, pid: null, progress: t.progress || { current: 0, total: 0 }, log: Array.isArray(t.log) ? t.log : [], failedVideos: Array.isArray(t.failedVideos) ? t.failedVideos : [],
+          failedIndices: Array.isArray(t.failedIndices) ? t.failedIndices.filter((n) => Number.isInteger(n) && n > 0) : [] });
+          // 旧格式任务的耗时折算进 accumMs
+        if (!restored.accumMs && Number(restored.startedAt)) {
+          const st = Number(restored.startedAt);
+          const endRef = Number(restored.endedAt) || Date.now();
+          restored.accumMs = Math.max(0, endRef - st - (Number(restored.totalPausedMs) || 0));
+        }
+        // 强杀/异常退出恢复兜底：非终态任务转为可继续状态，避免任务从列表凭空消失（正常退出走 shutdownTasks 已完成转换，此处仅兜底）
+        if (restored.status === 'queued') {
+          restored.status = 'paused'; restored.paused = true;
+          this._taskLog(restored, '[上次异常退出，排队任务已转为暂停]', { dedupe: true });
+        } else if (restored.status === 'running') {
+          restored.status = 'interrupted'; restored.paused = false;
+          restored.runStartAt = 0;   // 引擎进程已随上次退出消失，这段不再计入
+          restored.endedAt = restored.endedAt || Date.now();
+          this._taskLog(restored, '[上次异常退出，任务已中断，可继续制作]', { dedupe: true });
+        } else if (restored.status === 'paused' && restored._softPaused) {
+          // 软暂停任务：转中断后走「继续制作」自动接续
+          restored.status = 'interrupted'; restored.paused = false;
+          restored.runStartAt = 0;
+          restored.endedAt = restored.endedAt || Date.now();
+          const softSid = restored.id;
+          // 延后到启动关键路径结束
+          setTimeout(() => {
+            if (!this.tasks.has(softSid)) return;
+            Promise.resolve(this.continueReplica(softSid, { auto: true })).then((r) => {
+              if (r && r.ok) return;
+              const cur = this.tasks.get(softSid);
+              if (!cur) return;
+              // 成片已齐（无缺失可补）时补判完成
+              if (r && /没有发现需要续跑的成片/.test(String(r.error || '')) && this._outputsComplete(cur)) {
+                cur.status = 'done';
+                cur.endedAt = cur.endedAt || Date.now();
+                this._markRunStop(cur);
+                this._taskLog(cur, '[自动恢复] 成片已齐，标记为已完成', { dedupe: true });
+                try { this._emitTasks(); } catch (e) {}
+                return;
+              }
+              this._taskLog(cur, '[自动恢复] 未继续：' + String((r && r.error) || '未知原因'), { dedupe: true });
+            }).catch((e) => {
+              try { this._lg('RUN', 'task.autoResume.fail', '软暂停任务自动恢复失败：' + String((e && e.message) || e), { id: softSid }); } catch (e2) {}
+            });
+          }, 2500);
+          this._taskLog(restored, '[上次退出时处于软暂停，将自动继续制作]', { dedupe: true });
+        } else if (restored.status === 'paused' && restored.startedAt) {
+          // 跑过任务的暂停：引擎已随退出消失，按中断处理
+          restored.status = 'interrupted'; restored.paused = false;
+          restored.runStartAt = 0;
+          restored.endedAt = restored.endedAt || Date.now();
+          delete restored._softPaused;
+          this._taskLog(restored, '[上次异常退出，暂停中的任务已转为中断，可继续制作]', { dedupe: true });
+        }
+        // 批量任务缺归属日时按提交/创建时刻补算（凌晨0-4点归前一天）
+        if (restored.type === 'batch' && typeof restored.groupDate !== 'string') restored.groupDate = this._taskGroupDate(restored.type, restored.env, restored.createdAt);
+        // 批量任务的成片文件夹：记录指向有效目录（含人工迁移/手工修正后）则保留；
+        // 失效时仅按本任务提交时刻+配置名确定性推算规范路径，绝不跨日搜索猜替代品（见 _verifyBatchOutDirs）。
+        // ⚠ 校验必须**异步**：此处位于启动关键路径，同步 existsSync 会逐任务冷访问磁盘，机械盘上会冻住主进程。
+        if (restored.type === 'batch') pendingOut.push(restored);
+        restored._savedLogLen = restored.log.length; // 已与库一致，避免下次持久化重复重写
+        this.tasks.set(restored.id, restored);
+        // 历史脏 ID 的数字部分可能极大（科学计数法形态）：超出安全整数一律不采纳，否则 taskSeq 永远停在 e 记法大数上，新 ID 的数字部分 ++ 无效且只能靠时间戳后缀保唯一
+        const n = parseInt(String(t.id).replace(/\D/g, ''), 10);
+        if (Number.isSafeInteger(n) && n > this.taskSeq) this.taskSeq = n;
+      }
+      const _t2 = Date.now();
+      const planSeq = parseInt(store.getKv('plan_seq') || '0', 10) || 0;
+      if (planSeq > this._planSeq) this._planSeq = planSeq;
+      // 任务快照 emit：_taskHasOutput 为纯内存判定（零 IO，见该方法注释），可安全立即 emit
+      if (this.tasks.size) this._emitTasks();
+      this._gcOrphanMarkers(); // 任务恢复完成后回收孤儿标记（任务不存在的残留）
+      // 启动结束后推一次队列
+      setTimeout(() => {
+        try {
+          if (!this._runningTaskId && this._taskQueue && this._taskQueue.length) this._startNextQueued();
+        } catch (e) {}
+      }, 2000);
+      const _t3 = Date.now();
+      // 分段留痕：冷启动卡顿定位依据（读库 / 主循环 / GC 三段，另记待异步校验的输出目录数）
+      this._lg('SYS', 'task.restore',
+        '任务恢复完成（同步段 ' + (_t3 - _t0) + 'ms · 读库 ' + (_t1 - _t0) + ' / 主循环 ' + (_t2 - _t1) + ' / GC ' + (_t3 - _t2) + ' · 任务 ' + rows.length + ' 条 · 待异步校验输出目录 ' + pendingOut.length + ' 条）',
+        { dbMs: _t1 - _t0, loopMs: _t2 - _t1, gcMs: _t3 - _t2, tasks: rows.length, pendingOut: pendingOut.length });
+    } catch (e) {}
+    // 输出目录校验：**一律入队**（异步、串行、节流）—— 不在启动窗口内打素材盘 IO，由空闲队列的启动保护期与让路机制决定何时真正执行（比"启动期判断"更准确）。
+    if (pendingOut.length) {
+      this._verifyEnqueue('outdirverify', this.root, () => this._verifyBatchOutDirs(pendingOut));
+    }
+    // 启动只读库：把已持久化的成片存在性结论载入内存（一次查询、零文件 IO），
+    // 其余待校验项**只入队**（空闲队列串行执行，见 _prewarmHasOutputAsync / _idleKick）
+    try { this._loadHasOutputFromStore(); } catch (e) {}
+    try { this._prewarmHasOutputAsync(); } catch (e) {}
+    // 维护性任务统一入队（启动期不做任何同步扫盘）：过期锁清理等
+    try { this._verifyEnqueue('cleanlocks', this.root, () => this._cleanupStaleLocks()); } catch (e) {}
+    // 自动兜底（与上面同款：只入队，启动期不扫盘）：覆盖 preview\ 残留与超 30 天快照，跨「当前 + 历史」数据根。
+    try { this._verifyEnqueue('legacysweep', this.root, () => this._sweepLegacyAuto().catch(() => {})); } catch (e) {}
+    // 任务配置自愈：缺配置的任务按快照补回原位（入空闲队列，启动期不扫盘）
+    try { this._verifyEnqueue('txtsnap', this.root, () => this._healTaskTxt()); } catch (e) {}
+    // 日志级别持久化恢复（否则级别只在本会话生效，重启回 info）：入空闲队列而不是启动路径 —— 读它需要同步打开 settings.db，那正是启动期硬约束禁止的。
+    try { this._idleEnqueue('loglevel:' + this.root, () => this._restoreLogLevel()); } catch (e) {}
+  }
+
+  // 把任务列表里缺配置的任务按快照补回原位（批量/复刻）
+  _healTaskTxt() {
+    let healed = 0;
+    try {
+      for (const t of this.tasks.values()) {
+        if (!t || (t.type !== 'batch' && t.type !== 'replica')) continue;
+        const src = String((t.env && t.env.REPLICA_TXT) || '').trim();
+        if (!src) continue;
+        let alive = false;
+        try { alive = fs.existsSync(src) && fs.statSync(src).size > 0; } catch (e) { alive = false; }
+        if (alive) continue;
+        if (!this._ensureTaskTxt(t)) continue;
+        healed++;
+        try { this._taskLog(t, '[已按提交快照还原配置] ' + path.basename(src), { dedupe: true }); } catch (e) {}
+      }
+    } catch (e) { /* 自愈失败不影响启动 */ }
+    if (!healed) return 0;
+    try { this._invalidateCaches(true); } catch (e) {}
+    try { this._notifyTreeChanged(); } catch (e) {}
+    try {
+      this._lg('MOD', 'task.txtsnap.heal', '启动自愈 · 已按提交快照还原配置 · ' + healed + ' 份', { healed });
+    } catch (e) {}
+    return healed;
+  }
+  // 启动后异步预热「成片是否仍在磁盘」判定所需的目录/文件元数据（restoreTasks 的延后部分）。
+  // 为什么需要：_taskHasOutput 是**同步**判定（被 snapshotTasks 逐任务调用），而历史任务的成片
+  // 目录多在机械盘 —— 冷启动逐目录访问的代价明显。
+  _idleEnqueue(key, run) {
+    if (!key || typeof run !== 'function') return false;
+    if (!this._idleJobs) this._idleJobs = [];
+    if (this._idleJobs.some((j) => j.key === key)) return false;   // 去重：同一项不重复排队
+    this._idleJobs.push({ key, run });
+    this._idleKick();
+    return true;
+  }
+
+  // ── 统一空闲校验 worker（冷启动相关的 IO 一律走这里）──
+  // 所有后台校验（索引重扫 / 复刻清单 / GC / 成片存在性 / 输出目录 / 锁清理）统一从本入口入队：
+  // 埋点统一（每次一条 `verify.<kind>`：耗时 / 让路 / 成败）、让路统一（job 内 `ctx.shouldYield()` 自行分片）、命名统一。
+  _verifyEnqueue(kind, scope, run) {
+    const k = String(kind || 'verify');
+    const key = k + ':' + String(scope == null ? '' : scope);
+    return this._idleEnqueue(key, async () => {
+      const t0 = Date.now();
+      let yields = 0;
+      const ctx = {
+        kind: k,
+        shouldYield: () => { const y = this._shouldYieldToForeground(); if (y) yields++; return y; },
+      };
+      let ok = true;
+      let err = '';
+      try { await run(ctx); } catch (e) { ok = false; err = String((e && e.message) || e); }
+      // 逐条记「后台校验 · kind · Nms」无诊断价值（核验结论见各自业务日志），
+      // 仅失败或让路过才留痕：让路说明前台有活动，可能与卡顿相关。
+      if (!ok || yields) {
+        try {
+          this._lg('SYS', 'verify.' + k,
+            '后台校验 · ' + k + ' · ' + (Date.now() - t0) + 'ms'
+            + (yields ? ' · 让路 ' + yields + ' 次' : '') + (ok ? '' : ' · 失败'),
+            { kind: k, ms: Date.now() - t0, yields, ok, error: err || undefined });
+        } catch (e) {}
+      }
+    });
+  }
+
+  /** 前台是否应当被让路：有任务在跑/排队，或最近刚有前台活动（读/点/任务操作）。
+   *  注意它是"查询"而非"中断" —— 由各 job 自己在安全点调用并分片让出。 */
+  _shouldYieldToForeground() {
+    try {
+      if (this.hasRunningTask && this.hasRunningTask()) return true;
+      if (this.hasQueuedTask && this.hasQueuedTask()) return true;
+      const fg = this._lastForegroundAt || 0;
+      return !!(fg && (Date.now() - fg) < IDLE_FOREGROUND_HOLD_MS);
+    } catch (e) { return false; }
+  }
+
+  _idleKick() {
+    if (this._idleRunning) {
+      // 看门狗：超时后放弃当前 job
+      const startedAt = this._idleJobStartedAt || 0;
+      if (startedAt && (Date.now() - startedAt) < IDLE_JOB_TIMEOUT_MS) return;
+      this._idleRunning = false;
+      this._idleJobStartedAt = 0;
+      this._idleStats.timeout = (this._idleStats.timeout || 0) + 1;
+    }
+    if (!this._idleJobs || !this._idleJobs.length) return;
+    // 启动保护期：到点前不消费（首屏渲染期间绝不与前台争 IO）
+    const waitBoot = Math.max(0, (this._idleStartAt || 0) - Date.now());
+    if (waitBoot > 0) { setTimeout(() => this._idleKick(), Math.min(waitBoot, 5000)); return; }
+    this._idleRunning = true;
+    const step = async () => {
+      if (!this._idleJobs.length) { this._idleRunning = false; this._idleJobStartedAt = 0; return; }
+      // 正在出片时让路，仅排队时照常消费
+      let running = false;
+      let queued = false;
+      try { running = this.hasRunningTask(); queued = this.hasQueuedTask(); } catch (e) { running = false; }
+      // 前台刚有活动（渲染/读取）也让路 —— 照预检测的「行内优先、后台让路」
+      const fgRecent = this._lastForegroundAt && (Date.now() - this._lastForegroundAt) < IDLE_FOREGROUND_HOLD_MS;
+      if (running || fgRecent) { this._idleRunning = false; this._idleJobStartedAt = 0; setTimeout(() => this._idleKick(), 5000); return; }
+      if (queued) this._idleDelayMs = Math.max(this._idleDelayMs, 500);   // 有排队任务：放慢但不停止
+      const job = this._idleJobs.shift();
+      const t0 = Date.now();
+      this._idleJobStartedAt = t0;
+      try { await job.run(); } catch (e) {}
+      this._idleJobStartedAt = 0;
+      const dt = Date.now() - t0;
+      this._idleStats.done++;
+      this._idleStats.maxMs = Math.max(this._idleStats.maxMs, dt);
+      // ★ 自适应节流：这就是"后台检测"的核心 —— 用实际耗时决定节奏，不需要事先知道盘冷不冷
+      if (dt > 150) { this._idleDelayMs = Math.min(2000, this._idleDelayMs * 2); this._idleStats.slow++; }
+      else if (dt < 20) { this._idleDelayMs = Math.max(10, Math.round(this._idleDelayMs / 2)); this._idleStats.fast++; }
+      setTimeout(step, this._idleDelayMs);
+    };
+    setTimeout(step, this._idleDelayMs);
+  }
+
+  // 队列状态（埋点/排查用）
+  idleQueueState() {
+    return {
+      pending: (this._idleJobs || []).length, running: !!this._idleRunning,
+      delayMs: this._idleDelayMs, done: this._idleStats.done,
+      slow: this._idleStats.slow, fast: this._idleStats.fast, maxMs: this._idleStats.maxMs,
+    };
+  }
+
+  // 把队列跑空（回归/手动排查用；正常使用不需要），注意要同时等 `_idleRunning` 结束：job 是**出队后才执行**的，只看队列长度会提前返回。
+  async drainIdleQueue(timeoutMs) {
+    const deadline = Date.now() + (Number(timeoutMs) || 30000);
+    while (((this._idleJobs && this._idleJobs.length) || this._idleRunning) && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    return this.idleQueueState();
+  }
+
+  // ── 成片存在性：结论持久化 + 懒校验────────────────
+  // 用一次查询换掉「每次启动核验 262 项目录」：启动只读 verify_cache（零文件 IO），有新鲜结论直接用；
+  // 校验只对「无结论 / 过期」的任务做并写回库；产物变动时按 key 精确失效，不定期全量重算。
+  _hasOutputKey(id) { return 'hasoutput:' + String(id || ''); }
+
+  _loadHasOutputFromStore() {
+    const store = this._useDbCache() ? this._cacheStore : null;
+    if (!store || typeof store.verifyGetMany !== 'function') return 0;
+    let map;
+    try { map = store.verifyGetMany('hasoutput:'); } catch (e) { return 0; }
+    let n = 0;
+    for (const [k, v] of map) {
+      const id = k.slice('hasoutput:'.length);
+      if (!id) continue;
+      this._hasOutputMemo.set(id, { v: v.result === '1', at: v.verifiedAt, ttl: v.ttlMs || HAS_OUTPUT_PERSIST_TTL_MS });
+      n++;
+    }
+    return n;
+  }
+
+  _putHasOutput(t, ok) {
+    if (!t || !t.id) return;
+    const at = Date.now();
+    this._hasOutputMemo.set(t.id, { v: !!ok, at, ttl: HAS_OUTPUT_PERSIST_TTL_MS });
+    const store = this._useDbCache() ? this._cacheStore : null;
+    if (store && typeof store.verifyPut === 'function') {
+      try { store.verifyPut(this._hasOutputKey(t.id), '', ok ? '1' : '0', HAS_OUTPUT_PERSIST_TTL_MS, at); } catch (e) {}
+    }
+  }
+
+  // 产物变动 → 精确失效该任务的结论（下次启动或下次空闲校验时才重新探测）
+  _invalidateHasOutput(id) {
+    if (!id) return;
+    if (this._hasOutputMemo) this._hasOutputMemo.delete(id);
+    const store = this._useDbCache() ? this._cacheStore : null;
+    if (store && typeof store.verifyInvalidate === 'function') {
+      try { store.verifyInvalidate(this._hasOutputKey(id)); } catch (e) {}
+    }
+  }
+
+  _prewarmHasOutputAsync() {
+    // 启动期**只入队**，不发起任何批量文件 IO（不分冷热）——建议的「后台检测 + 自愈」：启动只读 SQLite；校验交给空闲队列（串行 + 自适应节流 + 有任务时让路）。
+    const now = Date.now();
+    const pending = [];
+    this.tasks.forEach((t) => {
+      // 库里已有新鲜结论 → 连队都不排（这是「启动只读 SQLite」的核心收益）
+      const memo = this._hasOutputMemo && this._hasOutputMemo.get(t.id);
+      const ttl = (memo && memo.ttl) || HAS_OUTPUT_PERSIST_TTL_MS;
+      if (memo && (now - memo.at) < ttl) return;
+      const p = this._taskOutputProbes(t);
+      if (!p) return;
+      pending.push({ t, p });
+    });
+    if (!pending.length) return;
+    // 一条 job 串行处理全部待校验任务
+    this._verifyEnqueue('hasoutput', this.root, async (ctx) => {
+      for (const it of pending) {
+        try { if (ctx.shouldYield()) await new Promise((r) => setImmediate(r)); } catch (e) {}
+        try { await this._probeTaskOutput(it.t, it.p); } catch (e) {}
+      }
+    });
+    try {
+      if (this._lg) this._lg('SYS', 'task.restore.hasoutput',
+        '成片存在性核验已排入空闲队列（' + pending.length + ' 条 · 单条聚合 job · 有任务运行时自动让路）',
+        { queued: pending.length, pending: (this._idleJobs || []).length });
+    } catch (e) {}
+  }
+
+  // 单个任务的成片存在性校验（在空闲队列里执行）：**先目录后文件、命中即停**，
+  // 结果写回 verify_cache；结论变化时**增量刷新界面**（自愈 —— 不必重启就能看到标记被纠正）。
+  async _probeTaskOutput(t, p) {
+    const fsp = fs.promises;
+    let ok = false;
+    const dir = p.dir;
+    if (dir) {
+      try {
+        const st = await fsp.stat(dir);
+        if (st.isDirectory()) {
+          const names = await fsp.readdir(dir);
+          if (names.some((f) => path.extname(f).toLowerCase() === '.mp4')) ok = true;
+        }
+      } catch (e) { /* 目录不可用：继续看文件清单 */ }
+    }
+    if (!ok) {
+      const FILES_CHUNK = 4;   // 小批并发即可；队列本身已是串行单发 + 间隔，不会再打满磁盘
+      for (let i = 0; i < p.files.length && !ok; i += FILES_CHUNK) {
+        const slice = p.files.slice(i, i + FILES_CHUNK);
+        const hits = await Promise.all(slice.map((f) => fsp.access(f).then(() => true, () => false)));
+        if (hits.some(Boolean)) ok = true;
+      }
+    }
+    const prev = this._hasOutputMemo && this._hasOutputMemo.get(t.id);
+    this._putHasOutput(t, ok);
+    if (!prev || prev.v !== ok) { try { this._emitTasks(); } catch (e) {} }
+    return ok;
+  }
+  // 批量任务输出目录的异步校验（restoreTasks 的延后部分）。
+  // 语义：记录指向有效目录则保留；失效时仅按「提交时刻 + 配置名」
+  // 确定性推算规范输出路径（脚本本就会创建的目录），绝不跨日/跨盘搜索猜替代品。
+  _verifyBatchOutDirs(tasks) {
+    const fsp = fs.promises;
+    const _t = Date.now();
+    let changed = 0;
+    return Promise.all(tasks.map((t) => {
+      const od = t.outDir;
+      const check = od ? fsp.access(od).then(() => true, () => false) : Promise.resolve(false);
+      return check.then((live) => {
+        if (live) return;
+        const detail = t.status === 'done' ? this._batchTaskOutDetail(t, false) : null;
+        if (detail && detail.outDir && detail.outDir !== od) { t.outDir = detail.outDir; changed++; }
+      }).catch(() => {});
+    })).then(() => {
+      this._lg('SYS', 'task.restore.outdir',
+        '任务输出目录异步校验完成（' + (Date.now() - _t) + 'ms · 校验 ' + tasks.length + ' 条 · 修正 ' + changed + ' 条）',
+        { checked: tasks.length, changed: changed });
+      if (changed) this._emitTasks();
+    }).catch(() => {});
+  }
+  // 退出前收尾：运行中→已中断，排队→暂停（后由 persistTasks 落盘）
+  shutdownTasks() {
+    const now = Date.now();
+    let changed = false;
+    for (const t of this.tasks.values()) {
+      if (t.status === 'running') {
+        t.status = 'interrupted'; t.paused = false; t.endedAt = now;
+        this._markRunStop(t);
+        this._taskLog(t, '[应用退出，任务已中断]'); changed = true;
+      } else if (t.status === 'queued') {
+        t.status = 'paused'; t.paused = true; t.pausedAt = Date.now();
+        this._taskLog(t, '[应用退出，排队任务转为暂停]'); changed = true;
+      }
+    }
+    this._taskQueue = [];
+    this._runningTaskId = null;
+    if (changed) this._emitTasks();
+    this.persistTasks();
+    return { ok: true };
+  }
+  hasRunningTask() {
+    for (const t of this.tasks.values()) if (t.status === 'running') return true;
+    return false;
+  }
+  hasQueuedTask() {
+    for (const t of this.tasks.values()) if (t.status === 'queued') return true;
+    return false;
+  }
+  // 已结束任务单行删除（运行/排队/暂停中的任务不可删；连带删除任务标记文件）
+  clearTask(id) {
+    const t = this.tasks.get(id);
+    if (!t) return { ok: false, error: '任务不存在' };
+    if (t.status === 'running' || t.status === 'queued' || t.status === 'paused') return { ok: false, error: '进行中的任务不能删除' };
+    this.tasks.delete(id);
+    this._removeMarker(t);
+    // 任务记录消失 ⇒ 提交快照即成孤儿（它只在任务启动前用于还原配置，任务没了就永远用不上）。不删的话它会一直留在 txt-snap/ 里，只有「数据目录清理」手动点一次才可能被收走。
+    this._dropTxtSnap(t.id);
+    this._emitTasks();
+    return { ok: true };
+  }
+  // 全部继续：所有暂停任务按冻结顺位依次排入执行队列，无运行任务则立即启动
+  resumeAllTasks() {
+    const paused = [...this.tasks.values()].filter((t) => t.status === 'paused')
+      .sort((a, b) => (a.resumeIdx ?? 1e9) - (b.resumeIdx ?? 1e9));
+    if (!paused.length) return { ok: false, error: '没有暂停的任务' };
+    for (const t of paused) {
+      // 继续只是重新入队，此刻还没跑起来：保留计时冻结，由真正开始运行（_startNextQueued）时并入总暂停时长
+      t.status = 'queued'; t.paused = false; delete t.resumeIdx;
+      this._taskQueue.push(t.id);
+      this._taskLog(t, '[全部继续]');
+    }
+    this._taskQueue.forEach((qid, k) => { this.tasks.get(qid).planPos = k + 1; });
+    if (!this._runningTaskId) this._startNextQueued();
+    else this._emitTasks();
+    return { ok: true, count: paused.length };
+  }
+  // 全部暂停：所有排队任务移出执行队列并冻结顺位
+  pauseAllTasks() {
+    const queued = [...this.tasks.values()].filter((t) => t.status === 'queued')
+      .sort((a, b) => (a.planPos || 1e9) - (b.planPos || 1e9));
+    if (!queued.length) return { ok: false, error: '没有排队中的任务' };
+    for (const t of queued) {
+      const i = this._taskQueue.indexOf(t.id);
+      if (i >= 0) this._taskQueue.splice(i, 1);
+      t.status = 'paused'; t.paused = true; t.pausedAt = Date.now();
+      const waiting = [...this.tasks.values()].filter((x) => x.status === 'queued' || x.status === 'paused')
+        .sort((a, b) => (a.planPos || 1e9) - (b.planPos || 1e9));
+      t.resumeIdx = Math.max(0, waiting.indexOf(t));
+      this._taskLog(t, '[全部暂停]');
+    }
+    this._emitTasks();
+    return { ok: true, count: queued.length };
+  }
+
+  // 停止任务：排队/暂停中的任务直接取消（移出执行队列）；运行中的任务终止进程树
+  stopTask(id) {
+    const { spawnSync } = require('child_process');
+    const t = this.tasks.get(id);
+    if (!t) return { ok: false, error: '任务不存在' };
+    if (t.status === 'queued' || t.status === 'paused') {
+      const i = this._taskQueue.indexOf(id);
+      if (i >= 0) this._taskQueue.splice(i, 1);
+      t.status = 'stopped';
+      t.paused = false;
+      t.planPos = 0;
+      this._markRunStop(t);
+      t.endedAt = Date.now();
+      this._taskLog(t, '[已取消任务，不再执行]');
+      this._emitTasks();
+      return { ok: true };
+    }
+    if (t.status !== 'running') return { ok: false, error: '任务已结束' };
+    if (!t.pid) return { ok: false, error: '任务进程尚未就绪' };
+    t._stopRequested = true;
+    this._taskLog(t, '[已请求停止任务，正在终止进程…]');
+    this._emitTasks();
+    try {
+      const r = spawnSync('taskkill', ['/PID', String(t.pid), '/T', '/F'], { windowsHide: true, encoding: 'utf8' });
+      return r.status === 0 ? { ok: true } : { ok: false, error: (r.stderr || '').trim() || '停止失败' };
+    } catch (e) { return { ok: false, error: String(e) }; }
+  }
+
+  // 重开失败/中断/停止的任务：完整复用原任务环境变量（含提交时刻，成片命名/日志/输出目录与首次开始完全一致）重新制作；重开前删除该任务上次遗留的成片与日志产物。
+  rerunTask(id) {
+    const t = this.tasks.get(id);
+    if (!t) return { ok: false, error: '任务不存在' };
+    // 工具任务必须走 rerunToolTask（重新执行、不删文件）：
+    // 本方法会「删除上次失败残留的产物」，而工具任务的产物正是被覆盖的源视频，
+    // 且它没有任务标记可依（会回退到「日志解析 + 目录推算」，推算出的产物很可能就是源目录里的视频）
+    if (t.type === 'tool') return this.rerunToolTask(id);
+    if (t.status !== 'error' && t.status !== 'interrupted' && t.status !== 'stopped') return { ok: false, error: '仅失败/中断/停止的任务可重新开始' };
+    // 优先使用任务标记：其中保存了完整 env 与逐个成片的产出清单（精确还原、不依赖日志窗口）
+    const marker = this._loadMarker(t);
+    const env = Object.assign({}, (marker && marker.env) || t.env || {});
+    // 遮罩任务 env 为 MASK_* 系列；批量/复刻为 REPLICA_TXT + 其它变量
+    const isMask = t.type === 'mask';
+    let src = isMask
+      ? (env.MASK_RAW_DIRS ? String(env.MASK_RAW_DIRS).split(';')[0] : '')
+      : (env.REPLICA_TXT ? String(env.REPLICA_TXT) : '');
+    if (!src) {
+      this._removeMarker(t);
+      return { ok: false, error: isMask ? '原任务缺少遮罩配置，无法重新开始' : '原任务缺少 TXT 配置，无法重新开始' };
+    }
+    // 重新开始前把配置放回原位
+    if (!isMask) {
+      const fixed = this._ensureTaskTxt(Object.assign({}, t, { env }));
+      if (fixed) { src = fixed; env.REPLICA_TXT = fixed; }
+    }
+    // 删除上次失败残留的成片与日志：有标记按标记精确清单，无标记回退日志解析+目录推算
+    this._lg('DEL', 'task.rerun',
+      '重新开始 · 将删除上次产物并从第 1 片重做 · ' + t.type + ' · ' + String(t.title || '').slice(0, 50),
+      { id: t.id, hasMarker: !!marker,
+        markerVideos: (marker && Array.isArray(marker.videos) ? marker.videos.slice(0, 30) : []),
+        env: this._envBrief(env) });
+    if (marker) this._removeMarkerArtifacts(marker);
+    else this._removeTaskArtifacts(t);
+    this._removeMarker(t);
+    this.tasks.delete(id);
+    const task = this._createTask(t.type, t.title || this._taskTitle(src), env, src);
+    // 保留预填的进度结构（如批量任务的预计成片数/分组数），其余进度归零
+    task.progress = { current: 0, total: 0 };
+    if (t.progress && t.progress.groupCount > 0) task.progress.groupCount = t.progress.groupCount;
+    if (t.progress && t.progress.total > 0) task.progress.total = t.progress.total;
+    this._enqueueTask(task);
+    return { ok: true, taskId: task.id };
+  }
+
+  // ── 任务标记（task_marks 表）：含完整 env 与逐成片产出清单，不在用户成片文件夹留下文件。
+  // 任务正常完成时保留（供「清除成片/日志」精确删除）；失败/中断/停止时同样保留，作为未完成的标志且供重开精确还原。
+  _loadMarker(task) {
+    if (!task || !this._useDbCache()) return null;
+    try {
+      const raw = this._cacheStore.getMark(task.id);
+      if (!raw) return null;
+      const d = JSON.parse(raw);
+      return d && typeof d === 'object' ? d : null;
+    } catch (e2) { return null; }
+  }
+  _saveMarker(task, data) {
+    if (!task || !this._useDbCache()) return;
+    try { this._cacheStore.setMark(task.id, JSON.stringify(data), data && data.createdAt); } catch (e2) {}
+  }
+  // 删除任务标记（cache.db 的 task_marks 记录）。标记是「产物归属」的判定依据 ——
+  // 一旦删除，任务身份/环境快照就再无别处留存，故默认留痕；批量场景传 silent 由调用方汇总。
+  _removeMarker(task, opts) {
+    if (!task || !this._useDbCache()) return;
+    let removed = false;
+    try { removed = this._cacheStore.removeMark(task.id) !== false; } catch (e2) {}
+    if (removed && !(opts && opts.silent)) {
+      this._lg('DEL', 'task.marker.remove',
+        '删除任务标记 · ' + String(task.type || '') + ' · ' + String(task.title || '').slice(0, 40),
+        { id: task.id, env: this._envBrief(task.env) });
+    }
+  }
+  // 孤儿任务标记回收：标记对应的任务已不存在于列表（清除/历史遗留）时删除；仍存在的任务（含 done 历史，供「清除成片/日志」精确删除）标记保留。
+  _gcOrphanMarkers() {
+    if (!this._useDbCache()) return;
+    try {
+      const known = new Set(this.tasks.keys());
+      let removed = 0;
+      for (const id of this._cacheStore.listMarkIds()) {
+        if (known.has(id)) continue;
+        if (this._cacheStore.removeMark(id)) removed++;
+      }
+      if (removed) console.log('[cache] 已回收孤儿任务标记 ' + removed + ' 个');
+    } catch (e) {}
+  }
+  // 任务真正开始执行时初始化标记（含 env 快照，重开可完整还原环境）
+  _touchMarker(task) {
+    this._saveMarker(task, {
+      taskId: task.id, type: task.type, title: task.title || '',
+      env: Object.assign({}, task.env || {}), createdAt: task.createdAt || Date.now(),
+      videos: [], batchOutDir: '',
+    });
+  }
+  // 追加产物记录：成片完成路径 / batch 专属输出目录（标记不存在时先创建）
+  _appendMarkerOut(task, key, value) {
+    if (!value) return;
+    let data = this._loadMarker(task);
+    if (!data) { this._touchMarker(task); data = this._loadMarker(task); }
+    if (!data) return;
+    if (key === 'videos') {
+      if (!Array.isArray(data.videos)) data.videos = [];
+      if (data.videos.indexOf(value) < 0) data.videos.push(value);
+    } else if (key === 'batchOutDir') {
+      data.batchOutDir = value;
+    }
+    this._saveMarker(task, data);
+  }
+
+  // ── 成片目录收尾（共用，唯一入口）────────────────────────────
+  // 处理任务中断留下的配置正本、0 字节日志与 `<随机>.tmp` 半截产物。
+  // 正本只在目录里没有任何成片时回迁；目标 = 父目录，已有同名配置则跳过。
+  _rescueConfigFromOutDir(outDir) {
+    const out = { restored: [], skipped: [] };
+    const abs = String(outDir || '').trim();
+    if (!abs) return out;
+    // 只处理成片目录：别处的 .txt 不是"被移入的正本"，动了就是误伤
+    if (!/成片$/i.test(path.basename(abs))) return out;
+    let names = [];
+    try { if (!fs.statSync(abs).isDirectory()) return out; names = fs.readdirSync(abs); } catch (e) { return out; }
+    // 目录里已有成片 → 不回迁（正本留在成片夹）
+    if (names.some((f) => VIDEO_EXTS.has(path.extname(f).toLowerCase()))) return out;
+    const parent = path.dirname(path.resolve(abs));
+    for (const f of names) {
+      if (!/\.txt$/i.test(f)) continue;
+      if (LOG_NAME_RE.test(f)) continue;      // 拼接日志/复刻日志：不是配置
+      if (BACKUP_NAME_RE.test(f)) continue;   // 复刻侧的「配置备份-」是**副本**（源还在），不回迁
+      const src = path.join(abs, f);
+      try { if (!fs.statSync(src).isFile()) continue; } catch (e) { continue; }
+      const dest = path.join(parent, f);
+      if (fs.existsSync(dest)) { out.skipped.push(f); continue; }
+      try {
+        fs.renameSync(src, dest);
+        out.restored.push(f);
+        // 并入新路径
+        try { this._upsertTxtTreeEntry(dest); } catch (e2) {}
+      } catch (e) { /* 占用/权限：留原地，不阻断 */ }
+    }
+    return out;
+  }
+
+  // 清扫成片目录里**确定无价值**的残渣：0 字节拼接日志 + 引擎临时产物。
+  // 保守边界（宁可留，不可误删）：日志只删 0 字节（有内容的日志是复刻配对与事后复盘的唯一凭据）；
+  // 临时产物只认 `^[0-9a-z]{6,}\.tmp$` 严格形态（与续跑清理同一判定）；目录只在不剩任何文件时收回。
+  // 两者都是程序自产、可再生、0 信息量 → hard 级直接删，不占用回收站。
+  async _sweepOutDirResidue(outDir) {
+    const out = { logs: [], temps: [], dirRemoved: false };
+    const abs = String(outDir || '').trim();
+    if (!abs) return out;
+    let names = [];
+    try { if (!fs.statSync(abs).isDirectory()) return out; names = fs.readdirSync(abs); } catch (e) { return out; }
+    for (const f of names) {
+      const fp = path.join(abs, f);
+      let st = null; try { st = fs.statSync(fp); } catch (e) { continue; }
+      if (!st.isFile()) continue;
+      if (LOG_NAME_RE.test(f) && st.size === 0) {
+        if (this._hardDelete(fp)) out.logs.push(f);
+        continue;
+      }
+      if (/^[0-9a-z]{6,}\.tmp$/i.test(f)) {
+        if (this._hardDelete(fp)) out.temps.push(f);
+      }
+    }
+    // 目录已空（连日志/临时产物都没了）→ 收回空壳，不留「成片文件夹空壳」；父目录若也因此变空，逐级向上收（到项目根为界）——任一层非空即停
+    try {
+      if (fs.readdirSync(abs).length === 0) {
+        fs.rmdirSync(abs);
+        out.dirRemoved = true;
+        let cur = path.dirname(abs);
+        const stopAt = path.resolve(this.root || process.cwd());
+        while (cur.length > stopAt.length && cur !== stopAt) {
+          let entries = [];
+          try { entries = fs.readdirSync(cur); } catch (e) { break; }
+          if (entries.length) break;
+          try { fs.rmdirSync(cur); } catch (e) { break; }
+          cur = path.dirname(cur);
+        }
+      }
+    } catch (e) {}
+    return out;
+  }
+
+  // 任务终态收尾（stopped / error / interrupted）：回迁正本 + 清扫残渣，一次做完并留痕。
+  // 只在**没能正常出片收尾**的终态调用：done 不动（正本留在成片目录是正常形态），
+  // paused 不动（软暂停后用户会「继续任务」，此时搬走正本反而添乱）。
+  async _settleTaskLeftovers(task, status) {
+    try {
+      if (!task) return;
+      if (status !== 'stopped' && status !== 'error' && status !== 'interrupted') return;
+      const dir = String(task.outDir || (task.env && task.env.REPLICA_OUTPUT_DIR) || '').trim();
+      if (!dir) return;
+      const rescued = this._rescueConfigFromOutDir(dir);
+      // mask / replica 的锁写在**成片输出目录**里（不是 <数据根>\.locks\）——
+      // 被 taskkill 硬杀后它们不在 _cleanupStaleLocks 的扫描范围内，正好在这里顺手收掉。
+      const locks = this._cleanupLocksIn(dir);
+      const swept = await this._sweepOutDirResidue(dir);
+      if (rescued.restored.length || rescued.skipped.length || swept.logs.length || swept.temps.length || swept.dirRemoved || locks) {
+        this._lg('DEL', 'task.settle',
+          '任务未正常结束的收尾 · ' + status + ' · ' + String(task.title || '').slice(0, 40)
+          + ' · 配置正本回迁 ' + rescued.restored.length + ' 个'
+          + (rescued.skipped.length ? '（' + rescued.skipped.length + ' 个因原位置已有同名而保留）' : '')
+          + ' · 清空日志 ' + swept.logs.length + ' 个 · 清临时产物 ' + swept.temps.length + ' 个'
+          + (locks ? ' · 清过期锁 ' + locks + ' 个' : '')
+          + (swept.dirRemoved ? ' · 空目录已收回' : ''),
+          { id: task.id, outDir: dir,
+            restored: rescued.restored, skipped: rescued.skipped, logs: swept.logs, temps: swept.temps, locks });
+      }
+    } catch (e) { /* 收尾失败绝不阻断任务结束流程 */ }
+  }
+
+  // 清除任务**记录之前**的"孤儿残渣"收尾：只对**没有任何正式成片**的成片目录动手。
+  // 任务记录一旦删除，其输出目录就再也无法被「清除任务产物」定位（那条路径按当前任务列表遍历）——
+  // 目录里的半截 `.tmp`、0 字节日志与配置正本会变成永久垃圾。保守边界：目录里只要有一个 mp4 就完全不动。
+  async _settleOrphanOutDir(task) {
+    try {
+      const dir = String((task && task.outDir) || '').trim();
+      if (!dir || !/成片$/i.test(path.basename(dir))) return false;
+      let names = [];
+      try {
+        if (!fs.statSync(dir).isDirectory()) return false;
+        names = fs.readdirSync(dir);
+      } catch (e) { return false; }
+      if (names.some((f) => path.extname(f).toLowerCase() === '.mp4')) return false;
+      const rescued = this._rescueConfigFromOutDir(dir);
+      const swept = await this._sweepOutDirResidue(dir);
+      if (rescued.restored.length || rescued.skipped.length || swept.logs.length || swept.temps.length || swept.dirRemoved) {
+        this._lg('DEL', 'task.orphanClean',
+          '清除任务记录前收走遗留残渣 · ' + String(task.title || '').slice(0, 40)
+          + ' · 配置正本回迁 ' + rescued.restored.length + ' 个'
+          + (rescued.skipped.length ? '（' + rescued.skipped.length + ' 个因原位置已有同名而保留）' : '')
+          + ' · 空日志 ' + swept.logs.length + ' 个 · 临时产物 ' + swept.temps.length + ' 个'
+          + (swept.dirRemoved ? ' · 空目录已收回' : ''),
+          { id: task.id, outDir: dir, restored: rescued.restored, skipped: rescued.skipped, logs: swept.logs, temps: swept.temps });
+        return true;
+      }
+    } catch (e) { /* 收尾失败不阻断清除流程 */ }
+    return false;
+  }
+
+  // 按任务标记精确删除失败任务遗留产物：
+  // 1) 标记中逐成片记录的输出文件（复刻/批量共用）；
+  // 2) batch 专属输出目录内的成片 mp4 与拼接日志（与重制结果同名冲突）；
+  _removeMarkerArtifacts(marker) {
+    // 先留痕再删：产物一旦删除，这里是唯一还能还原「删了什么、多大、原修改时间」的地方
+    const targets = (marker.videos || []).slice();
+    if (marker.type === 'batch' && marker.batchOutDir) {
+      try {
+        if (fs.existsSync(marker.batchOutDir)) {
+          for (const f of fs.readdirSync(marker.batchOutDir)) {
+            if (path.extname(f).toLowerCase() === '.mp4' || /拼接日志/.test(f)) targets.push(path.join(marker.batchOutDir, f));
+          }
+        }
+      } catch (e2) {}
+    }
+    const info = this._describeForLog(targets);
+    this._lg('DEL', 'task.artifacts.remove',
+      '清除任务产物 · ' + String(marker.type || '') + ' · ' + info.count + ' 个文件 · 共 ' + this._humanSize(info.bytes),
+      Object.assign({ outDir: marker.batchOutDir || '' }, info));
+
+    // 一律移入回收站（可还原），不做永久删除
+    const rm = (p) => { try { if (p && fs.existsSync(p)) this._recycleFile(p, '清除任务产物'); } catch (e2) {} };
+    for (const v of (marker.videos || [])) rm(v);
+    if (marker.type === 'batch' && marker.batchOutDir) {
+      // 正本回迁收敛到共用函数：不依赖 marker.env.REPLICA_TXT（任务标记缺失的孤儿目录也能救回），
+      // 按「成片目录里的 .txt 即被移入的正本」判定，父目录有同名则跳过。
+      this._rescueConfigFromOutDir(marker.batchOutDir);
+      try {
+        if (fs.existsSync(marker.batchOutDir) && fs.statSync(marker.batchOutDir).isDirectory()) {
+          for (const f of fs.readdirSync(marker.batchOutDir)) {
+            const fp = path.join(marker.batchOutDir, f);
+            if (fs.existsSync(fp) && fs.statSync(fp).isFile() && (path.extname(f).toLowerCase() === '.mp4' || LOG_NAME_RE.test(f))) rm(fp);
+          }
+        }
+      } catch (e2) {}
+    }
+  }
+
+  // 从任务日志行中解析该任务产出的成片路径（清除/续跑对账用，与标记互为补充）
+  collectDoneFromLog(task) {
+    const out = [];
+    for (const line of ((task && task.log) || [])) {
+      const m = /✅ 成片完成：(.+)$/.exec(String(line));
+      if (m) out.push(String(m[1]).trim());
+    }
+    return out;
+  }
+
+  // 从复刻日志文件中移除指定成片的日志块（按成片文件路径的 basename 精确匹配），复刻日志格式：各成片块以「成片文件名.mp4」单行开头，块间以「=×46」分隔，以 EOF 结尾
+  _removeLogEntries(videoPaths) {
+    if (!Array.isArray(videoPaths) || !videoPaths.length) return;
+    // 按目录分组成片路径：日志文件与成片同目录（脚本把日志写在复刻输出目录）
+    const byDir = new Map();
+    for (const v of videoPaths) {
+      let p = v;
+      try { p = path.resolve(String(v)); } catch (e) { continue; }
+      const dir = path.dirname(p);
+      if (!byDir.has(dir)) byDir.set(dir, []);
+      byDir.get(dir).push(path.basename(p));
+    }
+    for (const [dir, bases] of byDir) {
+      try {
+        const files = fs.readdirSync(dir);
+        const logFile = files.find((f) => /^\d{4}-(原片复刻|去重复刻)日志\.txt$/.test(f));
+        if (!logFile) continue;
+        const logPath = path.join(dir, logFile);
+        const lines = fs.readFileSync(logPath, 'utf-8').split('\n');
+        // 收集所有块起点：以成片文件名（不含路径分隔符、.mp4 结尾）开始的行
+        const starts = [];
+        for (let i = 0; i < lines.length; i++) {
+          const ln = (lines[i] || '').trimEnd();
+          if (ln.endsWith('.mp4') && !ln.includes('\\') && !ln.includes('/')) starts.push(i);
+        }
+        // 确定要删除的块起点
+        const delSet = new Set(bases);
+        const delStarts = new Set();
+        for (const si of starts) {
+          if (delSet.has((lines[si] || '').trimEnd())) delStarts.add(si);
+        }
+        if (!delStarts.size) continue;
+        // 标记删除行：被删块内容（起点到下一块起点/EOF）+ 每块紧邻前方的分隔线
+        const delIdx = new Set();
+        for (let k = 0; k < starts.length; k++) {
+          const si = starts[k];
+          if (!delStarts.has(si)) continue;
+          const end = k + 1 < starts.length ? starts[k + 1] : lines.length;
+          for (let i = si; i < end; i++) delIdx.add(i);
+          let p = si - 1;
+          while (p >= 0 && !(lines[p] || '').trim()) p--;
+          if (p >= 0 && /^=+$/.test((lines[p] || '').trimEnd())) delIdx.add(p);
+        }
+        const out = [];
+        for (let i = 0; i < lines.length; i++) if (!delIdx.has(i)) out.push(lines[i]);
+        while (out.length && !(out[out.length - 1] || '').trim()) out.pop();
+        this._writeBackOrDropLog(logPath, out);
+      } catch (e) {}
+    }
+  }
+
+  // 「日志删空才删文件」的统一出口：删掉指定块之后，只剩分隔线/空行即视为空壳，
+  // hard 级直接删（内容已无任何信息，留个空 txt 进回收站纯属噪音）；否则原子写回。
+  // batch / replica / mask 三处日志清理都走这里，避免各写一遍判断。
+  _writeBackOrDropLog(logPath, outLines) {
+    const hasContent = outLines.some((l) => (l || '').trim() && !/^=+$/.test((l || '').trim()));
+    if (!hasContent) { this._hardDelete(logPath); return true; }
+    try { fs.writeFileSync(logPath, outLines.join('\n'), 'utf-8'); } catch (e) { return false; }
+    return false;
+  }
+
+  // 遮罩任务清除：从项目「遮罩日志」目录（MASK_LOG_DIR）的 *.txt 中移除目标成片的条目块。
+  // 遮罩日志块结构与复刻日志一致：成片名（.mp4）行开头，块含使用片段列表/原片/遮罩/@out/分隔线
+  _removeMaskLogBlocks(task, videoPaths) {
+    const logDir = String((task && task.env && task.env.MASK_LOG_DIR) || '').trim();
+    if (!logDir || !fs.existsSync(logDir) || !fs.statSync(logDir).isDirectory()) return;
+    if (!Array.isArray(videoPaths) || !videoPaths.length) return;
+    const bases = new Set();
+    for (const v of videoPaths) {
+      try { const b = path.basename(String(v)); if (b) bases.add(b); } catch (e) {}
+    }
+    if (!bases.size) return;
+    let files = [];
+    try {
+      files = fs.readdirSync(logDir).filter((f) => /遮罩日志\.txt$/.test(String(f)) && fs.statSync(path.join(logDir, f)).isFile());
+    } catch (e) { return; }
+    for (const f of files) {
+      const lp = path.join(logDir, f);
+      try {
+        const lines = fs.readFileSync(lp, 'utf-8').split('\n');
+        const starts = [];
+        for (let i = 0; i < lines.length; i++) {
+          const ln = (lines[i] || '').trimEnd();
+          if (ln.endsWith('.mp4') && !ln.includes('\\') && !ln.includes('/')) starts.push(i);
+        }
+        const delStarts = new Set();
+        for (const si of starts) if (bases.has((lines[si] || '').trimEnd())) delStarts.add(si);
+        if (!delStarts.size) continue;
+        const delIdx = new Set();
+        for (let k = 0; k < starts.length; k++) {
+          const si = starts[k];
+          if (!delStarts.has(si)) continue;
+          const end = k + 1 < starts.length ? starts[k + 1] : lines.length;
+          for (let i = si; i < end; i++) delIdx.add(i);
+          let p = si - 1;
+          while (p >= 0 && !(lines[p] || '').trim()) p--;
+          if (p >= 0 && /^=+$/.test((lines[p] || '').trimEnd())) delIdx.add(p);
+        }
+        const out = [];
+        for (let i = 0; i < lines.length; i++) if (!delIdx.has(i)) out.push(lines[i]);
+        while (out.length && !(out[out.length - 1] || '').trim()) out.pop();
+        this._writeBackOrDropLog(lp, out);
+      } catch (e) {}
+    }
+  }
+
+  // 删除失败任务在磁盘上遗留的产物（无任务标记时的清理）：
+  // 1) 任务日志中「✅ 成片完成：」明确列出的成片文件 —— 精确清单，始终执行；
+  // 2) 批量输出目录内的残留 mp4 与拼接日志 —— 仅当目录内确有日志列出的成片文件（确属本任务）时执行；推算目录会撞车，无证据不动。
+  _removeTaskArtifacts(task) {
+    // 产物即将被移除 → 让成片存在性结论立即失效（内存 + verify_cache；否则界面仍按旧结论显示）
+    this._invalidateHasOutput(task && task.id);
+    // 快照不在此删除，随任务记录回收
+    // 一律移入回收站（可还原），不做永久删除
+    const rm = (p) => { try { if (p && fs.existsSync(p)) this._recycleFile(p, '清除任务产物'); } catch (e2) {} };
+    // 1) 日志中列出的成片
+    const listed = [];
+    for (const line of (task.log || [])) {
+      const m = /✅ 成片完成：(.+)$/.exec(line);
+      if (m) { const p = String(m[1]).trim(); if (p) { listed.push(p); rm(p); } }
+    }
+    // 2) batch 专属输出目录：先确认归属，再做残留清理与配置 TXT 归位
+    if (task.type === 'batch') {
+      const detail = this._batchTaskOutDetail(task);
+      if (detail && detail.outDir) {
+        const dir = path.resolve(detail.outDir);
+        const belongs = listed.some((p) => path.dirname(path.resolve(p)) === dir);
+        if (belongs) {
+          const src = (task.env && task.env.REPLICA_TXT) ? String(task.env.REPLICA_TXT) : '';
+          if (src && !fs.existsSync(src)) {
+            const dest = path.join(dir, path.basename(src));
+            try { if (fs.existsSync(dest) && fs.statSync(dest).isFile()) fs.renameSync(dest, src); } catch (e2) {}
+          }
+          try {
+            if (fs.existsSync(dir) && fs.statSync(dir).isDirectory()) {
+              for (const f of fs.readdirSync(dir)) {
+                const fp = path.join(dir, f);
+                if (fs.existsSync(fp) && fs.statSync(fp).isFile() && (path.extname(f).toLowerCase() === '.mp4' || /拼接日志/.test(f))) rm(fp);
+              }
+            }
+          } catch (e2) {}
+        }
+      }
+    }
+  }
+
+  // 任务在磁盘上的真实输出目录：取日志中脚本明确创建的目录（权威记录）。推算目录（提交时刻+配置名）在同日同名任务之间会撞车，不能作为删除依据。
+  _taskOutDirFromLog(task) {
+    for (const ln of (task.log || [])) {
+      const m = /✅ 创建输出目录：(.+)$/.exec(ln);
+      if (m) {
+        const d = String(m[1]).trim();
+        if (d) return d;
+      }
+    }
+    return '';
+  }
+
+  // 校验某目录确属该任务：目录内存在任务产出清单（标记/日志解析）中的文件。
+  // ⚠ 只适用于**有清单**的任务（复刻/遮罩：完成行带路径）。批量任务的清单恒为空（完成行不携带路径），
+  // 传本函数必得 false；批量的目录归属请用「引擎记录的 batchOutDir + 运行时间窗」判定（见 clearDoneTasks 的 batch 分支）。
+  _dirOwnsVideos(dir, videos) {
+    if (!dir || !Array.isArray(videos) || !videos.length) return false;
+    const target = path.resolve(dir);
+    for (const p of videos) {
+      if (!p) continue;
+      if (path.dirname(path.resolve(p)) === target) return true;
+    }
+    return false;
+  }
+
+  // batch 专属输出目录推算：目录名规则 MMdd-HH时mm分-配置名-成片（与 旧版脚本 一致）
+  _batchTaskOutDetail(task, allowFallback) {
+    const src = (task.env && task.env.REPLICA_TXT) ? String(task.env.REPLICA_TXT) : '';
+    if (!src) return null;
+    // 任务实际用过的目录最准：引擎上报的 outDir / marker 记录。
+    // 提交时刻推算仅作兜底
+    const recorded = String((task && task.outDir) || '').trim();
+    if (recorded && fs.existsSync(recorded)) return { outDir: recorded };
+    try {
+      const mk = this._loadMarker(task);
+      const mkDir = mk && String(mk.batchOutDir || '').trim();
+      if (mkDir && fs.existsSync(mkDir)) return { outDir: mkDir };
+    } catch (e) {}
+    const submit = Number(task.env && task.env.BATCH_SUBMIT_TS) || Number(task.env && task.env.REPLICA_SUBMIT_TS) || task.createdAt || Date.now();
+    const d = new Date(submit);
+    const p = (n) => (n < 10 ? '0' : '') + n;
+    const mmdd = p(d.getMonth() + 1) + p(d.getDate());
+    const hhmm = p(d.getHours()) + '时' + p(d.getMinutes()) + '分';
+    // 基目录：与脚本一致，从路径最外层起取首个「N月」/「4位数字」段之前的路径
+    const abs = path.resolve(src);
+    const parts = path.dirname(abs).split(path.sep).filter((s) => s && s !== '.');
+    let baseIdx = -1;
+    for (let i = 0; i < parts.length; i++) {
+      if (/^\d+月$/.test(parts[i]) || /^\d{4}$/.test(parts[i])) { baseIdx = i; break; }
+    }
+    const baseDir = baseIdx >= 0 ? (parts.slice(0, baseIdx).join(path.sep) || path.parse(abs).root) : path.dirname(abs);
+    const outputRoot = path.join(baseDir, (d.getMonth() + 1) + '月', mmdd);
+    const txtName = path.basename(abs).replace(/\.txt$/i, '');
+    const planned = path.join(outputRoot, mmdd + '-' + hhmm + '-' + txtName + '-成片');
+    if (fs.existsSync(planned)) return { outDir: planned };
+    // 规划目录不存在：可能是"凌晨内容归入前一天"被人工迁移（如 0831 凌晨任务移至 0830）。
+    // 回退查找当天与前一天「8月」目录下实际存在的同名成片目录（HH时mm分-配置名-成片）
+    if (allowFallback) {
+      const yday = new Date(d); yday.setDate(d.getDate() - 1);
+      const ymdd = p(yday.getMonth() + 1) + p(yday.getDate());
+      const monthDir = path.join(baseDir, (d.getMonth() + 1) + '月');
+      const key = hhmm + '-' + txtName + '-成片';
+      for (const day of [mmdd, ymdd]) {
+        const dd = path.join(monthDir, day);
+        try {
+          if (!fs.existsSync(dd) || !fs.statSync(dd).isDirectory()) continue;
+          for (const e of fs.readdirSync(dd)) {
+            if (!String(e).endsWith('成片') || !e.startsWith(day + '-')) continue;
+            if (!e.includes(key)) continue;
+            const f = path.join(dd, e);
+            if (fs.existsSync(f) && fs.statSync(f).isDirectory()) return { outDir: f };
+          }
+        } catch (e2) {}
+      }
+    }
+    return { outDir: planned };
+  }
+
+  clearFinishedTasks(statuses) {
+    // 仅清理指定的已结束状态任务（缺省：完成/停止/失败）；运行中、排队中、暂停中的任务保留
+    const allow = new Set(Array.isArray(statuses) && statuses.length ? statuses : ['done', 'stopped', 'error']);
+    const removed = [];
+    for (const [id, t] of this.tasks) {
+      if (allow.has(t.status)) { this.tasks.delete(id); this._removeMarker(t, { silent: true }); removed.push(t); }
+    }
+    if (removed.length) {
+      this._lg('DEL', 'task.marker.remove.batch',
+        '批量清除任务标记 · ' + removed.length + ' 个 · 状态 ' + [...allow].join('/'),
+        { ids: removed.slice(0, 50).map((t) => t.id) });
+    }
+    this._emitTasks();
+    return { ok: true };
+  }
+
+  // 清除已完成/已停止任务：支持按日期分组 / 指定任务列表 / 三种作用域（仅列表 / 列表+mp4 / 全部清除）。
+  // 先删任务列表（连带删除任务标记文件）；文件删除均移动至系统回收站。
+  async clearDoneTasks(opts) {
+    const { day, scope, statuses, ids } = opts || {};
+    const allow = new Set(Array.isArray(statuses) && statuses.length ? statuses : ['done']);
+    const dayOf = (ts) => {
+      if (!ts) return '';
+      const d = new Date(ts);
+      const p = (n) => (n < 10 ? '0' : '') + n;
+      return String(d.getFullYear()).slice(2) + '.' + p(d.getMonth() + 1) + '.' + p(d.getDate());
+    };
+    // 指定任务列表时精确按 id 清除（单任务条），否则按状态+日期筛选
+    const inIds = Array.isArray(ids) && ids.length ? new Set(ids) : null;
+    const targets = [...this.tasks.values()].filter((t) => (inIds ? inIds.has(t.id) : (allow.has(t.status) && (!day || dayOf(t.endedAt) === day))));
+    // 先缓存每个任务的标记（文件删除用精确产物清单，删除前读取；任务记录清掉后再删标记文件）
+    const marked = targets.map((t) => ({ t, marker: this._loadMarker(t) }));
+    // 清除动作留痕：范围 + 任务清单。任务记录与标记随后都会消失，这里是唯一的凭据。
+    if (marked.length) {
+      this._lg('DEL', 'task.clearDone',
+        '清除已完成任务 · ' + marked.length + ' 个 · 范围 ' + String(scope || 'list') + (day ? ' · 日期 ' + day : ''),
+        { scope: scope || 'list', day: day || '',
+          tasks: marked.slice(0, 50).map(({ t }) => ({
+            id: t.id, type: t.type, title: String(t.title || '').slice(0, 40),
+            outDir: t.outDir || '', clips: (t.progress && t.progress.current) || 0,
+          })) });
+    }
+    // 先清任务列表（连带任务标记）
+    for (const { t } of marked) { this.tasks.delete(t.id); this._invalidateHasOutput(t.id); this._removeMarker(t, { silent: true }); }
+    const errors = [];
+    if (scope && scope !== 'list') {
+      // 用户主动清除已完成任务：成片属用户资产 → soft 级（走集中式原语，降级自动落数据目录）
+      const trash = async (p) => { this._recycleFile(p, '清除已完成任务产物'); };
+      for (const { t, marker } of marked) {
+        // ★ 记录马上被删除 → 顺手收走"只剩残渣"的输出目录（回迁配置正本 + 清 0 字节日志与半截
+        //   临时产物，目录清空后自动收回）。不做这一步，这些残渣会随记录一起失去归属、永久留存。
+        //   ⚠ 范围「仅列表」（scope==='list'）不会走到这里 —— 那个语义就是只清列表、不动磁盘。
+        await this._settleOrphanOutDir(t);
+        // 该任务精确产出的成片清单：优先任务标记（复刻/遮罩逐条记录 `✅ 成片完成：<路径>`），
+        // 缺失时回退任务日志行解析。⚠ **batch 的完成行不带路径**（只报时长/加速倍率，见
+        // engines/base/logger.js 的 clipDoneBatch）→ 批量任务的清单恒为空，必须走下方时间窗兜底。
+        const exactVideos = (marker && Array.isArray(marker.videos) ? marker.videos.slice() : [])
+          .concat(this.collectDoneFromLog(t));
+        const titleBrief = String(t.title || '').slice(0, 40);
+        if (t.type === 'batch') {
+          // 目录归属（**只用权威来源，不做推算**）：任务标记记录的真实输出目录（引擎
+          // 「✅ 创建输出目录：」行写入的 batchOutDir）→ 任务日志中的同一行 → 任务对象上的 outDir。
+          // ⚠ 绝不可用「按提交时间推算目录名」（_batchTaskOutDetail）作为删除依据：同分钟同配置的多个任务会推出同一目录，据删会误伤他人产物。
+          const cand = (marker && marker.batchOutDir ? path.resolve(String(marker.batchOutDir)) : '')
+            || this._taskOutDirFromLog(t)
+            || (t.outDir ? path.resolve(t.outDir) : '');
+          if (!cand) {
+            errors.push(`未找到「${titleBrief}」的输出目录记录，未删除任何产物`);
+            continue;
+          }
+          const abs = cand;
+          let isDir = false;
+          try { isDir = fs.existsSync(abs) && fs.statSync(abs).isDirectory(); } catch (e2) { isDir = false; }
+          // 目录不存在 = 已无产物（先前已清理 / 用户手动删除）→ 无需报错，视为已达成
+          if (!isDir) continue;
+          // 目录内产物归属判定（**保守优先：确认不了就不动**）。三类内容各有归属依据：
+          //  · mp4（正式产物）：优先任务标记的精确清单；缺失时（batch 常态）以**任务运行时间窗**界定 ——
+          //    引擎先写临时名、编码成功才原子改名，故正式名成片的 mtime 必然落在 [startedAt, endedAt] 内。
+          let names = [];
+          try { names = fs.readdirSync(abs); }
+          catch (e) { errors.push('读取成片目录失败：' + abs); continue; }
+          const mp4s = names.filter((f) => path.extname(f).toLowerCase() === '.mp4');
+          const logFiles = names.filter((f) => LOG_NAME_RE.test(f));
+          const tempFiles = names.filter((f) => /^[0-9a-z]{6,}\.tmp$/i.test(f));
+          const winFrom = Number(t.startedAt || 0);
+          const winTo = Number(t.endedAt || 0);
+          const inWindow = (fp) => {
+            if (!(winFrom > 0 && winTo > 0)) return false;
+            try { const m = fs.statSync(fp).mtimeMs; return m >= winFrom - 2000 && m <= winTo + 2000; }
+            catch (e) { return false; }
+          };
+          const owned = new Set(exactVideos.filter(Boolean).map((p) => path.resolve(p)));
+          if (owned.size === 0 && mp4s.length) {
+            for (const f of mp4s) {
+              const fp = path.join(abs, f);
+              if (inWindow(fp)) owned.add(path.resolve(fp));
+            }
+          }
+          // 归属确认不了就不动，但必须把原因说清楚（不得静默跳过）
+          if (owned.size === 0 && mp4s.length) {
+            const why = (winFrom > 0 && winTo > 0)
+              ? `目录内 ${mp4s.length} 个成片均不在该任务运行时间窗内`
+              : '该任务缺少运行时间记录';
+            errors.push(`未能确认「${titleBrief}」的产物归属（${why}），已保留未删除`);
+            continue;
+          }
+          // 残渣 = 时间窗内的临时产物（半成品）。日志天然归本任务，不参与时间窗筛选。
+          const ownedTemps = tempFiles.filter((f) => inWindow(path.join(abs, f)));
+          // 目录里有没有"既不认识、也不属于本任务"的文件？有 → 不判独占，绝不整目录删。待回迁的正本 txt 不算未知（它只是还没搬回去），会在下面被回迁。
+          const unknown = names.filter((f) => {
+            if (mp4s.indexOf(f) >= 0) return false;
+            if (LOG_NAME_RE.test(f)) return false;
+            if (tempFiles.indexOf(f) >= 0) return false;
+            if (/\.txt$/i.test(f) && !BACKUP_NAME_RE.test(f)) return false;
+            try { return fs.statSync(path.join(abs, f)).isFile(); } catch (e) { return true; }
+          });
+          // 独占 = 目录内一切都能确认属于本任务：mp4 全在清单内 + 临时产物全在时间窗内 + 没有未知文件。
+          // ★ **不要求目录里有 mp4**：紧急停止/失败的任务目录常只有 `.tmp` + 0 字节日志 + 被移入的正本。
+          const exclusive = (mp4s.length + tempFiles.length + logFiles.length) > 0
+            && mp4s.every((f) => owned.has(path.resolve(path.join(abs, f))))
+            && ownedTemps.length === tempFiles.length
+            && unknown.length === 0;
+          // 范围「仅视频」时清理对象也只有正式产物（语义即"只清成片文件"，不碰日志与正本）
+          const trashOwned = async () => {
+            for (const f of mp4s) {
+              const fp = path.join(abs, f);
+              if (!owned.has(path.resolve(fp))) continue;
+              try { await trash(fp); }
+              catch (e) { errors.push('清除成片失败：' + fp); }
+            }
+          };
+          // 删除前留痕：产物进回收站后，「删了什么、多大、原修改时间」就只剩这一行了
+          const toRemove = (scope === 'all' && path.basename(abs).endsWith('成片') && exclusive)
+            ? [abs]
+            : mp4s.map((f) => path.join(abs, f)).filter((fp) => owned.has(path.resolve(fp)));
+          if (toRemove.length) {
+            const info = this._describeForLog(toRemove);
+            this._lg('DEL', 'task.artifacts.clear',
+              '清除任务产物 · ' + t.type + ' · ' + info.count + ' 个 · 共 ' + this._humanSize(info.bytes)
+              + ' · 范围 ' + String(scope),
+              Object.assign({ id: t.id, title: String(t.title || '').slice(0, 40) }, info));
+          }
+          if (scope === 'video') {
+            await trashOwned();
+          } else if (scope === 'all') {
+            if (path.basename(abs).endsWith('成片') && exclusive) {
+              // ★ 整目录进回收站之前，先把配置正本**移回原处**（成片目录的父目录）：正本是用户原件的唯一一份，跟着目录进回收站会让配置凭空消失（源位置已空）。
+              const rescued = this._rescueConfigFromOutDir(abs);
+              if (rescued.restored.length) {
+                this._lg('CFG', 'task.artifacts.clear.restore',
+                  '清除成片目录前，配置正本已移回原处 · ' + rescued.restored.join('、')
+                  + (rescued.skipped.length ? '（另有 ' + rescued.skipped.length + ' 个因原位置已有同名而保留在目录内）' : ''),
+                  { id: t.id, outDir: abs, restored: rescued.restored, skipped: rescued.skipped });
+              }
+              try { await trash(abs); }
+              catch (e) { errors.push('清除成片文件夹失败：' + abs); continue; }
+              const parent = path.dirname(abs);
+              if (parent && parent !== abs) {
+                try { if (fs.readdirSync(parent).length === 0) await trash(parent); }
+                catch (e) { errors.push('清除空上级文件夹失败：' + parent); }
+              }
+            } else {
+              await trashOwned();
+            }
+          }
+          continue;
+        }
+        // 复刻等非批量任务：只精确删除该任务自己的成片与日志块——outDir 可能指向源日志目录（复刻历史日志时产物在提交日目录），按目录整删会误伤原始日志旁的产物
+        if (!exactVideos.length) continue;
+        const rootRes = path.resolve(this.root || process.cwd());
+        const uniq = [...new Set(exactVideos)];
+        // 删除前留痕（同上）
+        {
+          const info = this._describeForLog(uniq);
+          this._lg('DEL', 'task.artifacts.clear',
+            '清除任务产物 · ' + t.type + ' · ' + info.count + ' 个 · 共 ' + this._humanSize(info.bytes)
+            + ' · 范围 ' + String(scope),
+            Object.assign({ id: t.id, title: String(t.title || '').slice(0, 40) }, info));
+        }
+        for (const p of uniq) {
+          try { if (p && fs.existsSync(p)) await trash(p); }
+          catch (e) { errors.push('清除成片失败：' + p); }
+          // 成片删除后，所在输出目录若已空则逐级向上清理（到工作根为界）——不留「复刻成片文件夹空壳」；任一目录非空即停止（重建/并行任务产物、日志文件等都会让它保留）
+          if (p) {
+            let cur = path.dirname(path.resolve(p));
+            while (cur.length > rootRes.length && cur !== rootRes) {
+              let entries = [];
+              try { entries = fs.readdirSync(cur); } catch (e) { break; }
+              if (entries.length) break;
+              try { fs.rmdirSync(cur); } catch (e) { break; }
+              cur = path.dirname(cur);
+            }
+          }
+        }
+        if (scope === 'all' || scope === 'video') {
+          this._removeLogEntries(uniq);
+          this._removeMaskLogBlocks(t, uniq); // 遮罩任务：从项目遮罩日志中移除该批成片的条目块
+        }
+      }
+    }
+    // 产物被删/配置正本被回迁后，列表与复刻清单都可能变
+    this._projectsCache = null;
+    this._replicaLogCache = null;
+    this._notifyTreeChanged();
+    this._emitTasks();
+    return { ok: true, removed: targets.length, errors };
+  }
+
+  // 已完成批量任务重分组：修复分组数错误 / 忘记分组。规则与 旧版脚本 完全一致——
+  // 按日志记录顺序（即生成顺序）1..N 均匀分成 n 组（前 remainder 组各多 1 个），组后缀依次大写字母 A/B/C…；
+  // 已有旧分组后缀（末尾单个大写字母）会先剥除再补新后缀；同时把拼接日志中每个成片名行同步改为新名。
+  regroupTask(id, groupCount) {
+    const t = this.tasks.get(id);
+    if (!t) return { ok: false, error: '任务不存在' };
+    if (t.status !== 'done') return { ok: false, error: '仅已完成的任务可重分组' };
+    if (t.type !== 'batch') return { ok: false, error: '仅批量拼接任务支持重分组' };
+    const n = parseInt(String(groupCount), 10);
+    if (!(n > 0)) return { ok: false, error: '分组数必须是大于 0 的正整数' };
+    // 输出目录：优先任务日志中记录的「创建输出目录」（脚本实际输出目录），回退任务 outDir
+    let outDir = '';
+    for (const ln of (t.log || [])) {
+      const m = /✅ 创建输出目录：(.+)$/.exec(ln);
+      if (m) { outDir = String(m[1]).trim(); break; }
+    }
+    if (!outDir || !fs.existsSync(outDir)) outDir = t.outDir || '';
+    try {
+      if (!outDir || !fs.existsSync(outDir) || !fs.statSync(outDir).isDirectory()) return { ok: false, error: '找不到成片输出目录' };
+    } catch (e) { return { ok: false, error: '找不到成片输出目录' }; }
+    // 本批次专属的拼接日志（文件名含时间戳+配置名），同目录可能同时存在其他批次日志
+    let logPath = '';
+    try {
+      for (const f of fs.readdirSync(outDir)) {
+        if (/拼接日志\.txt$/i.test(f) && fs.statSync(path.join(outDir, f)).isFile()) { logPath = path.join(outDir, f); break; }
+      }
+    } catch (e) {}
+    if (!logPath) return { ok: false, error: '输出目录中未找到拼接日志文件' };
+    // 按生成顺序解析成片名（批量日志每块首行 = 成片文件名，与 _parseLog 同规则）
+    let entries = [];
+    try { entries = this._parseLog(logPath).map((en) => String(en.video || '').trim()).filter(Boolean); }
+    catch (e) { return { ok: false, error: '拼接日志解析失败' }; }
+    const total = entries.length;
+    if (!total) return { ok: false, error: '日志中没有成片记录' };
+    // 分组后缀计算：与脚本一致
+    const groupSize = Math.floor(total / n);
+    const remainder = total % n;
+    const letterFor = (idx) => {
+      if (n <= 1) return '';
+      let start = 1;
+      for (let g = 0; g < n; g++) {
+        const size = groupSize + (g < remainder ? 1 : 0);
+        if (idx >= start && idx < start + size) return String.fromCharCode(65 + g);
+        start += size;
+      }
+      return '';
+    };
+    const renamed = [];   // [旧名, 新名]
+    const errors = [];
+    for (let i = 0; i < total; i++) {
+      const oldName = entries[i];
+      const src = path.join(outDir, oldName);
+      try {
+        if (!fs.existsSync(src)) { errors.push('缺失文件：' + oldName); continue; }
+        const ext = path.extname(oldName);
+        let base = path.basename(oldName, ext);
+        base = base.replace(/[A-Z]$/, ''); // 剥除旧分组后缀
+        const newName = base + letterFor(i + 1) + ext;
+        if (newName === oldName) continue;
+        const dst = path.join(outDir, newName);
+        if (fs.existsSync(dst)) { errors.push('目标重名已跳过：' + newName); continue; }
+        fs.renameSync(src, dst);
+        renamed.push([oldName, newName]);
+      } catch (e) { errors.push('重命名失败：' + oldName + '（' + e.message + '）'); }
+    }
+    // 同步改写拼接日志中的成片名行（严格匹配旧名，避免误伤片段/水印行）
+    if (renamed.length) {
+      const map = new Map(renamed);
+      try {
+        const text = fs.readFileSync(logPath, 'utf-8');
+        const eol = text.includes('\r\n') ? '\r\n' : '\n';
+        const lines = text.split(/\r?\n/);
+        let ch = false;
+        for (let i = 0; i < lines.length; i++) {
+          const s = lines[i].trim();
+          if (map.has(s)) { lines[i] = map.get(s); ch = true; }
+        }
+        if (ch) fs.writeFileSync(logPath, lines.join(eol), 'utf-8');
+      } catch (e) { errors.push('日志同步失败：' + e.message); }
+      // 成片索引：只作废这个输出目录的条目（改名后需重新解析），其余目录不动
+      try {
+        if (outDir) this._clipIndex.delete(path.resolve(outDir));
+        this._clipIndexDirty = true;
+      } catch (e) {}
+    }
+    if (renamed.length) {
+    // 同步刷新任务记录的分组数，任务列表卡片随之更新（分组数=输入值；1 表示取消分组置 0 不显示）
+    t.progress = Object.assign({}, t.progress || {}, { groupCount: n > 1 ? n : 0 });
+    this.persistTasks();
+    this._emitTasks();
+    }
+    if (renamed.length) this._markConfigModified();
+    return { ok: true, total, regrouped: renamed.length, errors };
+    return { ok: true, total, regrouped: renamed.length, errors };
+  }
+
+  // 实际备份根目录：与「备份落盘 / 过期清理 / 目录迁移」使用的一致（自定义目录时备份落在其下的「Video Lab 备份」层，未设置时用数据目录下的 backup）
+  getBackupRoot() {
+    const c = String(this.config.backup_dir || '').trim();
+    return c ? path.join(c, 'Video Lab 备份') : path.join(this.storageDir || process.cwd(), 'backup');
+  }
+
+  // 更新日志（CHANGELOG.md 位于应用目录内，随 app.asar 打包）
+  getChangelog() {
+    try {
+      const p = path.join(__dirname, 'CHANGELOG.md');
+      return { ok: true, content: fs.readFileSync(p, 'utf8') };
+    } catch (e) {
+      return { ok: false, error: String(e) };
+    }
+  }
+
+  /**
+   * 关于页 · 运行环境与组件信息（版本号 / 来源 / 目录 / 校验结果），
+   * 同时给出「复制信息」所需的原始字段。
+   */
+  async getAboutInfo() {
+    const readVer = (bin) => new Promise((resolve) => {
+      try {
+        const { execFile } = require('child_process');
+        execFile(bin, ['-version'], { windowsHide: true, timeout: 8000 }, (e, so) => {
+          const m = String(so || '').match(/version\s+([\w.\-]+)/i);
+          resolve(m ? m[1] : '');
+        });
+      } catch (e) { resolve(''); }
+    });
+    const bin = this._resolveFfmpegBin();
+    const out = {
+      ok: true,
+      app: { version: '', storageDir: String(this.storageDir || ''), enginesDir: String(this.enginesDirFixed || this.enginesDir || '') },
+      runtime: {
+        platform: process.platform + '-' + process.arch,
+        electron: (process.versions && process.versions.electron) || '',
+        chrome: (process.versions && process.versions.chrome) || '',
+        node: (process.versions && process.versions.node) || '',
+      },
+      component: {
+        dir: String(bin.cfgDir || ''),
+        ffmpeg: String(bin.ffmpegPath || ''),
+        ffprobe: String(bin.ffprobePath || ''),
+        version: '', source: '', downloadedAt: '',   // 来自 _meta.json（自动下载时写入）
+        ffmpegVersion: '', ffprobeVersion: '',       // 来自实际可执行文件（更可信）
+      },
+      env: { missing: [], missingEncoders: [], probeFailed: false, probeReason: '' },
+    };
+    try {
+      const pj = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
+      out.app.version = String(pj.version || '');
+    } catch (e) {}
+    try {
+      const meta = JSON.parse(fs.readFileSync(path.join(String(bin.cfgDir || ''), '_meta.json'), 'utf8'));
+      out.component.version = String(meta.version || '');
+      out.component.source = String(meta.source || '');
+      out.component.downloadedAt = String(meta.downloadedAt || '');
+    } catch (e) {}
+    if (out.component.ffmpeg) out.component.ffmpegVersion = await readVer(out.component.ffmpeg);
+    if (out.component.ffprobe) out.component.ffprobeVersion = await readVer(out.component.ffprobe);
+    try {
+      const e = await this.checkEnvAsync();
+      out.env.missing = (e.missing || []).slice(0, 12);
+      out.env.missingEncoders = (e.missingEncoders || []).slice(0, 8);
+      out.env.probeFailed = !!e.probeFailed;
+      out.env.probeReason = String(e.probeReason || '');
+    } catch (e) {}
+    return out;
+  }
+
+  // 关于页（README.md 位于应用目录内，随 app.asar 打包）
+  getReadme() {
+    try {
+      const p = path.join(__dirname, 'README.md');
+      return { ok: true, content: fs.readFileSync(p, 'utf8') };
+    } catch (e) {
+      return { ok: false, error: String(e) };
+    }
+  }
+
+  // 暂停：排队中的任务移出执行队列并冻结当前显示顺位；**运行中的任务 = 软暂停**——
+  // 不打断当前成片，当前成片完成后终止引擎（本片已完整落盘），恢复顺位提到 1 号，
+  // 下一个任务先跑，剩余部分靠「继续任务」断点续传
+  pauseTask(id) {
+    const t = this.tasks.get(id);
+    if (!t) return { ok: false, error: '任务不存在' };
+    if (t.status === 'running') {
+      // 视频处理任务按文件粒度重跑语义不匹配，暂不支持软暂停
+      if (t.type === 'tool') return { ok: false, error: '视频处理任务不支持暂停，请使用「停止」后重新提交' };
+      t._softPause = true;
+      this._lg('RUN', 'task.softPause',
+        '软暂停 · 当前成片完成后生效 · ' + t.type + ' · ' + String(t.title || '').slice(0, 50),
+        { id: t.id });
+      this._taskLog(t, '[软暂停] 当前成片完成后暂停，让下一个任务先执行；剩余部分可「继续任务」续跑]');
+      this._emitTasks();
+      return { ok: true, soft: true, message: '将在当前成片完成后暂停' };
+    }
+    if (t.status !== 'queued') {
+      return { ok: false, error: '任务已结束' };
+    }
+    const i = this._taskQueue.indexOf(id);
+    t.status = 'paused';
+    t.paused = true;
+    if (i >= 0) this._taskQueue.splice(i, 1);
+    // 冻结显示顺位：记录该任务在当前「待运行显示序列」（排队+暂停按计划序号排序）中的位置，即它前方还有几个待运行任务。继续时据此插队，保证「暂停时几号，继续后还是几号」。
+    const waiting = [];
+    this.tasks.forEach((t2) => { if (t2.status === 'queued' || t2.status === 'paused') waiting.push(t2); });
+    waiting.sort((x, y) => (x.planPos || 1e9) - (y.planPos || 1e9));
+    t.resumeIdx = Math.max(0, waiting.indexOf(t));
+    this._taskLog(t, '[已暂停，移出执行队列；点击继续将保持当前顺位插回]');
+    this._emitTasks();
+    return { ok: true };
+  }
+
+  // 继续：暂停的任务按冻结的显示顺位插回执行队列；无运行任务时立即启动
+  // 成片目录里是否已有正式产物
+  _hasResumeOutput(t) {
+    try {
+      const detail = this._batchTaskOutDetail(t, true);
+      const dir = detail && detail.outDir;
+      if (!dir || !fs.existsSync(dir)) return false;
+      return fs.readdirSync(dir).some((f) => VIDEO_EXTS.has(path.extname(f).toLowerCase()));
+    } catch (e) { return false; }
+  }
+
+  async resumeTask(id, opts) {
+    const t = this.tasks.get(id);
+    if (!t) return { ok: false, error: '任务不存在' };
+    if (t.status !== 'paused') return { ok: false, error: '任务未处于暂停状态' };
+    if (t._resuming) return { ok: false, error: '正在恢复中，请勿重复点击' };
+    // 已产出过成片的批量/复刻任务走「继续制作」，其余按顺位插回队列
+    if ((t.type === 'batch' || t.type === 'replica') && (t._softPaused || this._hasResumeOutput(t))) {
+      t._resuming = true;
+      try { return await this.continueReplica(id, opts); }
+      finally { t._resuming = false; }
+    }
+    t._resuming = true;
+    try {
+      return this._resumeRequeue(t);
+    } finally {
+      t._resuming = false;
+    }
+  }
+
+  // 「继续」的第二条路径：纯排队恢复（尚未产出过成片），按暂停时的顺位插回队列
+  _resumeRequeue(t) {
+    delete t._softPause;
+    delete t._softPaused;
+    // 按暂停时的显示顺位插队（0-based）：前方任务数 + 1 位置；队列已不足（前方任务陆续完成后缩短）时排在队尾，即成为下一个执行任务
+    const idx = typeof t.resumeIdx === 'number' ? t.resumeIdx : Math.max(0, (t.planPos || 1) - 1);
+    const pos = Math.min(idx, this._taskQueue.length);
+    t.status = 'queued';
+    t.paused = false;
+    this._taskQueue.splice(pos, 0, t.id);
+    // 重算队列计划序号，使显示顺序与插队位置一致（继续后刷新队伍序号）
+    this._taskQueue.forEach((qid, k) => { this.tasks.get(qid).planPos = k + 1; });
+    delete t.resumeIdx;
+    this._taskLog(t, '[已恢复，插入队列第 ' + (pos + 1) + ' 位]');
+    if (!this._runningTaskId) this._startNextQueued();
+    else this._emitTasks();
+    return { ok: true };
+  }
+
+  // Node 引擎子进程：以 Electron 自带 Node（ELECTRON_RUN_AS_NODE）运行引擎，
+  // 既不依赖系统安装 Node，也不依赖 pwsh；stdio 形态与 pwsh 分支完全一致，协议行解析无需改动。
+  _spawnNodeEngineChild(task, env) {
+    const { spawn } = require('child_process');
+    return spawn(process.execPath, [this._engineRunnerPath(), '--module', task.type], {
+      env: Object.assign({}, process.env, this._ffmpegBinEnv(), env, { ELECTRON_RUN_AS_NODE: '1' }),
+      cwd: this.enginesDir,
+      windowsHide: true,
+      detached: false,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  }
+
+  _spawnEngine(type, env, task) {
+    this._restoreTaskTxt(task); // 启动前按快照还原 TXT：前序任务可能已把它移入成片目录，或排队期间被重新生成的配置覆盖
+    // 以内置 Node 引擎执行任务；stdout/stderr 实时捕获与协议行解析供任务窗口显示。
+    const { spawn } = require('child_process');
+    const childEnv = Object.assign({}, env);
+    childEnv.VL_CACHE_DB = this.cacheDbPath || '';
+    // taskId 贯穿：引擎侧诊断事件（@@VLDIAG@@）携带同一 id，跨进程可串链
+    childEnv.VL_TASK_ID = task ? String(task.id || '') : '';
+    return new Promise((resolve) => {
+      const child = this._spawnNodeEngineChild(task, childEnv);
+      if (task) {
+        task.pid = child.pid;
+        this._lg('RUN', 'task.start',
+          '任务开始 · ' + task.type + ' · ' + String(task.title || '').slice(0, 60) + ' · pid=' + child.pid,
+          { id: task.id, type: task.type, pid: child.pid, env: this._envBrief(task.env) });
+        this._engineMark(task.id, '任务开始 ' + task.type + ' · ' + String(task.title || '').slice(0, 60));
+        this._emitTasks();
+        // 任务真正开始：创建任务标记（含 env 快照，供失败重开精确还原）
+        this._touchMarker(task);
+        // ★ 任务开始即失效配置树缓存（含持久化），并排后台重建 ——
+        //   批量任务会把配置 TXT **移进成片目录**作为正本，原路径随即失效，界面若继续吃缓存
+        try { this._invalidateCaches(true); } catch (e) {}
+        this._notifyTreeChanged();     // 立即通知前端重拉（缓存已失效 → 读到真值）
+        this._enqueueScanRebuild();
+        const decodeLine = (buf) => {
+          try { return new TextDecoder('utf-8', { fatal: true }).decode(buf); }
+          catch (e) { try { return new TextDecoder('gbk').decode(buf); } catch (e2) { return buf.toString('latin1'); } }
+        };
+        const pushLine = (buf) => {
+          const s = decodeLine(buf).replace(/\r$/, '').trim();
+          if (!s) return;
+          // 引擎原始行全量落 engine-<date>.log（stdout/stderr 同路；必须在 status 检查之前 ——
+          // 任务终态后的收尾/崩溃行也要留档（app 与 engine 双份并存））
+          this._engineLine(task.id, s);
+          // ★ 引擎诊断通道（过程信息）：不进任务窗口日志（用户视图保持简洁），
+          //   只收集到任务对象；任务失败时随 task.diag 落运行日志（保留 30 天）。
+          //   这样「结论给用户、过程给排查」各得其所。
+          if (s.indexOf('@@VLDIAG@@') === 0) {
+            try {
+              const arr = JSON.parse(s.slice(10));
+              if (Array.isArray(arr)) task._diag = (task._diag || []).concat(arr).slice(-4000);
+            } catch (e) { /* 诊断解析失败不影响任务 */ }
+            return;
+          }
+          if (task.status !== 'running') return;
+    // ★ 引擎把配置 TXT 移入成片文件夹作为正本 → 配置的**归属位置**变了，必须立刻失效缓存并广播。
+    //   变更只发生在引擎进程内，故由引擎输出协议行、后端在此接收；否则列表会显示旧的版本分支直到下次轮询/手动刷新。
+    if (s.indexOf('配置正本就位：') === 0) {
+      try { this._invalidateCaches(true); } catch (e) {}
+      this._notifyTreeChanged();
+      this._enqueueScanRebuild();
+      return;
+    }
+          // 单成片实时进度：目标时长（分母）+ ffmpeg time（分子）。必须放在进度行拦截前，否则 ffmpeg 进度行被折叠后 clip/clipTarget 不会更新（进度条失效）
+          const durM = s.match(/(?:成片预计时长|当前文件时长):\s*([\d.]+)\s*秒/);
+          if (durM) {
+            const d = parseFloat(durM[1]);
+            if (d > 0) { task._clipDur = d; task.progress.clipTarget = d; task.progress.clip = 0; }
+          }
+          const outM = s.match(/out_time=(\d+):(\d+):(\d+(?:\.\d+)?)/)
+            || s.match(/\btime=(\d+):(\d+):(\d+(?:\.\d+)?)/);
+          if (outM) {
+            task.progress.clip = parseInt(outM[1], 10) * 3600 + parseInt(outM[2], 10) * 60 + parseFloat(outM[3]);
+          }
+          const usM = s.match(/out_time_us=(\d+)/);
+          if (usM) task.progress.clip = parseInt(usM[1], 10) / 1e6;
+          // ffmpeg 进度行（frame=/fps=/q=/size=/time=/bitrate=/dup=/drop=/speed=/elapsed=）：
+          // 不进日志栈，折叠为单行实时进度（结构化字段，前端按规则直译成中文）；
+          // 记录该成片当前最新帧进度，成片完成时固化进日志
+          if (/^\s*(frame\s*=|fps\s*=|q\s*=|size\s*=|time\s*=|bitrate\s*=|dup\s*=|drop\s*=|speed\s*=|elapsed\s*=)/.test(s)) {
+            const kv = {};
+            for (const mm of s.matchAll(/(frame|fps|q|size|time|bitrate|dup|drop|speed|elapsed)\s*=\s*([^\s]+)/g)) kv[mm[1]] = mm[2];
+            task.progress.liveLine = kv;
+            task._lastFrameLine = kv;
+            this._emitTasks();
+            return;
+          }
+          this._taskLog(task, s);
+          // 进度解析：匹配 "共 N 个" 与 "生成第 X / Y 个成片" / "复刻第 X / Y 个成片" /
+          // 视频处理工具的 "处理第 X / Y 个视频"（同一套进度字段，措辞按模块区分）
+          // 续跑批次的进度按本批口径换算
+          const isResumeBatch = Number(task.progress && task.progress.batchTotal) > 0;
+          const batchBaseN = Number(task.progress && task.progress.batchBase) || 0;
+          const totalMatch = s.match(/共\s*(\d+)\s*个/);
+          if (totalMatch) {
+            const n = parseInt(totalMatch[1], 10);
+            if (n > 0 && !isResumeBatch) task.progress.total = n;
+          }
+          const curMatch = s.match(/(?:生成|复刻)第\s*(\d+)\s*\/\s*(\d+)\s*个成片/)
+            || s.match(/处理第\s*(\d+)\s*\/\s*(\d+)\s*个视频/);
+          if (curMatch) {
+            const c = parseInt(curMatch[1], 10), t = parseInt(curMatch[2], 10);
+            if (isResumeBatch) {
+              task.progress.current = batchBaseN + c;
+              task.progress.total = task.progress.batchTotal;
+            } else {
+              if (t > 0) task.progress.total = t;
+              task.progress.current = c;
+            }
+            // 新成片开始：重置单成片进度与帧进度记录
+            task._clipDur = 0;
+            task.progress.clip = 0;
+            task.progress.clipTarget = 0;
+            task._lastFrameLine = null;
+          }
+          if (/成片完成/.test(s) && task._clipDur > 0) task.progress.clip = task._clipDur;
+          // 成片完成：把该成片最后一行帧进度固化进日志（每个成片保留最终进度）
+          if (/成片完成/.test(s) && task._lastFrameLine) {
+            const finalLine = zhLiveLine(task._lastFrameLine);
+            if (finalLine) this._taskLog(task, finalLine);
+            task._lastFrameLine = null;
+            task.progress.liveLine = null; // 清除实时行，避免与固化行重复显示
+          }
+          // 新旧文案都要认：历史任务的日志里写的是旧句（「互斥锁」），去掉旧分支会让「重开旧任务」的状态显示失效。引擎现行文案见 engines/base/logger.js 的三行协议。
+          if (/等待前面的任务完成|等待获取互斥锁/.test(s)) task.lockState = 'waiting';
+          else if (/开始处理本任务|已获取互斥锁/.test(s)) task.lockState = 'locked';
+          else if (/本任务处理结束|互斥锁已释放|任务完成/.test(s)) { task.lockState = 'released'; task.progress.liveLine = null; }
+          // 引擎宣布本批完成
+          if (/任务全部完成|全部成片已生成|已全部生成/.test(s)) task._allDone = true;
+          // 产物记录进任务标记：成片完成路径 / batch 专属输出目录（重开时据此精确删除）
+          const outpM = s.match(/✅ 成片完成：(.+)$/);
+          if (outpM) {
+            const outp = String(outpM[1]).trim();
+            this._appendMarkerOut(task, 'videos', outp);
+            this._lg('RUN', 'clip.done',
+              '成片产出 · ' + String(task.title || '').slice(0, 40) + ' · ' + path.basename(outp),
+              { task: task.id, path: outp });
+          }
+          const outdM = s.match(/✅ 创建输出目录：(.+)$/);
+          if (outdM) this._appendMarkerOut(task, 'batchOutDir', String(outdM[1]).trim());
+          // 失败成片记录：脚本输出 `❌ 失败成片：<成片名>|<原因>`，供续跑/对账/前端展示
+          // ★ 软暂停触发点：当前成片已完成（该行即当前片的完成标志）——
+          //   此刻终止引擎进程，本片已完整落盘，剩余部分靠「继续任务」断点续传
+          if (task._softPause && !task._softPaused && /成片完成/.test(s)) {
+            task._softPaused = true;
+            task.resumeIdx = 1;   // 恢复队列第 1 号：让被让位的任务优先接续
+            this._markRunStop(task);   // 计时定格：让位等待的时间不算运行耗时
+            // 清掉实时进度行
+            try { if (task.progress) task.progress.liveLine = null; } catch (e3) {}
+            try { if (child.pid) process.kill(child.pid); } catch (e2) {}
+            this._lg('RUN', 'task.softPause.fire',
+              '软暂停生效 · 当前成片已完成，终止引擎让位下一个任务',
+              { id: task.id });
+          }
+          // 用户指引：引擎错误块里的「如何解决 / 问题归属」—— 供任务窗口直接展示（前端保持简洁，但要让用户知道怎么修、以及是不是程序的问题）
+          const howM = s.match(/^如何解决[:：]\s*(.+)$/);
+          if (howM) task.solution = howM[1].trim().slice(0, 300);
+          const whoM = s.match(/^问题归属[:：]\s*(.+)$/);
+          if (whoM) task.blame = whoM[1].trim().slice(0, 120);
+
+          // 失败成片【序号】（命名前失败，如批量组合凑不出时长）：记入 failedIndices 供续跑按序号补做，
+          // 同时以「第 N 个」形式进 failedVideos，让任务窗口能显示失败项
+          const failIdxM = s.match(/❌ 失败成片序号：(\d+)(?:\|(.*))?$/);
+          if (failIdxM) {
+            const idx = parseInt(failIdxM[1], 10);
+            if (Number.isInteger(idx) && idx > 0) {
+              task.failedIndices = task.failedIndices || [];
+              if (task.failedIndices.indexOf(idx) < 0) task.failedIndices.push(idx);
+              task.failedVideos = task.failedVideos || [];
+              task.failedVideos.push({ name: '第' + idx + '个', reason: String(failIdxM[2] || '').trim() });
+              task.failReason = '存在失败成片，可点击「继续制作」续跑';
+            }
+          }
+          const failM = s.match(/❌ 失败成片：(.+)$/);
+          if (failM) {
+            const parts = String(failM[1]).split('|');
+            task.failedVideos = task.failedVideos || [];
+            task.failedVideos.push({ name: (parts[0] || '').trim(), reason: (parts.slice(1).join('|') || '').trim() });
+            task.failReason = '存在失败成片，可点击「继续制作」续跑';
+          }
+          this._emitTasks();
+        };
+        const attach = (stream, ref) => stream.on('data', (chunk) => {
+          ref.data = Buffer.concat([ref.data, chunk]);
+          let idx;
+          while ((idx = ref.data.indexOf(0x0a)) >= 0) { pushLine(ref.data.slice(0, idx)); ref.data = ref.data.slice(idx + 1); }
+        });
+        const out = { data: Buffer.alloc(0) }, err = { data: Buffer.alloc(0) };
+        attach(child.stdout, out);
+        attach(child.stderr, err);
+        // ⚠ 回调必须是 async：下面 _settleTaskLeftovers 要走回收站（shell.trashItem 是异步 API），
+        //   而收尾**必须在该回调内、且在缓存失效与前端广播之前完成**（见下方注释），
+        //   所以只能在这里 await —— 挪到回调外做成"稍后处理"会让界面先渲染出"配置还锁在成片目录里"的中间态。
+        child.on('close', async (code) => {
+          if (out.data.length) pushLine(out.data);
+          if (err.data.length) pushLine(err.data);
+          this._markRunStop(task);   // 运行段定格为最终累计值
+          // 续跑批次收尾时进度对齐到本批总量
+          try {
+            if (task.progress && Number(task.progress.batchTotal) > 0) {
+              task.progress.current = task.progress.batchTotal;
+              task.progress.total = task.progress.batchTotal;
+            }
+          } catch (e) {}
+          task.endedAt = Date.now();
+          this._engineMark(task.id, '任务结束 code=' + code);
+          // 结算对账（复刻）：脚本内单条失败会 continue 并置 HasError → 退出码 1；
+          // 若 exit 0 但存在失败记录（异常场景），也归为 error 并提示续跑，避免误判为全部成功。
+          // 软暂停：当前成片已完成、引擎被主动终止 —— 状态归为 paused（非停止/失败），恢复顺位提到 1 号（resumeIdx=1）。
+          let status = task._softPaused ? 'paused' : (task._stopRequested ? 'stopped' : (code === 0 ? 'done' : 'error'));
+          // 软暂停收尾时若引擎已宣布完成，按 done 处理
+          if (status === 'paused' && (task._allDone === true || this._outputsComplete(task))) {
+            status = 'done';
+            task._softPaused = false;
+            delete task._allDone;
+            this._taskLog(task, '[软暂停收尾] 本批成片已全部完成，按已完成处理');
+          }
+          if (status === 'paused') {
+            task.endedAt = null;
+            task.failReason = '';
+            task.resumeIdx = 1;
+            this._taskLog(task, '[软暂停生效] 当前成片已完成并保留，任务转入暂停队列第 1 位；点击「继续任务」接续]');
+          }
+          // 续跑补做成功：摘掉继承来的失败记录（引擎本次新报的失败保留）——那些记录的是上一次的缺口，本次已补回；留着会让任务被判成 error 并提示「继续制作」，把用户引向无意义的反复续跑
+          if (code === 0 && task._inheritedFailVideos > 0) {
+            task.failedVideos = (task.failedVideos || []).slice(task._inheritedFailVideos);
+            task.failedIndices = (task.failedIndices || []).slice(task._inheritedFailIndices || 0);
+            task._inheritedFailVideos = 0;
+            task._inheritedFailIndices = 0;
+            if (!task.failedVideos.length) task.failReason = '';
+          }
+          if (code === 0 && Array.isArray(task.failedVideos) && task.failedVideos.length && (task.type === 'replica' || task.type === 'mask' || task.type === 'batch')) {
+            status = 'error';
+            task.failReason = '存在失败成片，可点击「继续制作」续跑';
+          }
+          task.status = status;
+          task.paused = false;
+          // 提交快照随任务记录回收（见 persistTasks），不在此按终态删除
+          // 终态进度补满（仅成功）：进度条在「clip / clipTarget」分支显示的是**最后一个成片的编码进度**，
+          // 而编码收尾帧的 time 几乎必然略小于时长（通常停在 90% 左右）——任务已全部完成，
+          // 这个半截进度只会让人误会"没做完"。error / stopped / paused 保留真实进度（供续跑判断）。
+          if (status === 'done' && task.progress && task.progress.clipTarget > 0 && task.progress.clip < task.progress.clipTarget) {
+            task.progress.clip = task.progress.clipTarget;
+            task.progress.liveLine = null;
+          }
+          // ★ 未正常结束的任务先做收尾（回迁配置正本 + 清 0 字节日志与半截临时产物）——
+          //   必须排在下面所有「缓存失效 / 前端广播」**之前**：收尾本身改变了磁盘结构，
+          //   界面要按收尾后的真相重整，否则会先渲染出一个"配置还锁在成片目录里"的中间态。
+          await this._settleTaskLeftovers(task, status);
+          // 任务结束 → 成片存在性结论失效：本次可能刚产出成片（旧结论是"无"），精确失效后由下次启动/空闲校验重新判定，避免界面显示"成片已删除"却其实还在
+          try { this._invalidateHasOutput(task.id); } catch (e) {}
+          // ★ 任务结束同样失效配置树缓存 + 排重建：出片会把配置正本搬进成片文件夹、并新增成片目录，
+          try { this._invalidateCaches(true); } catch (e) {}
+          this._notifyTreeChanged();   // 立即通知前端重拉（任务已改动配置归属与目录结构）
+          this._enqueueScanRebuild();
+          if (task.status === 'error' && !task.failReason) task.failReason = this._deriveFailReason(task);
+          this._lg('RUN', 'task.end',
+            '任务结束 · ' + status + ' · ' + task.type + ' · 退出码 ' + code
+            + ' · 成片 ' + ((task.progress && task.progress.current) || 0) + '/' + ((task.progress && task.progress.total) || 0)
+            + ' · 失败记录 ' + ((task.failedVideos || []).length) + ' 条'
+            + (task.failReason ? ' · ' + String(task.failReason).slice(0, 80) : ''),
+            { id: task.id, status: status, code: code,
+              failed: (task.failedVideos || []).slice(0, 20).map((f) => f && f.name) });
+          // ★ 失败诊断留痕：引擎输出（task.log）与 stderr 尾部一并落盘 ——
+          //   任务窗口的日志会随任务记录被清除，运行日志是事后唯一凭据。
+          //   引擎自己会打印「错误信息 / 出错步骤 / 错误详情」块，这里原样带上，排查时只看 error-YYYY-MM-DD.log 即可定位。
+          if (status === 'error') {
+            try {
+              const tailLog = (task.log || []).slice(-40);
+              const stderrTail = String((err && err.data && err.data.length) ? err.data.toString('utf8') : '').slice(-1500);
+              // 引擎报错块优先：先把「错误信息」那几行提到摘要里，肉眼扫读即可见
+              // 摘要优先取「错误详情」（信息量最大：含具体路径/原因），其次「出错步骤」等，
+              // 目标是扫一眼错误日志就知道为什么失败，不必展开 JSON
+              let why = '';
+              for (const l of (task.log || [])) {
+                const t = String(l || '').trim();
+                if (/^错误详情[:：]/.test(t)) { why = t.slice(0, 200); break; }
+              }
+              if (!why) {
+                for (const l of (task.log || [])) {
+                  const t = String(l || '').trim();
+                  if (/出错步骤[:：]|未找到|不存在|失败[:：]|ERROR|Error/.test(t) && !/^=+$/.test(t)) { why = t.slice(0, 200); break; }
+                }
+              }
+              this._lg('RUN', 'task.error',
+                '任务失败诊断 · ' + task.type + ' · 退出码 ' + code
+                + (why ? ' · ' + why : (task.failReason ? ' · ' + String(task.failReason).slice(0, 160) : ' · 无引擎报错信息')),
+                { id: task.id, title: task.title, code: code,
+                  failReason: task.failReason, why: why,
+                  solution: task.solution || '', blame: task.blame || '',
+                  stderrTail: stderrTail, engineTail: tailLog,
+                  env: this._envBrief(task.env) });
+              // 过程诊断（引擎 diag 通道）：完整记录每次尝试/候选/排除/档位，单独一条落盘（量大，只在失败时写）—— 回答「怎么走到这个结论」
+              if (Array.isArray(task._diag) && task._diag.length) {
+                this._lg('DIAG', 'task.diag',
+                  '任务过程诊断 · ' + task.type + ' · ' + task._diag.length + ' 条（每次尝试 / 候选 / 排除原因 / 参数档位）',
+                  { id: task.id, events: task._diag });
+              }
+            } catch (e3) { /* 日志失败不影响主流程 */ }
+          }
+          // 任务标记统一保留：done 也保留供「清除成片/日志」精确删除（不误伤同目录其他任务的产物）
+          this._emitTasks();
+          // 运行任务结束：清空运行位并启动执行队列中的下一个任务（暂停/继续不影响插入后的推进）
+          this._runningTaskId = null;
+          this._startNextQueued();
+          // ★ 系统通知：任务失败 → 走 2.5 秒合并窗口（批量全失败时不会连响十几次）；
+          //   队列彻底空闲时再发一条**汇总**（成功/失败/暂停待续各有计数）并冲掉待发窗口。
+          // 本轮成败计数：逐个任务结束时累加，发完汇总清零 —— 不靠时间窗口反推（中途又有新任务入队时会算错）。
+          const rs = this._roundStat || (this._roundStat = { done: 0, error: 0 });
+          if (status === 'done') rs.done++;
+          else if (status === 'error') rs.error++;
+          // 视频处理任务结束后按设置清理过期备份（仅开启时执行）
+          if (task.type === 'tool') this._cleanupBackups();
+          // ★ 结果快照（追加进既有 .log）：提交时那份只答「打算做什么」，
+          //   这份答「实际发生了什么」—— 耗时 / 成败 / 失败原因 / 产出规模。
+          //   两者合起来才是完整的一次任务记录；只有提交侧快照时，"为什么失败"是缺失的。
+          try { this._lg('RUN', 'task.result', '任务结果快照 · ' + String(task.title || ''), { spec: this._taskResultText(task, status) }); } catch (e4) { /* 快照失败不影响主流程 */ }
+          if (status === 'error') this._notifyFailSoon(task);
+          // 队列已无待运行任务（queued 空）即视为「本轮跑完」——此时可能还有**暂停待续**的任务
+          // （用户主动暂停 / 软暂停让位），这类不在执行队列里，需在通知里明确提醒，避免误以为全做完
+          if (!this._runningTaskId && this._taskQueue.length === 0 && (status === 'done' || status === 'error')) {
+            var pendingPaused = 0;
+            this.tasks.forEach((t2) => { if (t2.status === 'paused') pendingPaused++; });
+            // 先把 2.5 秒窗口里攒着的失败冲出来，再发汇总 —— 否则两条通知会前后脚到达
+            this._noticeFlushFail();
+            const lines = [];
+            if (rs.done) lines.push('成功 ' + rs.done + ' 项');
+            if (rs.error) lines.push('失败 ' + rs.error + ' 项');
+            if (pendingPaused) lines.push('暂停待续 ' + pendingPaused + ' 项，点「继续任务」接着做');
+            if (!lines.length) lines.push('队列已清空');
+            this._roundStat = { done: 0, error: 0 };
+            this._notify({
+              title: rs.error ? '本轮完成（有失败）' : '本轮完成',
+              lines: lines,
+              attribution: this._noticeStamp(null),
+              // 失败已经用 Critical 报过了，这里不叠加刺耳音；有暂停待续用柔和的 SMS 提醒
+              sound: pendingPaused && !rs.error ? 'SMS' : 'Default',
+              duration: 'short',
+            });
+          }
+        });
+        child.on('error', (err2) => {
+          this._taskLog(task, '[启动失败] ' + String(err2));
+          task.status = 'error';
+          task.failReason = '程序运行组件启动失败，请重新安装或校验程序文件';
+          this._markRunStop(task);
+          task.endedAt = Date.now();
+          this._lg('ERR', 'engine.spawn',
+            '运行组件启动失败 · ' + task.type + ' · ' + String(task.title || '').slice(0, 40),
+            { id: task.id, enginesDir: this.enginesDir, error: String(err2) });
+          this._emitTasks();
+        });
+      }
+      child.on('error', (err2) => {
+        this._lg('ERR', 'engine.spawn', '引擎子进程异常 · ' + String(err2));
+        resolve({ ok: false, error: String(err2) });
+      });
+      child.unref();
+      resolve({ ok: true });
+    });
+  }
+
+  // 任务显示标题：优先"项目名 / txt 文件名"（txt 去掉 .txt 后缀），取不到项目名则回退文件名
+  _taskTitle(filePath) {
+    const abs = path.resolve(filePath);
+    const rel = path.relative(this.root, abs);
+    const parts = rel && !rel.startsWith('..') && !path.isAbsolute(rel) ? rel.split(path.sep).filter(Boolean) : [];
+    const base = path.basename(abs);
+    const txtName = base.replace(/\.txt$/i, '') || base;
+    if (parts.length > 0) return parts[0] + ' / ' + txtName;
+    return txtName;
+  }
+
+  // 复刻任务简化标题：项目名/MMdd-名字/模式——
+  // 将批量拼接日志名 MMdd-<HH时MM分>-<名字>-拼接日志 压缩为 MMdd-<名字>，
+  // 模式（原片/去重）以斜杠后缀标识；非拼接日志命名形态则保留原文件名
+  _replicaTaskTitle(logPath, modeLabel) {
+    const abs = path.resolve(logPath);
+    const rel = path.relative(this.root, abs);
+    const parts = rel && !rel.startsWith('..') && !path.isAbsolute(rel) ? rel.split(path.sep).filter(Boolean) : [];
+    let name = path.basename(abs).replace(/\.txt$/i, '');
+    name = name.replace(/^(\d{4})-(\d{1,2}时\d{1,2}分)-(.*)$/, '$1-$3')
+               .replace(/[-–—_]\s*拼接日志$/i, '');
+    const project = parts.length > 0 ? parts[0] : '';
+    return (project ? project + '/' : '') + name + (modeLabel ? '/' + modeLabel : '');
+  }
+
+  // 校验 批量/复刻 配置参数是否已设置：数字须>0，字符串须非空（txt_prefix 允许空）。返回缺失项标签，空数组=齐全
+  // ⚠ 复刻**不校验** max_duration / speed_limit —— 这两项与批量拼接共用同一套（取值来源都是 config.batch，
+  //    复刻配置里没有这两个字段）；若按复刻必填校验，前端一保存就会把空值写进 replica 并导致复刻任务启动被拒。
+  _settingsError(group) {
+    const cfg = this.config[group] || {};
+    const nums = group === 'batch'
+      ? [['max_duration', '最大时长(秒)'], ['max_retry', '重试次数'], ['speed_limit', '倍速阈值']]
+      : [['dedup_ratio', '去重阈值']];
+    const missing = [];
+    for (const [k, label] of nums) if (!(parseFloat(cfg[k]) > 0)) missing.push(label);
+    if (group === 'batch') {
+      if (!String(cfg.producer || '').trim()) missing.push('创作者');
+    }
+    return missing;
+  }
+
+  // 设置页保存后同步 Api 持有的配置副本；批量工作目录（batch.root）变化时重设根目录
+  updateSettings(s) {
+    const cfg = s || {};
+    // 工作路径读 batch.root（顶层 root 只是旧锚点）
+    const br = (cfg.batch && typeof cfg.batch === 'object' && typeof cfg.batch.root === 'string')
+      ? cfg.batch.root.trim() : '';
+    if (br && br !== this.root) this.setRoot(br);
+    if (cfg.batch && typeof cfg.batch === 'object') this.config.batch = Object.assign({}, this.config.batch, cfg.batch);
+    if (cfg.replica && typeof cfg.replica === 'object') this.config.replica = Object.assign({}, this.config.replica, cfg.replica);
+    if (cfg.mask && typeof cfg.mask === 'object') this.config.mask = Object.assign({}, this.config.mask, cfg.mask);
+    // 应用级设置（通知开关 / 备份项等）：backend 侧 _notify 等直接读 this.config，运行时改动必须同步，否则「关了通知仍在弹」直到下次重启。
+    for (const k of Api.APP_SETTING_KEYS) {
+      if (cfg[k] !== undefined) this.config[k] = cfg[k];
+    }
+    if (cfg.ffmpeg_dir !== undefined) this.config.ffmpeg_dir = cfg.ffmpeg_dir;
+  }
+
+  // 水印归属校验：以本项目「主流水印」为基准做一致性判定；仅在用户启用判定时参与判断。未启用判定的项目一律放行（默认不启用，勾选后才判定）。只返回布尔值（不暴露真实路径/文件名）。
+  checkWatermarkProject(project, watermarkPath) {
+    const wm = String(watermarkPath || '').trim();
+    try {
+      if (!wm) return { inProject: true, fileMissing: false };
+      const pdir = path.resolve(path.join(this.root, project));
+      const wmAbs = path.isAbsolute(wm) ? path.resolve(wm) : path.resolve(pdir, wm);
+      // 水印文件本身不存在 → 返回 fileMissing，前端据此阻断启动（与归属判定分离，两种错误分别提示）
+      if (!fs.existsSync(wmAbs) || !fs.statSync(wmAbs).isFile()) return { inProject: false, fileMissing: true };
+      const wmKey = wmAbs.toLowerCase();
+      this._loadWatermarkCache();
+      const cacheKey = this.root + '\u0000' + project;
+      // 未启用判定：直接放行
+      if (!this._wmEnabled[cacheKey]) return { inProject: true, fileMissing: false };
+      if (!Object.prototype.hasOwnProperty.call(this._wmCache, cacheKey)) {
+        // 本项目主流水印未固化：现场统计一次并落盘（保存前默认取配置主流作为初始值）
+        this._wmCache[cacheKey] = this._computeMajorityWatermark(pdir);
+        this._saveWatermarkCache();
+      }
+      const majority = this._wmCache[cacheKey] || '';
+      // 无主流水印(项目无任何水印)放行；有则当前水印必须与其一致（路径比较大小写不敏感）
+      return { inProject: !majority || wmKey === String(majority).toLowerCase(), fileMissing: false };
+    } catch (e) { return { inProject: true, fileMissing: false }; }
+  }
+
+  // 读取项目主流水印设置（弹窗初始化）：main=已保存的设置（无则现场统计主流作为初始默认值）；enabled=是否启用判定
+  getProjectWatermark(project) {
+    try {
+      if (!this.root || !project) return { ok: true, main: '', enabled: false, group: 0, groupEnabled: false };
+      const pdir = path.resolve(path.join(this.root, project));
+      this._loadWatermarkCache();
+      const cacheKey = this.root + '\u0000' + project;
+      let main = this._wmCache[cacheKey] || '';
+      if (!main) main = this._computeMajorityWatermark(pdir); // 保留统计主流作初始默认值
+      // 缓存里可能存的是全小写路径：磁盘上真实存在同名文件时，纠正为原始大小写并回写缓存
+      if (main && main === main.toLowerCase() && fs.existsSync(main)) {
+        const real = this._realCasePath(main);
+        if (real) {
+          main = real;
+          this._wmCache[cacheKey] = real;
+          this._saveWatermarkCache();
+        }
+      }
+      return { ok: true, main, enabled: !!this._wmEnabled[cacheKey], group: parseInt(this._wmGroup[cacheKey], 10) || 0, groupEnabled: !!this._wmGroupEnabled[cacheKey] };
+    } catch (e) { return { ok: false, error: String(e), main: '', enabled: false, group: 0, groupEnabled: false }; }
+  }
+
+  // 将路径各段替换为磁盘上的真实大小写（逐级向上查找同名目录/文件）
+  _realCasePath(p) {
+    try {
+      const abs = path.resolve(p);
+      const parts = abs.split(path.sep);
+      let cur = parts[0] + path.sep; // 盘符保持原样
+      for (let i = 1; i < parts.length; i++) {
+        const seg = parts[i];
+        if (!seg) continue;
+        let found = '';
+        try {
+          const entries = fs.readdirSync(cur, { withFileTypes: true });
+          const lower = seg.toLowerCase();
+          for (const ent of entries) {
+            if (ent.name.toLowerCase() === lower) { found = ent.name; break; }
+          }
+        } catch (e) {}
+        cur = path.join(cur, found || seg);
+      }
+      return cur;
+    } catch (e) { return ''; }
+  }
+
+  // 保存项目设置：更新主流水印（判定参照文件与启用标记）与默认分组数；applyToAll=true 时把本项目全部 txt（含日志）的水印行改为新水印
+  setProjectWatermark(project, watermark, enabled, applyToAll, group, groupEnabled) {
+    try {
+      const wm = String(watermark || '').trim();
+      const pdir = path.resolve(path.join(this.root, project));
+      // 存储保留原始大小写的绝对路径（Windows 显示友好）；比较时另做大小写不敏感归一
+      const wmStore = wm ? (path.isAbsolute(wm) ? path.resolve(wm) : path.resolve(pdir, wm)) : '';
+      this._loadWatermarkCache();
+      const cacheKey = this.root + '\u0000' + project;
+      if (wmStore) { this._wmCache[cacheKey] = wmStore; this._wmEnabled[cacheKey] = !!enabled; }
+      else {
+        delete this._wmCache[cacheKey];
+        delete this._wmEnabled[cacheKey]; // 未设置水印时视同不启用
+      }
+      // 默认分组数：启用状态 + 数值（0/非数字视为未启用）
+      const g = parseInt(group, 10) || 0;
+      const ge = !!groupEnabled && g > 0;
+      if (ge) { this._wmGroup[cacheKey] = g; this._wmGroupEnabled[cacheKey] = true; }
+      else { delete this._wmGroup[cacheKey]; delete this._wmGroupEnabled[cacheKey]; }
+      this._saveWatermarkCache();
+      if (applyToAll && wm && fs.existsSync(pdir) && fs.statSync(pdir).isDirectory()) {
+        const replaced = this._replaceProjectWatermarks(pdir, wm);
+        this._markConfigModified(); // 改动配置：清内存缓存并触发前端即时刷新
+        return { ok: true, replaced };
+      }
+      return { ok: true, replaced: 0 };
+    } catch (e) { return { ok: false, error: String(e) }; }
+  }
+
+  // 递归改写本项目目录下全部 txt 的水印行：配置 txt 替换末尾水印行（保留其余行原样），日志 txt 替换全部 .png 行
+  _replaceProjectWatermarks(pdir, newWm) {
+    let replaced = 0;
+    const walk = (dir) => {
+      let entries = [];
+      try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return; }
+      for (const en of entries) {
+        const fp = path.join(dir, en.name);
+        if (en.isDirectory()) { walk(fp); continue; }
+        if (!en.isFile() || path.extname(en.name).toLowerCase() !== '.txt') continue;
+        if (this._replaceWmLine(fp, newWm)) replaced++;
+      }
+    };
+    walk(pdir);
+    return replaced;
+  }
+  _replaceWmLine(fp, newWm) {
+    let text;
+    try { text = fs.readFileSync(fp, 'utf-8'); } catch (e) { return false; }
+    const eol = (text.replace(/\r?\n/g, '\n').length === text.length) ? '\n' : (text.includes('\r\n') ? '\r\n' : '\n');
+    const lines = text.split(/\r?\n/);
+    const isLog = LOG_NAME_RE.test(path.basename(fp));
+    let changed = false;
+    if (isLog) {
+      // 日志 txt：水印行是成片块末尾的 .png 路径行，全部替换为新水印
+      for (let i = 0; i < lines.length; i++) {
+        const s = lines[i].trim();
+        if (!s || !/\.png$/i.test(s)) continue;
+        if (lines[i] !== newWm) { lines[i] = newWm; changed = true; }
+      }
+    } else {
+      // 配置 txt：水印行 = 最后一个 PNG 路径行（非排除/非注释）；无则追加
+      let idx = -1;
+      for (let i = lines.length - 1; i >= 0 && idx < 0; i--) {
+        const s = lines[i].trim();
+        if (!s || s.startsWith('=') || s.startsWith('-')) continue;
+        if (/\.png$/i.test(s)) idx = i;
+      }
+      if (idx >= 0) {
+        if (lines[idx] !== newWm) { lines[idx] = newWm; changed = true; }
+      } else {
+        if (lines.length && lines[lines.length - 1].trim()) lines.push('');
+        lines.push(newWm);
+        changed = true;
+      }
+    }
+    if (!changed) return false;
+    try { fs.writeFileSync(fp, lines.join(eol), 'utf-8'); } catch (e) { return false; }
+    return true;
+  }
+
+  // 查找主流水印与指定水印一致的项目（归属判定升级：供保存/启动时选择目标项目）
+  // 复用 watermark_cache 缓存，缺失项目才现场统计并落盘；返回项目名数组（不含复刻）
+  // 若当前项目本身就以该水印为主流（共用或多个项目同时使用），归属明确、不触发弹窗
+  findWatermarkProject(project, watermarkPath) {
+    try {
+      const wm = String(watermarkPath || '').trim();
+      if (!wm || !this.root) return { hits: [] };
+      const pdir = path.resolve(path.join(this.root, project));
+      const wmAbs = path.isAbsolute(wm) ? path.resolve(wm) : path.resolve(pdir, wm);
+      const wmKey = wmAbs.toLowerCase();
+      this._loadWatermarkCache();
+      const seen = new Map(); // 项目目录 -> 项目名（去重）
+      for (const t of this._collectAllTxt()) {
+        const pd = path.resolve(t.pdir);
+        if (!seen.has(pd)) seen.set(pd, path.basename(t.pdir));
+      }
+      let dirty = false;
+      const majorityOf = (pd, proj) => {
+        const ck = this.root + '\u0000' + proj;
+        if (!Object.prototype.hasOwnProperty.call(this._wmCache, ck)) {
+          this._wmCache[ck] = this._computeMajorityWatermark(pd);
+          dirty = true;
+        }
+        return this._wmCache[ck] || '';
+      };
+      // 当前项目自己就在用该水印：共用场景归属明确，直接放行不弹窗
+      const curMk = majorityOf(pdir, project);
+      if (curMk !== '' && wmKey === String(curMk).toLowerCase()) {
+        if (dirty) this._saveWatermarkCache();
+        return { hits: [], inOwn: true };
+      }
+      const hits = [];
+      for (const [pd, proj] of seen) {
+        if (proj === REPLICA_PROJECT) continue; // 复刻虚拟项目无配置水印
+        const mk = majorityOf(pd, proj);
+        if (mk !== '' && wmKey === String(mk).toLowerCase()) hits.push(proj);
+      }
+      if (dirty) this._saveWatermarkCache();
+      return { hits };
+    } catch (e) { return { hits: [] }; }
+  }
+
+  // 统计本项目主流水印：所有配置使用频次最高的水印；计数用大小写不敏感 key（Windows 路径不区分大小写），但返回保留原始大小写的路径（供前端显示与落盘）
+  _computeMajorityWatermark(pdir) {
+    const counts = new Map(); // key(lower) -> { n, first 原始路径 }
+    for (const t of this._collectAllTxt()) {
+      if (path.resolve(t.pdir) !== pdir) continue;
+      let cfg;
+      try { cfg = this.readConfig(t.full); } catch (e) { continue; }
+      const w = String(cfg && cfg.watermark || '').trim();
+      if (!w) continue;
+      const absPath = path.isAbsolute(w) ? path.resolve(w) : path.resolve(pdir, w);
+      const k = absPath.toLowerCase();
+      const rec = counts.get(k) || { n: 0, first: absPath };
+      rec.n++;
+      counts.set(k, rec);
+    }
+    let majorityKey = '', majorityN = 0;
+    for (const [k, rec] of counts) { if (rec.n > majorityN) { majorityN = rec.n; majorityKey = rec.first; } }
+    return majorityKey;
+  }
+
+  // 刷新配置时预填充水印缓存：扫描当前工作目录下所有项目，缺失归属的项目补算主流，已有条目保持不动
+  _warmWatermarkCache() {
+    if (!this.root) return;
+    try {
+      this._loadWatermarkCache();
+      const seen = new Map(); // 项目目录 -> 项目名（去重）
+      for (const t of this._collectAllTxt()) {
+        const pdir = path.resolve(t.pdir);
+        if (!seen.has(pdir)) seen.set(pdir, path.basename(t.pdir));
+      }
+      let dirty = false;
+      for (const [pdir, project] of seen) {
+        const cacheKey = this.root + '\u0000' + project;
+        if (Object.prototype.hasOwnProperty.call(this._wmCache, cacheKey)) continue; // 已有条目不动
+        this._wmCache[cacheKey] = this._computeMajorityWatermark(pdir);
+        dirty = true;
+      }
+      if (dirty) this._saveWatermarkCache();
+    } catch (e) {}
+  }
+
+  // ── 批量项目设置（settings.db scope='batch'）：水印主流 / 启用标记 / 默认分组数 / 分组启用 ──
+  // 按 root+项目 隔离，保存时只覆盖当前 root 的条目。
+  _loadWatermarkCache() {
+    if (!this._wmCache) this._wmCache = {};
+    if (!this._wmEnabled) this._wmEnabled = {};
+    if (!this._wmGroup) this._wmGroup = {};
+    if (!this._wmGroupEnabled) this._wmGroupEnabled = {};
+    if (this._wmCacheLoadedRoot === this.root) return;
+    this._wmCacheLoadedRoot = this.root;
+    this._wmCache = {};
+    this._wmEnabled = {};
+    this._wmGroup = {};
+    this._wmGroupEnabled = {};
+    if (!this._useSettings()) return;
+    const prefix = this.root + '\u0000';
+    const want = { watermarks: this._wmCache, enabled: this._wmEnabled, groupCounts: this._wmGroup, groupEnabled: this._wmGroupEnabled };
+    try {
+      const all = this._settingsStore.all('batch');
+      for (const kind of ['watermarks', 'enabled', 'groupCounts', 'groupEnabled']) {
+        const src = all[kind];
+        if (!src || typeof src !== 'object' || Array.isArray(src)) continue;
+        // 只加载当前工作目录下的条目：换 root 后旧条目不参与，保存时自然被清理
+        for (const k in src) {
+          if (!Object.prototype.hasOwnProperty.call(src, k) || !k.startsWith(prefix)) continue;
+          if (kind === 'groupCounts') want[kind][k] = parseInt(src[k], 10) || 0;
+          else if (kind === 'enabled' || kind === 'groupEnabled') want[kind][k] = !!src[k];
+          else want[kind][k] = src[k];
+        }
+      }
+    } catch (e) {}
+  }
+
+  _saveWatermarkCache() {
+    if (!this._useSettings()) return;
+    // 合并保存：保留其它工作目录（root）的条目，仅覆盖当前 root 的条目，避免切换工作目录后旧 root 的设置被覆盖丢失
+    const prefix = this.root + '\u0000';
+    const mine = {
+      watermarks: this._wmCache || {}, enabled: this._wmEnabled || {},
+      groupCounts: this._wmGroup || {}, groupEnabled: this._wmGroupEnabled || {},
+    };
+    const store = this._settingsStore;
+    try {
+      const all = store.all('batch');
+      store.transaction(() => {
+        for (const kind of ['watermarks', 'enabled', 'groupCounts', 'groupEnabled']) {
+          const merged = {};
+          const src = all[kind];
+          if (src && typeof src === 'object' && !Array.isArray(src)) {
+            for (const k in src) {
+              if (Object.prototype.hasOwnProperty.call(src, k) && !k.startsWith(prefix)) merged[k] = src[k];
+            }
+          }
+          Object.assign(merged, mine[kind]);
+          store.set('batch', kind, merged);
+        }
+      });
+    } catch (e) {}
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // 项目增删改（软件侧新建 / 改名）
+  // ══════════════════════════════════════════════════════════════════════
+  // 项目名合法性：Windows 文件名约束；前端 validateProjectName 先校验，这里再校验一次（HTTP 侧可能直接调用）。
+  _validProjectName(name) {
+    const n = String(name == null ? '' : name).trim();
+    if (!n) return '名称不能为空';
+    if (n === '.' || n === '..') return '名称不能是「.」或「..」';
+    if (n.length > 64) return '名称过长（最多 64 个字符）';
+    if (/[\\/:*?"<>|]/.test(n)) return '名称不能包含 \\ / : * ? " < > | 这些字符';
+    // eslint-disable-next-line no-control-regex
+    if (/[\u0000-\u001f]/.test(n)) return '名称不能包含控制字符';
+    if (/[. ]$/.test(n)) return '名称不能以点或空格结尾';
+    if (/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i.test(n)) return '「' + n + '」是系统保留名，请换一个';
+    return '';
+  }
+  _projectRootOf(kind) {
+    return (kind === 'mask')
+      ? String((this.config && this.config.mask && this.config.mask.root) || '').trim()
+      : String(this.root || '').trim();
+  }
+  // 从软件新建项目：在工作根下建目录 + 登记（登记后无需先放素材/TXT 即可在列表里看到）
+  createProject(name, kind) {
+    const k = (kind === 'mask') ? 'mask' : 'batch';
+    const root = this._projectRootOf(k);
+    if (!root) return { ok: false, error: (k === 'mask' ? '尚未设置遮罩工作路径' : '尚未设置工作路径') };
+    const bad = this._validProjectName(name);
+    if (bad) return { ok: false, error: bad };
+    const n = String(name).trim();
+    const dir = path.join(root, n);
+    // 越权双保险：拼接后必须仍在工作根下（名字里的路径分隔符已被 _validProjectName 拦掉）
+    const rel = path.relative(root, dir);
+    if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return { ok: false, error: '名称非法' };
+    let exists = false;
+    try { exists = fs.existsSync(dir); } catch (e) { exists = false; }
+    if (exists) return { ok: false, error: '同名项目已存在' };
+    try { fs.mkdirSync(dir, { recursive: true }); }
+    catch (e) { return { ok: false, error: '创建目录失败：' + ((e && e.message) || e) }; }
+    this._addProjReg(root, k, n);
+    this._invalidateCaches();   // 列表缓存作废，下次读取即含新项目
+    try { console.log('[project] 新建项目 ' + n + ' @ ' + root); } catch (e) {}
+    return { ok: true, name: n, path: dir };
+  }
+  // 项目改名：改目录名 + 迁移一切以「项目名」为键的设置/缓存（否则设置会凭空丢失）
+  renameProject(oldName, newName, kind) {
+    const k = (kind === 'mask') ? 'mask' : 'batch';
+    const root = this._projectRootOf(k);
+    if (!root) return { ok: false, error: (k === 'mask' ? '尚未设置遮罩工作路径' : '尚未设置工作路径') };
+    const oldN = String(oldName == null ? '' : oldName).trim();
+    const newN = String(newName == null ? '' : newName).trim();
+    if (!oldN) return { ok: false, error: '原项目名缺失' };
+    if (oldN === newN) return { ok: true, name: newN, unchanged: true };
+    const bad = this._validProjectName(newN);
+    if (bad) return { ok: false, error: bad };
+    const oldDir = path.join(root, oldN);
+    const newDir = path.join(root, newN);
+    const rel = path.relative(root, newDir);
+    if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return { ok: false, error: '名称非法' };
+    let oldOk = false, newExists = false;
+    try { oldOk = fs.existsSync(oldDir); } catch (e) { oldOk = false; }
+    if (!oldOk) return { ok: false, error: '原项目目录不存在（可能已被外部删除）' };
+    try { newExists = fs.existsSync(newDir); } catch (e) { newExists = false; }
+    if (newExists) return { ok: false, error: '同名项目已存在' };
+    // 有任务在跑/排队时拒绝改目录名：任务持有路径，改完会写错位置
+    try {
+      const busy = [...(this.tasks || new Map()).values()]
+        .filter((t) => t && (t.status === 'running' || t.status === 'queued' || t.status === 'paused'));
+      if (busy.length) return { ok: false, error: '有任务正在运行或排队，请等结束后再改名' };
+    } catch (e) {}
+    try { fs.renameSync(oldDir, newDir); }
+    catch (e) { return { ok: false, error: '重命名目录失败：' + ((e && e.message) || e) }; }
+    // ① 设置键迁移
+    try {
+      if (k === 'batch') {
+        const oldKey = root + '\u0000' + oldN;
+        const newKey = root + '\u0000' + newN;
+        if (this._useSettings()) {
+          const all = this._settingsStore.all('batch');
+          this._settingsStore.transaction(() => {
+            for (const kind2 of ['watermarks', 'enabled', 'groupCounts', 'groupEnabled']) {
+              const src = all[kind2];
+              if (!src || typeof src !== 'object' || Array.isArray(src)) continue;
+              if (!Object.prototype.hasOwnProperty.call(src, oldKey)) continue;
+              const obj = Object.assign({}, src);
+              obj[newKey] = obj[oldKey];
+              delete obj[oldKey];
+              this._settingsStore.set('batch', kind2, obj);
+            }
+          });
+        }
+      } else if (this._useSettings()) {
+        const cur = String(this._settingsStore.get('mask', oldN, '') || '');
+        if (cur) {
+          this._settingsStore.set('mask', newN, cur);
+          this._settingsStore.remove('mask', oldN);
+        }
+      }
+    } catch (e) {}
+    // ② 遮罩会话缓存键（cache_kv: mask_session:<项目名>）
+    if (k === 'mask' && this._useDbCache()) {
+      try {
+        const raw = this._cacheStore.getKv('mask_session:' + oldN);
+        if (raw) {
+          this._cacheStore.setKv('mask_session:' + newN, raw);
+          this._cacheStore.removeKv('mask_session:' + oldN);
+        }
+      } catch (e) {}
+    }
+    // ③ 项目登记表：把登记项从旧名换成新名（新建后改名的情况）
+    try {
+      const reg = this._loadProjReg(root, k);
+      if (reg.includes(oldN)) this._saveProjReg(root, k, reg.map((x) => (x === oldN ? newN : x)));
+    } catch (e) {}
+    // ④ 项目设置的内存缓存按 root 一次性重载（键已变，简单可靠）
+    try {
+      this._wmCacheLoadedRoot = null;
+      this._loadWatermarkCache();
+    } catch (e) {}
+    this._invalidateCaches();   // 列表/版本/日志缓存全部作废 → 前端刷新即见新名
+    // 成片索引里的目录路径随项目改名全部失效：软重置，避免下一次搜索命中旧路径
+    this._clipIndex = new Map();
+    this._clipIndexRoot = '';
+    this._clipIndexDirty = false;
+    try { console.log('[project] 改名 ' + oldN + ' → ' + newN + ' @ ' + root); } catch (e) {}
+    return { ok: true, name: newN, oldName: oldN, path: newDir };
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // 视频处理工具（第 4 个模块）
+  //
+  _toolSteps() {
+    try { return require(path.join(this.enginesDir, 'tools', 'index.js')); } catch (e) { return null; }
+  }
+
+  /**
+   * 画布合成的**方案构造模块**（纯逻辑：参数模型 + buildCanvasPlan）——
+   * 与引擎侧执行器 engines/tools/canvas-run.js 分开：主进程只该拿到这份纯逻辑（无 IO / 无子进程），
+   * 预览与批量执行共用同一份表达式构造，"预览所见即所得"由结构保证。
+   */
+  _canvasModule() {
+    try { return require(path.join(this.enginesDir, 'tools', 'canvas-plan.js')); } catch (e) { return null; }
+  }
+
+  /** 素材尺寸探测（路径 + 大小/mtime 作指纹，结果驻留内存避免反复起进程） */
+  _canvasProbeSize(file) {
+    return new Promise((resolve) => {
+      const p = String(file || '');
+      if (!p) return resolve(null);
+      let stamp = '';
+      try { const st = fs.statSync(p); stamp = st.size + ':' + Math.round(st.mtimeMs); } catch (e) { return resolve(null); }
+      if (!this._canvasSizeCache) this._canvasSizeCache = new Map();
+      const hit = this._canvasSizeCache.get(p);
+      if (hit && hit.stamp === stamp) return resolve(hit);
+      const ffprobe = this._resolveFfmpegBin().ffprobePath;
+      if (!ffprobe) return resolve(null);
+      try {
+        const { execFile } = require('child_process');
+        execFile(ffprobe, ['-v', 'error', '-select_streams', 'v:0',
+          '-show_entries', 'stream=width,height', '-show_entries', 'format=duration', '-of', 'json', p],
+        { encoding: 'utf8', timeout: 20000, windowsHide: true, maxBuffer: 4 * 1024 * 1024 }, (err, stdout) => {
+          if (err) return resolve(null);
+          let w = 0, h = 0, dur = 0;
+          try {
+            const j = JSON.parse(String(stdout || '{}'));
+            const s = (j.streams || [])[0] || {};
+            w = Number(s.width) || 0; h = Number(s.height) || 0;
+            dur = Number((j.format || {}).duration) || 0;
+          } catch (e2) {}
+          const info = { path: p, width: w, height: h, duration: dur, stamp: stamp };
+          this._canvasSizeCache.set(p, info);
+          resolve(info);
+        });
+      } catch (e) { resolve(null); }
+    });
+  }
+
+  /**
+   * 背景候选枚举：扫描目录（两层内）。**不限制背景尺寸** —— 适配方式（填充 / 适应 / 拉伸）能处理任意尺寸，
+   * 尺寸只用于界面展示与「小于画布会被放大」的提醒（既然尺寸可调，背景就不该锁尺寸）。
+   * 返回稳定排序（按路径）的清单，保证「同索引 = 同背景」，前端上一个/下一个切换才有确定性。
+   */
+  async canvasListBackgrounds(dir) {
+    const envG = this._envGuard('canvas_bg_list');
+    if (envG) return envG;
+    const root = String(dir || '').trim();
+    if (!root) return { ok: false, error: '请先选择背景目录' };
+    let isDir = false;
+    try { isDir = fs.statSync(root).isDirectory(); } catch (e) {}
+    if (!isDir) return { ok: false, error: '背景目录不存在：' + root };
+    // 结果缓存：预览路径每次都会列背景候选（拖动/调参高频调用），而目录遍历 + 500 次 stat 属纯浪费。
+    // 指纹 = 目录 mtime + 根目录条目数（新增/删除文件会变，命中即复用），并留 30s 兜底上限。
+    if (!this._bgListCache) this._bgListCache = new Map();
+    let bgStamp = '';
+    try {
+      const st = fs.statSync(root);
+      let n = 0;
+      try { n = fs.readdirSync(root).length; } catch (e) {}
+      bgStamp = Math.round(st.mtimeMs) + ':' + n;
+    } catch (e) {}
+    const bgHit = this._bgListCache.get(root);
+    if (bgStamp && bgHit && bgHit.stamp === bgStamp && (Date.now() - bgHit.at) < 30000) return bgHit.result;
+    const exts = new Set(['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.mp4', '.mov', '.mkv', '.avi']);
+    const files = [];
+    const walk = (d, depth) => {
+      if (files.length >= 500 || depth > 2) return;
+      let ents = [];
+      try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch (e) { return; }
+      for (const e of ents) {
+        const p2 = path.join(d, e.name);
+        if (e.isDirectory()) { walk(p2, depth + 1); continue; }
+        if (exts.has(path.extname(e.name).toLowerCase())) files.push(p2);
+      }
+    };
+    walk(root, 0);
+    const infos = await this._runWithLimit(files, (f) => this._canvasProbeSize(f), Math.min(4, this.probeConcurrency || 4), null);
+    const list = (infos || []).filter((x) => x && x.width > 0 && x.height > 0)   // 探测失败的剔除（无法参与合成）
+      .map((x) => ({
+        path: x.path, name: path.basename(x.path),
+        kind: /\.(mp4|mov|mkv|avi)$/i.test(x.path) ? 'video' : 'image',
+        width: x.width || 0, height: x.height || 0,   // 供界面显示与「小于画布会被放大」提醒
+        duration: x.duration || 0,
+      }))
+      .sort((a, b) => a.path.localeCompare(b.path));
+    const result = { ok: true, dir: root, scanned: files.length, matched: list.length, list: list };
+    if (bgStamp) this._bgListCache.set(root, { at: Date.now(), stamp: bgStamp, result: result });
+    return result;
+  }
+
+  /**
+   * 预览样本清单：文件夹输入时枚举待处理视频，供预览挑一个样本。
+   * 复用引擎的 scanVideos —— 与正式处理**同一套扫描规则**（递归开关、跳过应用自管目录），
+   * 否则会出现「预览看到的清单 ≠ 真正会被处理的文件」（如把输出/备份目录里的成片也当样本）。
+   */
+  canvasListSources(root, recursive) {
+    const envG = this._envGuard('canvas_src_list');
+    if (envG) return envG;
+    const r = String(root || '').trim();
+    if (!r) return { ok: false, error: '请先选择要处理的文件夹' };
+    let isDir = false;
+    try { isDir = fs.statSync(r).isDirectory(); } catch (e) {}
+    if (!isDir) return { ok: false, error: '文件夹不存在：' + r };
+    let pl = null;
+    try { pl = require(path.join(this.enginesDir, 'tools', 'pipeline.js')); } catch (e) {}
+    if (!pl || typeof pl.scanVideos !== 'function') return { ok: false, error: '程序文件不完整（缺少运行组件），请重新安装或校验' };
+    let files = [];
+    try {
+      files = pl.scanVideos(r, { recursive: recursive !== false, storageDir: this.storageDir }) || [];
+    } catch (e) { return { ok: false, error: '扫描失败：' + ((e && e.message) || e) }; }
+    files = files.slice().sort((a, b) => String(a).localeCompare(String(b)));
+    const total = files.length;
+    const cap = 800;   // 样本切换只需清单，不必把上万条路径全传到界面
+    const list = files.slice(0, cap).map((f) => ({ path: f, name: path.basename(f) }));
+    return { ok: true, root: r, total: total, truncated: total > cap, limit: cap, list: list };
+  }
+
+  /** 素材指纹（大小 + mtime）：素材被替换但路径不变时，必须让预览缓存失效 */
+  _canvasStamp(file) {
+    try { const st = fs.statSync(String(file || '')); return st.size + ':' + Math.round(st.mtimeMs); } catch (e) { return '-'; }
+  }
+
+  /** 预览图缓存键：参数 + 表达式 + 时间点 + 素材指纹，任一项变化即重新渲染 */
+  _canvasPreviewKey(plan, at, src, scale) {
+    const crypto = require('crypto');
+    const h = crypto.createHash('sha1');
+    h.update(JSON.stringify(plan.meta || {}));
+    h.update('|' + plan.filterComplex);
+    h.update('|' + String(Math.round((Number(at) || 0) * 1000)));
+    h.update('|' + String(scale));
+    h.update('|' + [src.contentPath, src.bgPath, src.watermarkPath].join('\u0001'));
+    h.update('|' + [this._canvasStamp(src.contentPath), this._canvasStamp(src.bgPath), this._canvasStamp(src.watermarkPath)].join('\u0001'));
+    return h.digest('hex');
+  }
+
+  /** 预览磁盘产物的最旧淘汰（超出上限时按 mtime 删除，避免长期堆积） */
+  _canvasPreviewTrimAsync(outDir, keep) {
+    fs.promises.readdir(outDir).then((names) => {
+      const list = names.filter((n) => /^canvas-.*\.png$/.test(n));
+      if (list.length <= keep) return null;
+      const withTime = list.map((n) => {
+        const f = path.join(outDir, n);
+        try { return { f: f, t: fs.statSync(f).mtimeMs }; } catch (e) { return { f: f, t: 0 }; }
+      }).sort((a, b) => a.t - b.t);
+      const drop = withTime.slice(0, withTime.length - keep);
+      return Promise.all(drop.map((x) => fs.promises.unlink(x.f).catch(() => null)));
+    }).catch(() => null);
+  }
+
+  /**
+   * 单帧预览：一次 ffmpeg 调用同时产出三张 PNG（合成图 / 纯背景层 / 内容原帧），
+   * 供前端「底图 + 前景」分层拖动；返回值同时带内存/磁盘缓存与几何元数据。
+   */
+  async canvasPreviewFrame(payload) {
+    const p = payload || {};
+    const mod = this._canvasModule();
+    if (!mod) return { ok: false, error: '程序文件不完整（缺少画布合成组件），请重新安装或校验程序文件' };
+    const envG = this._envGuard('canvas_preview');
+    if (envG) return envG;
+    const contentPath = String(p.contentPath || '').trim();
+    let contentOk = false;
+    try { contentOk = fs.statSync(contentPath).isFile(); } catch (e) {}
+    if (!contentOk) return { ok: false, error: '请先选择要预览的视频文件' };
+    const ffmpeg = this._resolveFfmpegBin().ffmpegPath;
+    if (!ffmpeg) return { ok: false, error: 'FFmpeg 不可用，请重新下载组件' };
+
+    const params = Object.assign({}, p.params || {});
+    // 背景解析（目录模式按索引取候选，索引归一化到候选范围内）
+    let bgPath = String(p.bgPath || params.bgPath || '').trim();
+    let bgTotal = 0, bgIndexUsed = 0, bgKind = '';
+    let bgW = 0, bgH = 0;                 // 背景尺寸（供「小于画布会被放大」提醒；探测失败则为 0）
+    if (params.bgMode === 'dir') {
+      const lst = await this.canvasListBackgrounds(params.bgDir);
+      if (!lst.ok) return lst;
+      if (!lst.list.length) return { ok: false, error: '背景目录里没有可用的图片或视频（已扫描 ' + lst.scanned + ' 个文件）' };
+      bgTotal = lst.list.length;
+      bgIndexUsed = ((Math.trunc(Number(p.bgIndex) || 0) % bgTotal) + bgTotal) % bgTotal;
+      bgPath = lst.list[bgIndexUsed].path;
+      bgKind = lst.list[bgIndexUsed].kind;
+      bgW = Number(lst.list[bgIndexUsed].width) || 0;
+      bgH = Number(lst.list[bgIndexUsed].height) || 0;
+    } else if (params.bgMode === 'image' || params.bgMode === 'video') {
+      let ok = false;
+      try { ok = fs.statSync(bgPath).isFile(); } catch (e) {}
+      if (!ok) return { ok: false, error: '背景文件不存在' };
+      bgKind = /\.(mp4|mov|mkv|avi)$/i.test(bgPath) ? 'video' : 'image';
+      const bInfo = await this._canvasProbeSize(bgPath);   // 指定文件模式现测一次尺寸（用于放大提醒）
+      if (bInfo) { bgW = Number(bInfo.width) || 0; bgH = Number(bInfo.height) || 0; }
+    }
+
+    // 素材尺寸（内容必测；背景与水印可选）
+    const cInfo = await this._canvasProbeSize(contentPath);
+    if (!cInfo || !cInfo.width || !cInfo.height) return { ok: false, error: '无法读取视频尺寸（ffprobe 未返回有效信息）' };
+    let wmPath = String(p.watermarkPath || params.watermark || '').trim();
+    let wmOk = false;
+    try { wmOk = fs.statSync(wmPath).isFile(); } catch (e) { wmOk = false; }
+    const src = {
+      contentW: cInfo.width, contentH: cInfo.height, contentPath: contentPath,
+      bgPath: bgPath, bgKind: bgKind, watermarkPath: wmOk ? wmPath : '',
+      bgColorValue: params.bgColor,
+      duration: cInfo.duration || 0,
+      bgW: bgW, bgH: bgH,              // 背景尺寸 → 小于画布时给出「会被放大（可能模糊）」提醒
+    };
+    if (wmPath && !wmOk) src._wmMissing = true;
+
+    const at = Math.max(0, Number(p.at) || 0);
+    if (cInfo.duration > 0 && at >= cInfo.duration) {
+      return { ok: false, error: '时间点超出视频时长（' + cInfo.duration.toFixed(1) + 's）', duration: cInfo.duration };
+    }
+
+    const plan = mod.buildCanvasPlan(params, src);
+    if (src._wmMissing) plan.meta.warnings.push('水印文件不存在，本次预览未叠加水印');
+
+    const scale = (() => {
+      const v = Number(p.previewScale);
+      if (!isFinite(v) || v <= 0) return 0.5;
+      return Math.min(1, Math.max(0.25, v));
+    })();
+    const key = this._canvasPreviewKey(plan, at, src, scale);
+
+    if (!this._canvasPreviewCache) this._canvasPreviewCache = new Map();
+    const cached = this._canvasPreviewCache.get(key);
+    if (cached) return Object.assign({ ok: true, fromCache: true, ms: 0 }, cached);
+
+    // 并发上限定为 2：拖动过程中旧请求尚未结束时，前端会收到 BUSY 并稍后用最新参数重试
+    if ((this._canvasPreviewRunning || 0) >= 2) return { ok: false, error: 'BUSY' };
+    this._canvasPreviewRunning = (this._canvasPreviewRunning || 0) + 1;
+    const startedAt = Date.now();
+    let previewFiles = [];   // A4：本轮生成的 PNG，finally 统一删除（成功与失败都不留残留）
+    try {
+      const outDir = path.join(this.storageDir || '', 'preview');
+      await fs.promises.mkdir(outDir, { recursive: true });
+      const stamp = key.slice(0, 12);
+      const outC = path.join(outDir, 'canvas-' + stamp + '-composed.png');
+      const outB = path.join(outDir, 'canvas-' + stamp + '-bg.png');
+      const outR = path.join(outDir, 'canvas-' + stamp + '-raw.png');
+      const pvW = Math.max(2, Math.round(plan.meta.canvasW * scale / 2) * 2);
+      const pvH = Math.max(2, Math.round(plan.meta.canvasH * scale / 2) * 2);
+      const rawW = Math.max(2, Math.round(plan.meta.contentBox.w * scale / 2) * 2);
+      const args = ['-hide_banner', '-loglevel', 'error', '-y'];
+      for (let i = 0; i < plan.ffmpegInputs.length; i++) {
+        const inp = plan.ffmpegInputs[i];
+        // -ss 只作用于紧随其后的输入：内容与背景视频取同一时间点（图片背景不受影响）
+        if (i === 0 || /\.(mp4|mov|mkv|avi)$/i.test(String(inp.path || ''))) args.push('-ss', String(at));
+        for (const a of (inp.args || [])) args.push(a);
+        args.push('-i', inp.lavfi || inp.path);
+      }
+      args.push('-filter_complex', plan.filterComplex);
+      // 预览缩放用输出尺寸选项（-s）：输出流已由 filter_complex 提供，不能再挂 -vf（简单/复杂滤镜不可同时作用于同一流）
+      const rawH = Math.max(2, Math.round(rawW * (plan.meta.contentBox.h / Math.max(1, plan.meta.contentBox.w)) / 2) * 2);
+      args.push('-map', plan.maps.composed, '-frames:v', '1', '-s', pvW + 'x' + pvH, '-c:v', 'png', outC);
+      args.push('-map', plan.maps.bg, '-frames:v', '1', '-s', pvW + 'x' + pvH, '-c:v', 'png', outB);
+      args.push('-map', plan.maps.raw, '-frames:v', '1', '-s', rawW + 'x' + rawH, '-c:v', 'png', outR);
+
+      const { execFile } = require('child_process');
+      await new Promise((resolve, reject) => {
+        execFile(ffmpeg, args, { windowsHide: true, timeout: 30000, maxBuffer: 16 * 1024 * 1024 }, (err, stdout, stderr) => {
+          if (err) {
+            const tail = String(stderr || err.message || '').split('\n').filter(Boolean).slice(-3).join(' / ').slice(0, 300);
+            return reject(new Error(tail || 'ffmpeg 执行失败'));
+          }
+          resolve();
+        });
+      });
+
+      const toData = (f) => {
+        try { return 'data:image/png;base64,' + fs.readFileSync(f).toString('base64'); } catch (e) { return ''; }
+      };
+      // 三张 PNG 是「生成 base64 的中间产物」，不是需要留存的缓存 ——
+      // 前端拿 base64 渲染（tool.js 用它赋 img.src），从不读文件路径（原 files 字段前端零使用）；
+      // 唯一的“缓存”是下方内存 Map（重启即空、存的是 base64 而非路径）。
+      previewFiles = [outC, outB, outR];
+      const result = {
+        composed: toData(outC),
+        bgOnly: toData(outB),
+        raw: toData(outR),
+        previewScale: scale,
+        previewW: pvW, previewH: pvH,
+        meta: Object.assign({}, plan.meta, {
+          at: at, duration: cInfo.duration || 0,
+          bgTotal: bgTotal, bgIndex: bgIndexUsed,
+          bgPath: plan.meta.bgModeUsed === 'color' ? '' : bgPath,
+          ms: Date.now() - startedAt, fromCache: false,
+        }),
+      };
+      // 内存缓存（上限 60 组，Map 保持插入序 → 淘汰最旧）
+      this._canvasPreviewCache.set(key, result);
+      if (this._canvasPreviewCache.size > 60) {
+        const first = this._canvasPreviewCache.keys().next();
+        if (!first.done) this._canvasPreviewCache.delete(first.value);
+      }
+      // 磁盘兜底：新产物已即删，此目录**不应有任何文件**，故上限取 0 ——既清掉旧版本遗留的 canvas-*.png，清空后也无需再管（开销可忽略）。
+      this._canvasPreviewTrimAsync(outDir, 0);
+      // ⚠ verb 用 RUN（info）：VERB_LVL 把 UI 映射为 error 级，而预览是**正常**操作 ——
+      //   用 UI 会让每次预览都进 error 日志与 30 天 error 索引
+      this._lg('RUN', 'canvas.preview', '画布合成预览 · ' + pvW + '×' + pvH + ' · ' + (Date.now() - startedAt) + 'ms'
+        + ' · 内容盒 ' + result.meta.contentBox.w + '×' + result.meta.contentBox.h
+        + ' @' + result.meta.contentBox.x + ',' + result.meta.contentBox.y
+        + (result.meta.warnings.length ? ' · ' + result.meta.warnings.join('；') : ''),
+      { at: at, bgIndex: bgIndexUsed, bgTotal: bgTotal, warnings: result.meta.warnings.length });
+      return Object.assign({ ok: true, fromCache: false, ms: result.meta.ms }, result);
+    } catch (e) {
+      const msg = String((e && e.message) || e);
+      this._lg('ERR', 'canvas.preview', '画布合成预览失败 · ' + msg, { at: at });
+      return { ok: false, error: '预览渲染失败：' + msg };
+    } finally {
+      this._canvasPreviewRunning = Math.max(0, (this._canvasPreviewRunning || 1) - 1);
+      // 读完 base64 即删（成功与失败路径都不留残留；文件不存在/已被清也无妨）
+      for (const previewFile of previewFiles) { try { fs.unlinkSync(previewFile); } catch (e) { /* 忽略 */ } }
+    }
+  }
+
+  /** 画布参数预设：存设置库 app scope（键 canvas_presets，JSON） */
+  canvasPresetList() {
+    try {
+      const raw = String(this.getAppSetting('canvas_presets', '') || '');
+      const obj = raw ? JSON.parse(raw) : {};
+      const list = Object.keys(obj).map((k) => ({ name: k, params: obj[k] }));
+      return { ok: true, list: list };
+    } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+  }
+
+  canvasPresetSave(name, params) {
+    const n = String(name || '').trim().slice(0, 40);
+    if (!n) return { ok: false, error: '预设名称不能为空' };
+    if (!this._useSettings() || !this._settingsStore) return { ok: false, error: '设置库不可用，无法保存预设' };
+    try {
+      const cur = this.canvasPresetList();
+      const obj = {};
+      (cur.list || []).forEach((x) => { obj[x.name] = x.params; });
+      if (!obj[n] && Object.keys(obj).length >= 50) return { ok: false, error: '预设数量已达上限（50）' };
+      obj[n] = params || {};
+      this._settingsStore.set('app', 'canvas_presets', JSON.stringify(obj));
+      this._lg('CFG', 'canvas.preset', '画布合成参数预设 · 保存 ' + n, { name: n });
+      return { ok: true, name: n, total: Object.keys(obj).length };
+    } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+  }
+
+  canvasPresetDelete(name) {
+    const n = String(name || '').trim();
+    if (!n) return { ok: false, error: '预设名称不能为空' };
+    if (!this._useSettings() || !this._settingsStore) return { ok: false, error: '设置库不可用，无法删除预设' };
+    try {
+      const cur = this.canvasPresetList();
+      const obj = {};
+      (cur.list || []).forEach((x) => { if (x.name !== n) obj[x.name] = x.params; });
+      this._settingsStore.set('app', 'canvas_presets', JSON.stringify(obj));
+      this._lg('CFG', 'canvas.preset', '画布合成参数预设 · 删除 ' + n, { name: n });
+      return { ok: true, name: n, total: Object.keys(obj).length };
+    } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+  }
+
+  /** 步骤清单 + 参数 schema + 输出策略可选项（供前端渲染表单） */
+  listTools() {
+    const mod = this._toolSteps();
+    if (!mod) return { ok: false, error: '程序文件不完整（缺少处理组件），请重新安装或校验程序文件' };
+    const steps = mod.stepSchema ? mod.stepSchema() : [];
+    return {
+      ok: true,
+      steps,
+      groups: mod.stepSchemaByGroup ? mod.stepSchemaByGroup() : [],
+      stepCount: steps.length,
+      engine: !!this._engineRunnerPath(),
+      root: this.root || '',
+      output: {
+        modes: [{ v: 'overwrite', t: '覆盖原视频' }, { v: 'directory', t: '输出到指定目录' }],
+        nameModes: [{ v: 'keep', t: '原名' }, { v: 'suffix', t: '原名 + 后缀' }],
+        conflicts: [{ v: 'index', t: '追加序号' }, { v: 'overwrite', t: '覆盖' }, { v: 'skip', t: '跳过' }],
+        // 实际默认备份地址：设置里的默认备份目录 > 数据目录下 backup。返回前确保存在（应用自己管理的目录，可直接创建）—— 浏览器端「打开/选择」才能直接定位
+        defaultBackupDir: (() => {
+          const customRoot = String(this.config.backup_dir || '').trim();
+          const root = customRoot ? path.join(customRoot, 'Video Lab 备份')
+            : path.join(this.storageDir || '', 'backup');
+          try { fs.mkdirSync(root, { recursive: true }); } catch (e) {}
+          return root;
+        })(),
+      },
+    };
+  }
+
+  /**
+   * 浏览器端的目录浏览：列出某目录下的子目录与文件名。
+   * 供工具窗口的 Web 路径选择器使用 —— 浏览器侧没有本机文件对话框，
+   * 系统对话框又依赖本体窗口的前台状态（焦点在浏览器时会被压在后面）。
+   */
+  listDir(dir) {
+    const target = String(dir || '').trim() ? path.resolve(String(dir).trim()) : path.resolve(this.root || '');
+    if (!target) return { ok: false, error: '缺少路径' };
+    let st = null;
+    try { st = fs.statSync(target); } catch (e) { return { ok: false, error: '路径不存在：' + target }; }
+    if (!st.isDirectory()) return { ok: false, error: '不是目录：' + target };
+    const dirs = [], files = [];
+    try {
+      for (const e of fs.readdirSync(target, { withFileTypes: true })) {
+        if (e.name.startsWith('.')) continue;
+        if (e.isDirectory()) dirs.push(e.name);
+        else if (e.isFile()) files.push(e.name);
+      }
+    } catch (e) {
+      return { ok: false, error: '无法读取目录：' + ((e && e.message) || e) };
+    }
+    const zh = (a, b) => a.localeCompare(b, 'zh-Hans-CN');
+    const up = path.dirname(target);
+    return {
+      ok: true,
+      path: target,
+      parent: up === target ? '' : up,      // 盘符根没有上级
+      dirs: dirs.sort(zh),
+      files: files.sort(zh).slice(0, 200),  // 只读名字辅助定位，大目录截断
+    };
+  }
+
+  /**
+   * 创建工具任务。两种模式**各自独立、互不干扰**（参数与输出都只对自己负责）：
+   *   · steps（默认）—— 后处理：步骤链，参数 `params[stepId]`
+   *   · canvas       —— 画布合成（竖转横批量）：独立执行器，参数 `params.canvas`
+   * 两者共享任务队列（type:'tool' 串行不抢 GPU）与输出策略实现，但**互不读取对方的参数**。
+   */
+  runTool(spec) {
+    const envG = this._envGuard('run_tool');
+    if (envG) return envG;
+    if (!this.shouldUseNodeEngine('tool')) return { ok: false, error: '程序文件不完整（缺少运行组件），请重新安装或校验程序文件' };
+    const mod = this._toolSteps();
+    if (!mod) return { ok: false, error: '程序文件不完整（缺少处理组件），请重新安装或校验程序文件' };
+    const s = spec || {};
+    const isCanvas = String(s.mode || 'steps') === 'canvas';
+
+    // ① 步骤：仅后处理需要（画布合成自带一套参数，不走步骤清单）
+    let stepIds = [];
+    if (!isCanvas) {
+      const raw = Array.isArray(s.stepIds) ? s.stepIds.map(String).filter(Boolean) : [];
+      const unknown = raw.filter((id) => !mod.getStep(id));
+      if (unknown.length) return { ok: false, error: '未知的处理步骤：' + unknown.join('、') };
+      stepIds = mod.listSteps().map((x) => x.id).filter((id) => raw.indexOf(id) >= 0);  // 固定位次
+      if (!stepIds.length) return { ok: false, error: '请至少勾选一个处理步骤' };
+    }
+
+    // ② 输入：显式文件清单优先，否则扫描目录
+    const files = (Array.isArray(s.files) ? s.files : [])
+      .map(String)
+      .filter((p) => { try { return p && fs.existsSync(p) && fs.statSync(p).isFile(); } catch (e) { return false; } });
+    const root = String(s.root || '').trim();
+    let rootOk = false;
+    try { rootOk = !!root && fs.existsSync(root) && fs.statSync(root).isDirectory(); } catch (e) { rootOk = false; }
+    if (!files.length && !rootOk) return { ok: false, error: '请选择要处理的目录或视频文件' };
+
+    // ③ 输出策略
+    const out = s.output || {};
+    const mode = out.mode === 'directory' ? 'directory' : 'overwrite';
+    const dir = String(out.dir || '').trim();
+    if (mode === 'directory' && !dir) return { ok: false, error: '请选择输出目录' };
+    if (mode === 'directory' && rootOk && path.resolve(dir) === path.resolve(root)) {
+      // 允许（outplan 会自动新建子目录，不会静默覆盖），仅此处不做拦截
+    }
+    const output = {
+      mode,
+      dir: mode === 'directory' ? path.resolve(dir) : '',
+      nameMode: out.nameMode === 'suffix' ? 'suffix' : 'keep',
+      suffix: String(out.suffix == null ? '_处理' : out.suffix),
+      onConflict: ['overwrite', 'skip'].indexOf(out.onConflict) >= 0 ? out.onConflict : 'index',
+      backup: out.backup === true,
+      backupDir: String(out.backupDir || '').trim() ? path.resolve(String(out.backupDir).trim()) : '',
+      // 设置里的「默认备份目录」：任务未单独指定备份目录时，引擎用它作为备份根
+      defaultBackupDir: String(this.config.backup_dir || '').trim() ? path.resolve(String(this.config.backup_dir).trim()) : '',
+    };
+
+    // ④ 建任务（env 传参，与三个成片模块同一机制）
+    const scope = files.length ? (files.length + ' 个文件') : path.basename(root);
+    const toolName = isCanvas ? '画布合成' : '视频处理';
+    const title = isCanvas
+      ? ('画布合成 · ' + scope)
+      : ('视频处理 · ' + stepIds.map((id) => (mod.getStep(id) || {}).title || id).join(' + ') + ' · ' + scope);
+    const toolSpec = isCanvas
+      ? {
+        mode: 'canvas',
+        params: { canvas: (s.params && s.params.canvas) || {} },
+        root, recursive: s.recursive !== false, files, output, toolName,
+      }
+      : { stepIds, params: s.params || {}, root, recursive: s.recursive !== false, files, output, toolName };
+
+    // ★ 画布合成的「每个背景各出一批」：**在引擎内**按 内容 × 背景 逐条出片（一个任务），
+    //   不在这里拆成 N 个任务（否则一个背景一条任务记录）；进度按产物数走。
+    //   ⚠ 清单长度 >1 时才置 eachBackground 并保留 bgList（引擎靠它枚举背景），其余情况剔掉。
+    const cvParams = (toolSpec.params && toolSpec.params.canvas) || {};
+    const bgList = (isCanvas && Array.isArray(cvParams.bgList))
+      ? cvParams.bgList.map(String).filter((p) => {
+        try { return !!p && fs.existsSync(p) && fs.statSync(p).isFile(); } catch (e) { return false; }
+      })
+      : [];
+    if (isCanvas) {
+      const cvs = Object.assign({}, cvParams);
+      if (bgList.length > 1) { cvs.eachBackground = true; cvs.bgList = bgList; }
+      else delete cvs.bgList;
+      toolSpec.params = Object.assign({}, toolSpec.params, { canvas: cvs });
+    }
+    const env = {
+      TOOL_SPEC: JSON.stringify(toolSpec),
+      VL_STORAGE_DIR: this.storageDir || '',
+    };
+    const task = this._createTask('tool', title, env, files.length ? files[0] : root);
+    // 进度总量按**产物数**：批量时是 内容 × 背景，否则按内容数
+    task.progress.total = (bgList.length > 1) ? (files.length * bgList.length) : (files.length || 0);
+    this._enqueueTask(task);
+    // ★ 完整技术快照 → 既有 app-<date>.log（不另开文件种类）：env 会随任务记录一起被清除，而任务要「按同样参数重跑 / 还原」时，这份快照是唯一凭据。
+    try { this._lg('RUN', 'tool.spec', '任务参数快照 · ' + title, { spec: this._taskSpecText(task, title, toolSpec, isCanvas ? s : null) }); } catch (e3) {}
+    this._lg('RUN', 'tool.start', toolName + '任务 · ' + title,
+      { id: task.id, mode: isCanvas ? 'canvas' : 'steps', stepIds, files: files.length, output, 背景数: bgList.length });
+    // ⚠ 仍返回 taskIds（单元素）：前端沿用同一套"逐条告知"的分支逻辑，不必分两路
+    return { ok: true, taskId: task.id, taskIds: [task.id] };
+  }
+
+      /**
+   * 组装「可完全还原」的任务参数快照文本（作为字段写入 app-<date>.log）。
+   * 须逐项列出输入路径与规格、参数数值与来源、输出策略，确保事后能完整还原当时参数。
+   */
+  /**
+   * 结果快照 —— 任务终态时追加进同一份 app-<date>.log。
+   *
+   * 提交侧快照只记录「打算做什么」，这份补上实际发生了什么：成败条数、失败明细、耗时。
+   */
+  _taskResultText(task, status) {
+    const L = [];
+    const push = (k, v) => L.push('  ' + String(k).padEnd(14, ' ') + String(v == null ? '' : v));
+    const t = task || {};
+    const P = t.progress || {};
+    const now = new Date();
+    const p2 = (n) => (n < 10 ? '0' : '') + n;
+    L.push('【结果】');
+    push('终态', ({ done: '完成', error: '失败', stopped: '已停止', interrupted: '已中断', paused: '暂停' }[status] || String(status || '')));
+    push('结束时间', now.getFullYear() + '-' + p2(now.getMonth() + 1) + '-' + p2(now.getDate())
+      + ' ' + p2(now.getHours()) + ':' + p2(now.getMinutes()) + ':' + p2(now.getSeconds()) + '（本地时区）');
+    // 耗时：优先用任务自带的时间戳，缺失时用"现在"兜底（不编造，如实标注）
+    try {
+      const st = Number(t.startedAt) || Number(t.createdAt) || 0;
+      if (st > 0) {
+        const sec = Math.max(0, Math.round((Date.now() - st) / 1000));
+        push('耗时', Math.floor(sec / 60) + ' 分 ' + (sec % 60) + ' 秒');
+      } else { push('耗时', '（任务未记录起始时间）'); }
+    } catch (e) { push('耗时', '（读取失败）'); }
+    // 产出规模：这是"做了什么、做出来多少"的直接答案
+    push('产出', '成功 ' + (Number(P.current) || 0) + ' / 目标 ' + (Number(P.total) || 0) + ' 条');
+    if (P.groupCount) push('分组数', P.groupCount);
+    if (P.clip) push('成片时长', Math.round(Number(P.clip) * 100) / 100 + ' 秒');
+    if (t.failReason) { L.push(''); L.push('【失败原因】'); L.push('  ' + String(t.failReason)); }
+    // 失败清单：逐条列出 —— 还原/续跑全靠它（只给 log 时必须能知道是哪几条出了问题）
+    const fv = Array.isArray(t.failedVideos) ? t.failedVideos : [];
+    const fi = Array.isArray(t.failedIndices) ? t.failedIndices : [];
+    if (fv.length || fi.length) {
+      L.push('');
+      L.push('【失败明细】');
+      if (fi.length) push('失败序号', fi.slice(0, 40).join(', ') + (fi.length > 40 ? ' …共 ' + fi.length + ' 个' : ''));
+      if (fv.length) {
+        push('失败成片', fv.length + ' 条');
+        fv.slice(0, 20).forEach((x, i) => L.push('    ' + (i + 1) + '. ' + x));
+        if (fv.length > 20) L.push('    …其余 ' + (fv.length - 20) + ' 条');
+      }
+    }
+    return L.join('\n');
+  }
+
+  /**
+   * 快照的「任务头」—— 四类任务共用。
+   *
+   * 三条信息（程序版本 / FFmpeg 路径 / 系统环境）是「只给 log 也能排查」的底座；
+   * 抽出来是为了避免两条快照路径（spec 型 / env 型）各自维护一份而漂移。
+   */
+  _taskSpecHead(push, task, title) {
+    const now = new Date();
+    const p2 = (n) => (n < 10 ? '0' : '') + n;
+    const localTime = now.getFullYear() + '-' + p2(now.getMonth() + 1) + '-' + p2(now.getDate())
+      + ' ' + p2(now.getHours()) + ':' + p2(now.getMinutes()) + ':' + p2(now.getSeconds());
+    push('任务 id', task && task.id);
+    push('类型', String(task && task.type || ''));
+    push('标题', title);
+    push('提交时间', localTime + '（本地时区）');
+    push('工作路径', this.root || '');
+    // 批量展开的任务（画布"每个背景各出一批"）：标明它是这一批里的第几个、用的是哪个背景 ——否则 log 里只有 N 份看起来雷同的快照，无从判断哪个任务是哪一批、对应哪张背景图。
+    if (task && task.bgBatch) {
+      push('同批展开', '共 ' + task.bgBatch.total + ' 个任务，本任务固定使用背景「' + task.bgBatch.bg + '」');
+      if (task.bgBatch.outNote) push('输出落点', task.bgBatch.outNote);
+    }
+    try {
+      const pkg = require(path.join(__dirname, 'package.json'));
+      push('程序版本', String(pkg.version || '') + (pkg.build && pkg.build.appId ? '  (' + pkg.build.appId + ')' : ''));
+    } catch (e) { push('程序版本', '（读取失败）'); }
+    try {
+      const bin = this._resolveFfmpegBin();
+      push('FFmpeg', String((bin && bin.ffmpegPath) || '（未就绪）'));
+      push('FFprobe', String((bin && bin.ffprobePath) || '（未就绪）'));
+    } catch (e) { push('FFmpeg', '（读取异常）'); }
+    try {
+      push('系统', os.type() + ' ' + os.release() + ' · ' + os.arch() + ' · CPU ' + os.cpus().length + ' 核 · 内存 '
+        + Math.round(os.totalmem() / 1024 / 1024 / 1024) + ' GB');
+    } catch (e) { /* 环境信息取不到不影响快照 */ }
+  }
+
+  /**
+   * 完整技术快照（env 型任务：批量拼接 / 遮罩叠加 / 复刻）。
+   *
+   * 与人话摘要的分工：这份是"给机器与深度排查"的 —— 逐项列出 env 的**全部**业务字段
+   * 与原始 JSON，不做归纳、不省略；用户只打包 log 文件夹时，这份必须能独立还原现场。
+   */
+  _taskSpecTextEnv(task, title, env) {
+    const L = [];
+    const push = (k, v) => L.push('  ' + String(k).padEnd(18, ' ') + String(v == null ? '' : v));
+    const E = env || {};
+    const has = (k) => E[k] !== undefined && E[k] !== null && String(E[k]) !== '';
+    const split = (k) => String(E[k] || '').split(';').filter(Boolean);
+    L.push('【任务】');
+    this._taskSpecHead(push, task, title);
+
+    // 输入清单：路径类字段逐个列出（不写"N 个"，否则无法还原喂了哪些文件）
+    L.push('');
+    L.push('【输入】');
+    if (has('REPLICA_TXT')) push('配置/日志', E.REPLICA_TXT);
+    for (const [label, key] of [['原片目录', 'MASK_RAW_DIRS'], ['遮罩目录', 'MASK_MASK_DIRS']]) {
+      const arr = split(key);
+      if (arr.length) { L.push('  ' + label + '（' + arr.length + '）'); arr.forEach((x, i) => L.push('    ' + (i + 1) + '. ' + x)); }
+    }
+    for (const [label, key] of [['勾选原片', 'MASK_VIDEOS'], ['遮罩文件', 'MASK_MASKS']]) {
+      const arr = split(key);
+      if (arr.length) { L.push('  ' + label + '（' + arr.length + '）'); arr.forEach((x, i) => L.push('    ' + (i + 1) + '. ' + x)); }
+    }
+    if (has('MASK_WATERMARK')) push('水印文件', E.MASK_WATERMARK);
+    if (!has('REPLICA_TXT') && !has('MASK_RAW_DIRS') && !has('MASK_MASKS')) L.push('  （无外部输入文件，见下方参数）');
+
+    // 参数：env 的业务字段逐项列出（跳过内部/缓存类键）
+    L.push('');
+    L.push('【参数】');
+    const SKIP = /^(VL_|CACHE_|BATCH_SUBMIT_TS$|REPLICA_SUBMIT_TS$|MASK_SUBMIT_TS$|BATCH_ONLY_NAMES$|MASK_ONLY_NAMES$|REPLICA_ONLY_NAMES$)/;
+    const CN = {
+      BATCH_COUNT: '成片数', BATCH_GROUP: '分组数', BATCH_PRODUCER: '创作者名', BATCH_SUFFIX_MARK: '后缀标记',
+      BATCH_MAX_DURATION: '成片时长上限(秒)', BATCH_SPEED_LIMIT: '加速阈值', BATCH_MAX_RETRY: '重试次数',
+      BATCH_TXT_PREFIX: '提取前缀', MASK_MODE: '遮罩模式(1遮罩+水印/2仅水印/3仅遮罩)', MASK_PROJECT_NAME: '项目名',
+      MASK_SUFFIX_MARK: '后缀标记', MASK_OUTPUT_DIR: '输出目录', MASK_LOG_DIR: '片段日志目录',
+      MASK_WATERMARK_ALPHA: '水印透明度', REPLICA_MODE: '复刻模式(1原片/2去重)', REPLICA_DEDUP_MIN: '重复度下限',
+      REPLICA_DEDUP_MAX: '重复度上限', REPLICA_DEDUP_MIN_ON: '下限启用', REPLICA_DEDUP_MAX_ON: '上限启用',
+      REPLICA_ONLY_NAME: '只复刻该成片',
+    };
+    Object.keys(E).sort().forEach((k) => {
+      if (SKIP.test(k)) return;
+      if (!has(k)) return;
+      push(k + (CN[k] ? '（' + CN[k] + '）' : ''), E[k]);
+    });
+
+    // 流程：把"这批任务实际会怎么跑"写清楚，使日志能自证执行路径
+    L.push('');
+    L.push('【流程】');
+    // ⚠ 按 task.type 判，不能靠 env 字段猜（批量 env 里也有 REPLICA_TXT）
+    const isMask = String(task && task.type) === 'mask' || (!(task && task.type) && has('MASK_RAW_DIRS'));
+    const isReplica = String(task && task.type) === 'replica';
+    if (isMask) {
+      L.push('  1. 扫描原片目录与遮罩目录，得到原片集与遮罩集');
+      L.push('  2. 两两组合（原片 × 遮罩）逐条叠加' + (String(E.MASK_MODE) === '3' ? '（仅遮罩，不加水印）' : ''));
+      if (String(E.MASK_MODE) === '1' || String(E.MASK_MODE) === '2') L.push('  3. 叠加水印' + (has('MASK_WATERMARK_ALPHA') ? '（透明度 ' + E.MASK_WATERMARK_ALPHA + '）' : ''));
+      L.push('  4. 输出 mp4 到 ' + (E.MASK_OUTPUT_DIR || '（见参数）') + '，并写「使用片段」日志');
+    } else if (isReplica) {
+      L.push('  1. 读取源日志 ' + E.REPLICA_TXT + ' 中的片段清单');
+      L.push('  2. ' + (String(E.REPLICA_MODE) === '2' ? '按重复度区间重新替换片段（去重模式）' : '按原片顺序复刻（原片模式）'));
+      L.push('  3. 按时长上限与加速阈值拼接，失败按重试次数重试');
+      L.push('  4. 按原命名规则写出成片');
+    } else {
+      L.push('  1. 读取配置 ' + (E.REPLICA_TXT || '（见参数）') + ' 的片段清单');
+      L.push('  2. 按分组数抽取片段，拼到时长上限' + (has('BATCH_SPEED_LIMIT') ? '（加速阈值 ' + E.BATCH_SPEED_LIMIT + '）' : ''));
+      L.push('  3. 按创作者名与后缀标记生成成片名');
+      L.push('  4. 写出成片与匹配日志');
+    }
+    if (has('BATCH_ONLY_NAMES') || has('MASK_ONLY_NAMES') || has('REPLICA_ONLY_NAMES')) {
+      const names = split(has('MASK_ONLY_NAMES') ? 'MASK_ONLY_NAMES' : (has('REPLICA_ONLY_NAMES') ? 'REPLICA_ONLY_NAMES' : 'BATCH_ONLY_NAMES'));
+      L.push('  ★ 本次为**续跑**：只处理下列 ' + names.length + ' 条，其余已完成的不重做');
+      names.slice(0, 20).forEach((x, i) => L.push('    ' + (i + 1) + '. ' + x));
+      if (names.length > 20) L.push('    …其余 ' + (names.length - 20) + ' 条');
+    }
+
+    // 原始 env：完整不截断（排查时靠它拿到任何未归纳的字段）
+    L.push('');
+    L.push('【原始 env】');
+    let raw = '';
+    try { raw = JSON.stringify(E, null, 2); } catch (e) { raw = '（序列化失败）'; }
+    L.push(raw.split('\n').map((s) => '  ' + s).join('\n'));
+    return L.join('\n');
+  }
+
+  _taskSpecText(task, title, spec, rawSpec) {
+    const L = [];
+    const push = (k, v) => L.push('  ' + String(k).padEnd(14, ' ') + String(v == null ? '' : v));
+    L.push('【任务】');
+    this._taskSpecHead(push, task, title);
+    // 输入清单：逐个列规格。
+    // ⚠ 用**同步** ffprobe 而不是引擎的 probeDetail —— 后者是 Promise，而快照必须在建任务的
+    //   同一拍写定：异步补写会与任务记录的生命周期错位。
+    const probe = (p) => {
+      try {
+        const bin = this._resolveFfmpegBin();
+        if (!bin || !bin.ffprobePath) return '（无 ffprobe，未探测）';
+        const { execFileSync } = require('child_process');   // 局部引入：backend 一贯不在顶层引 child_process
+        const out = execFileSync(bin.ffprobePath, [
+          '-v', 'error', '-print_format', 'json', '-show_streams', '-show_format', p,
+        ], { timeout: 15000, encoding: 'utf8', windowsHide: true });
+        const j = JSON.parse(out || '{}');
+        const v = (j.streams || []).find((x) => x.codec_type === 'video') || {};
+        const aud = (j.streams || []).filter((x) => x.codec_type === 'audio');
+        const dur = Number((j.format && j.format.duration) || v.duration || 0);
+        const w = Number(v.width || 0), h = Number(v.height || 0);
+        const parts = [];
+        parts.push(w && h ? w + '×' + h : '（无视频流）');
+        parts.push(dur > 0 ? (Math.round(dur * 100) / 100) + 's' : '静态（无时长）');
+        parts.push(aud.length ? '有音轨' : '无音轨');
+        if (v.pix_fmt) parts.push(v.pix_fmt);
+        return parts.join(' · ');
+      } catch (e) { return '（探测失败）'; }
+    };
+    L.push('');
+    L.push('【输入】');
+    const f = (spec && spec.files) || [];
+    if (f.length) f.forEach((p, i) => L.push('  ' + String(i + 1) + '. ' + p + '   ' + probe(p)));
+    else L.push('  （目录扫描）' + (spec && spec.root ? spec.root : '') + (spec && spec.recursive ? '  含子目录' : ''));
+    // 参数：逐项列数值 + 来源标注
+    L.push('');
+    L.push('【参数】');
+    const cv = (spec && spec.params && spec.params.canvas) || {};
+    // 参数来源按引擎 DEFAULTS 逐项比对判定，不用前端上报的 touched（漏传/版本不匹配会把改过的值标成默认值，比不标更误导航查）。
+    let CV_DEFAULTS = {};
+    try { CV_DEFAULTS = require(path.join(this.enginesDir, 'tools', 'canvas-plan.js')).DEFAULTS || {}; } catch (e) { CV_DEFAULTS = {}; }
+    const presetName = rawSpec && rawSpec.params && rawSpec.params.presetName;
+    // 参数来源判定 + **当时生效的默认值**一并留档：默认值会随版本变化，写死当时数值，新旧版本比对才不失真。
+    const srcOf = (k, v) => {
+      if (!(k in CV_DEFAULTS)) return '界面设置（该键无引擎默认值）';
+      const dft = CV_DEFAULTS[k];
+      const same = String(dft) === String(v);
+      if (same) return (presetName ? '预设「' + presetName + '」或默认值' : '默认值') + '｜当时默认 ' + String(dft);
+      return '界面改过｜当时默认 ' + String(dft);
+    };
+    const fmt = (obj, skip) => Object.keys(obj || {}).sort().forEach((k) => {
+      if (skip && skip.indexOf(k) >= 0) return;
+      L.push('  ' + k.padEnd(16) + String(obj[k]) + '   ← ' + srcOf(k, obj[k]));
+    });
+    // ⚠ 以引擎 DEFAULTS 为基准**补全**：cv 里没出现的键也照样列出（值即引擎默认），否则「没动过这一项」在快照里是空白，答不出参数当时到底是多少、无法解释成片。
+    const cvMerged = Object.assign({}, CV_DEFAULTS, cv);
+    if (spec && spec.mode === 'canvas') { L.push('  （画布合成参数）'); fmt(cvMerged, ['touched', 'presetName']); }
+    else if (spec && Array.isArray(spec.stepIds) && spec.stepIds.length) { L.push('  处理步骤  ' + spec.stepIds.join(' → ')); }
+    // 输出策略
+    L.push('');
+    L.push('【输出】');
+    const o = (spec && spec.output) || {};
+    L.push('  模式            ' + (o.mode === 'directory' ? '按目录' : '覆盖原文件'));
+    L.push('  目录            ' + (o.dir || '（与输入同目录）'));
+    L.push('  命名            ' + (o.nameMode === 'suffix' ? '加后缀 ' + (o.suffix || '') : '保持原名'));
+    L.push('  冲突            ' + ({ overwrite: '覆盖', skip: '跳过已有', index: '加序号' }[o.onConflict] || o.onConflict));
+    L.push('  备份            ' + (o.backup ? '开' : '关') + (o.backup ? '  → ' + (o.backupDir || o.defaultBackupDir || '默认目录') : ''));
+    L.push('');
+    L.push('【原始入参】' + (spec && spec.mode === 'canvas' ? 'params.canvas' : 'params'));
+    let raw = '';
+    try { raw = JSON.stringify((spec && spec.params) || {}, null, 2); } catch (e) { raw = '（序列化失败）'; }
+    L.push(raw.split('\n').map((s) => '  ' + s).join('\n'));
+    return L.join('\n');
+  }
+
+  /**
+   * 工具任务「重新执行」：按同样参数重跑一遍 —— **不删除任何文件**。
+   * 与 rerunTask 的本质区别：工具任务的产物就是被覆盖的源视频，没有第二份副本，
+   * 任何"先删旧产物"的动作都可能删掉唯一的那份视频。
+   */
+  rerunToolTask(id) {
+    const envG = this._envGuard('rerun_tool');
+    if (envG) return envG;
+    const t = this.tasks.get(id);
+    if (!t) return { ok: false, error: '任务不存在' };
+    if (t.type !== 'tool') return { ok: false, error: '该任务不是视频处理任务' };
+    if (t.status === 'running' || t.status === 'queued' || t.status === 'paused') {
+      return { ok: false, error: '进行中的任务不能重新执行' };
+    }
+    const marker = this._loadMarker(t);
+    const env = Object.assign({}, (marker && marker.env) || t.env || {});
+    if (!env.TOOL_SPEC) return { ok: false, error: '原任务缺少处理参数，无法重新执行' };
+    const nt = this._createTask('tool', String(t.title || '视频处理'), env, '');
+    nt.progress.total = (t.progress && t.progress.total) || 0;
+    this._enqueueTask(nt);
+    this._lg('RUN', 'tool.rerun', '视频处理 · 重新执行（不删除任何文件）· ' + String(t.title || '').slice(0, 50),
+      { from: id, to: nt.id });
+    return { ok: true, taskId: nt.id };
+  }
+
+  runBatch(filePath, count, group) {
+    const envG = this._envGuard('run_batch');
+    if (envG) return envG;
+    if (!this.shouldUseNodeEngine('batch')) return { ok: false, error: '程序文件不完整（缺少运行组件），请重新安装或校验程序文件' };
+    const notSet = this._settingsError('batch');
+    if (notSet.length) return { ok: false, error: '批量拼接参数未设置：' + notSet.join('、') + '，请到 设置-批量拼接 中配置后再启动' };
+    const b = this.config.batch || {};
+    const env = Object.assign({ REPLICA_TXT: path.resolve(filePath) }, this._cacheEnvBase());
+    Object.assign(env, {
+      BATCH_MAX_DURATION: String(b.max_duration),
+      BATCH_MAX_RETRY: String(b.max_retry),
+      BATCH_SPEED_LIMIT: String(b.speed_limit),
+      BATCH_TXT_PREFIX: (Array.isArray(b.txt_prefix) ? b.txt_prefix : String(b.txt_prefix == null ? '' : b.txt_prefix)).map(String).filter((x) => String(x).trim() !== '').join(';'),
+      BATCH_PRODUCER: String(b.producer).trim(),
+      BATCH_SUFFIX_MARK: String(b.suffix_mark == null ? '' : b.suffix_mark).trim(),
+    });
+    const countStr = String(count).trim();
+    if (/^\d+$/.test(countStr) && parseInt(countStr, 10) > 0) env.BATCH_COUNT = countStr;
+    const groupStr = String(group).trim();
+    env.BATCH_GROUP = /^\d+$/.test(groupStr) && parseInt(groupStr, 10) > 0 ? groupStr : '0';
+    // 任务提交时刻：排队跨天运行时，成片命名/日志/输出目录按提交日期而非运行日期
+    env.BATCH_SUBMIT_TS = String(Date.now());
+    env.REPLICA_NO_WAIT = '1';
+    const task = this._enqueueTask(this._createTask('batch', this._taskTitle(filePath), env, filePath));
+    // 排队即预填预计成片数/分组数（配置底部输入），运行后由输出解析覆写 total
+    const preTotal = parseInt(String(count), 10) || 0;
+    const preGroup = parseInt(String(group), 10) || 0;
+    if (preTotal > 0) task.progress.total = preTotal;
+    if (preGroup > 0) task.progress.groupCount = preGroup;
+    return { ok: true, taskId: task.id };
+  }
+
+  runReplica(logPath, mode = 1, entryVideo, opts) {
+    const envG = this._envGuard('run_replica');
+    if (envG) return envG;
+    if (!this.shouldUseNodeEngine('replica')) return { ok: false, error: '程序文件不完整（缺少运行组件），请重新安装或校验程序文件' };
+    const notSet = this._settingsError('replica');
+    if (notSet.length) return { ok: false, error: '视频复刻参数未设置：' + notSet.join('、') + '，请到 设置-视频复刻 中配置后再启动' };
+    const r = this.config.replica || {};
+    // 全局参数（成片时长上限 / 加速阈值 / 每档轮数）与批量拼接共用同一套 —— 复刻不单独设置
+    const b = this.config.batch || {};
+    const o = opts || {};
+    const num = (v, dft) => { const n = parseFloat(v); return Number.isFinite(n) && n > 0 ? n : dft; };
+    const boolOn = (v, dft) => (v === undefined || v === null) ? (dft !== false) : (v === true);
+    const env = Object.assign({
+      REPLICA_TXT: path.resolve(logPath),
+      REPLICA_MODE: String(mode) === '2' ? '2' : '1',
+      REPLICA_NO_WAIT: '1',
+      // 全局参数（与批量拼接共用同一套，复刻不单独设置）：成片时长上限 / 加速阈值 / 每档轮数
+      BATCH_MAX_DURATION: String(b.max_duration),
+      BATCH_SPEED_LIMIT: String(b.speed_limit),
+      BATCH_MAX_RETRY: String(b.max_retry),
+      // 重复度区间：本次任务弹窗传入优先，未传则用设置里的默认值与默认启用状态（下限=至少替换到的占比；上限=尽量避免超过，超过会被平台判为全新视频）
+      REPLICA_DEDUP_RATIO: String(num(o.dedupRatio, r.dedup_ratio)),
+      REPLICA_DEDUP_MIN: String(num(o.dedupRatio, r.dedup_ratio)),
+      REPLICA_DEDUP_MAX: String(num(o.dedupRatioMax, r.dedup_ratio_max)),
+      REPLICA_DEDUP_MIN_ON: boolOn(o.dedupRatioOn, r.dedup_ratio_on) ? '1' : '0',
+      REPLICA_DEDUP_MAX_ON: boolOn(o.dedupRatioMaxOn, r.dedup_ratio_max_on) ? '1' : '0',
+    }, this._cacheEnvBase());
+    // 任务提交时刻：排队跨天运行时，复刻命名/日志/输出目录按提交日期而非运行日期
+    env.REPLICA_SUBMIT_TS = String(Date.now());
+    // 仅复刻日志中的单个指定成片（右侧「复刻」按钮/批量选择传入成片名）
+    if (entryVideo) env.REPLICA_ONLY_NAME = String(entryVideo).trim();
+    const modeLabel = String(mode) === '2' ? '去重' : '原片';
+    const task = this._enqueueTask(this._createTask('replica', this._replicaTaskTitle(logPath, modeLabel), env, logPath));
+    return { ok: true, taskId: task.id };
+  }
+
+  // 断点续跑：失败/中断/停止的复刻任务，仅续跑失败/未完成的成片，不删除已成功产物。
+  // 从 failedVideos 或日志中提取失败成片名，构造 REPLICA_ONLY_NAMES 新任务。
+  async continueReplica(id, opts) {
+    const envG = this._envGuard('continue_task');
+    if (envG) return envG;
+    const t = this.tasks.get(id);
+    if (!t) return { ok: false, error: '任务不存在' };
+    const softPaused = t._softPaused === true && t.status === 'paused';
+    if (!softPaused && t.status !== 'error' && t.status !== 'interrupted' && t.status !== 'stopped') {
+      return { ok: false, error: '仅失败/中断/停止的任务可继续制作' };
+    }
+    // 续跑入口（replica / batch 共用；mask 走 continueMask）：
+    // batch 的成片名含日期前缀、输出目录含提交时刻，故续跑必须复用原环境变量（尤其 BATCH_SUBMIT_TS），
+    // 否则续跑产物会落到新日期目录、名字前缀也变，无法与首次归为同一批
+    if (t.type !== 'replica' && t.type !== 'batch') return { ok: false, error: '仅复刻/批量任务支持继续制作' };
+    // 收集失败成片名：优先 failedVideos（运行时逐条记录），回退日志行解析
+    const failNames = new Set();
+    if (Array.isArray(t.failedVideos)) {
+      for (const f of t.failedVideos) {
+        const nm = (f && f.name) ? String(f.name).trim() : '';
+        if (!nm) continue;
+        // 「第N个」是「命名前失败」的【序号占位】（由失败成片序号协议行写入 failedVideos），
+        // 不是真实成片名 —— 必须归入 failedIndices 走序号补做，**绝不能进「按成片名解析序号」通道**：
+        // 否则引擎会拿「第4个;第6个;…」去反解序号、必然失败（且提示自相矛盾）。
+        const pm = /^第(\d+)个$/.exec(nm);
+        if (pm) {
+          const n = parseInt(pm[1], 10);
+          if (Number.isInteger(n) && n > 0) {
+            t.failedIndices = t.failedIndices || [];
+            if (t.failedIndices.indexOf(n) < 0) t.failedIndices.push(n);
+          }
+          continue;
+        }
+        failNames.add(nm);
+      }
+    }
+    if (!failNames.size) {
+      for (const ln of (t.log || [])) {
+        const m = /❌ 失败成片：([^|]+)/.exec(String(ln));
+        if (m) failNames.add(String(m[1]).trim());
+      }
+    }
+    // 如果没有失败记录，但已完成条目 < 总数，则尝试从 marker 推断未完成的条目
+    if (!failNames.size) {
+      const marker = this._loadMarker(t);
+      const doneVideos = (marker && Array.isArray(marker.videos) ? marker.videos : []);
+      if (doneVideos.length) {
+        // 路由 A（复刻）：源 TXT 本身就是成片名清单，减去已完成的即为未完成项
+        const srcEnv = t.env || {};
+        const srcPath = srcEnv.REPLICA_TXT ? String(srcEnv.REPLICA_TXT).trim() : '';
+        if (srcPath && fs.existsSync(srcPath)) {
+          try {
+            const srcLines = fs.readFileSync(srcPath, 'utf-8').split('\n').filter((l) => (l || '').trim());
+            const doneBases = new Set(doneVideos.map((v) => path.basename(v)));
+            for (const line of srcLines) {
+              const ln = line.trim();
+              if (ln.endsWith('.mp4') && !ln.includes('\\') && !ln.includes('/') && !doneBases.has(ln)) failNames.add(ln);
+            }
+          } catch (e) {}
+        }
+        // 路由 B（批量）：源 TXT 是素材配置而非成片名清单，路由 A 必然一无所获。
+        // 按「应有 total 片 − 已产出序号」反推缺失序号，再用已产出成片名作模板构造名字 ——
+        // 引擎只从名字里反解序号（parseOnlyNameIndex），不比对完整名，故模板 + 目标序号即足够。
+        if (!failNames.size && t.type === 'batch') {
+          const plannedTotal = (t.progress && t.progress.total) || 0;
+          // 序号反解与名字构造须与引擎的 parseOnlyNameIndex 同口径：末段 = 可选后缀标识
+          // （不含短横与数字）+ 序号 + 可选组后缀。既兼容「配置了后缀标识」的名字
+          // （...-A2A.mp4），也兼容漏掉分隔符产出的名字（...-resume2A.mp4）。
+          const idxOf = (n) => { const m = /-([^-\d]*)(\d+)([A-Z]?)\.mp4$/i.exec(String(n)); return m ? parseInt(m[2], 10) : 0; };
+          const doneIdx = new Set();
+          for (const v of doneVideos) { const i = idxOf(path.basename(String(v))); if (i > 0) doneIdx.add(i); }
+          // 成片目录里实际存在的文件也算已完成（标记可能未含最后一刻的产出）
+          const markerOutDir = marker && marker.batchOutDir ? String(marker.batchOutDir) : '';
+          if (markerOutDir && fs.existsSync(markerOutDir)) {
+            try { for (const f of fs.readdirSync(markerOutDir)) { const i = idxOf(f); if (i > 0) doneIdx.add(i); } } catch (e) {}
+          }
+          if (plannedTotal > 0 && doneIdx.size > 0) {
+            const sample = path.basename(String(doneVideos[0]));
+            // 捕获组顺序：$1 后缀标识 / $2 原序号 / $3 组后缀 —— 替换串只能用 $1 与 $3，用 $2 会把「原序号」当成组后缀拼进去（...-21.mp4）
+            const mkName = (i) => sample.replace(/-([^-\d]*)(\d+)([A-Z]?)\.mp4$/i, '-$1' + i + '$3.mp4');
+            for (let i = 1; i <= plannedTotal; i++) if (!doneIdx.has(i)) failNames.add(mkName(i));
+          }
+        }
+      }
+    }
+    // ③ 兜底：从**磁盘实际产物**反推待补序号。
+    //   中断/停止的任务本来就没有失败记录；失败序号也可能因引擎异常未落盘
+    //   （引擎在 thrStep 作用域崩溃 → failIndex 未执行 → 任务标为 error、失败记录为空 → 续跑只能整批重做）。
+    //   ⚠ 此处不得引用 `src`：它在本函数后面才声明（TDZ），会抛 "Cannot access 'src' before initialization"。
+    if (!failNames.size && t.type === 'batch') {
+    // 产物校验排进空闲队列后台跑
+      this._enqueueOutputPrune(t);
+      const missing = this._batchMissingIndices(t, '');
+      if (missing.length) {
+        t.failedIndices = missing.slice();                        // 走序号补做（最精确）
+        for (const n of missing) failNames.add('第' + n + '个');   // 兼容既有"按名收集"通道
+        try {
+          this._lg('RUN', 'resume.infer',
+            '续跑范围由磁盘产物反推 · 待补 ' + missing.length + ' 片 · ' + missing.slice(0, 12).join(',')
+            + (missing.length > 12 ? '…' : ''),
+            { id: t.id, total: Number((t.env || {}).BATCH_COUNT) || 0, missing: missing.slice(0, 40) });
+        } catch (e) {}
+      }
+    }
+    if (!failNames.size) {
+      this._lg('RUN', 'resume.fail',
+        '续跑中止 · 既无失败记录也无从标记反推 · ' + t.type + ' · ' + String(t.title || '').slice(0, 50),
+        { id: t.id, failedVideos: (t.failedVideos || []).length, logLines: (t.log || []).length });
+      return { ok: false, error: '没有发现需要续跑的成片，请检查任务日志' };
+    }
+    const namesArr = [...failNames].filter(Boolean);
+    // 构造续跑环境：复用原任务环境变量，仅追加过滤变量
+    const env = Object.assign({}, t.env || {});
+    let src = env.REPLICA_TXT ? String(env.REPLICA_TXT) : '';
+    if (!src) return { ok: false, error: '原任务缺少 TXT 配置，无法继续制作' };
+    // ⚠ 演练模式（opts.dryRun）：只算出「会补做哪些」，**不删原任务、不建任务、不入队**。
+    //   验证/诊断脚本一律用它 —— 本方法默认行为会真正启动引擎与 ffmpeg
+    //   （只读核对必须走 dryRun）。
+    if (opts && opts.dryRun) {
+      const idxDry = Array.isArray(t.failedIndices) ? t.failedIndices.filter((n) => Number.isInteger(n) && n > 0) : [];
+      const missDry = (!failNames.size && t.type === 'batch') ? this._batchMissingIndices(t, '') : [];
+      const willDo = (t.type === 'batch' && (idxDry.length || missDry.length))
+        ? (idxDry.length ? idxDry : missDry)
+        : null;
+      return {
+        ok: true, dryRun: true, type: t.type,
+        count: willDo ? willDo.length : [...failNames].filter(Boolean).length,
+        indices: willDo || undefined,
+        names: [...failNames].filter(Boolean).slice(0, 40),
+        env: this._envBrief(env),
+      };
+    }
+    // 续跑沿用原任务 id / 输出目录 / 快照 / 日志
+    this._markRunStop(t);
+    const task = t;
+    const batchTotal0 = Number((env || {}).BATCH_COUNT) || Number((t.progress || {}).batchTotal) || 0;
+    if (t.type === 'batch') {
+      // 配置 TXT 在首次运行时已被移入成片目录作为正本（引擎与 PS1 同语义），续跑必须按成片目录重定位，否则旧路径已失效 → 引擎报「配置文件不可用（可能已被移动、重命名或删除）」
+      const relocated = this._locateBatchConfig(src, t);
+      if (relocated) { src = relocated; env.REPLICA_TXT = relocated; }
+      // batch：只重做失败成片对应的「序号」，其余逻辑（命名/分组）仍按原始 BATCH_COUNT/BATCH_GROUP 计算；
+      // 提交时刻刻意不刷新 → 成片命名前缀、输出目录、拼接日志均与首次一致（续跑即补做同一批的缺片）。
+      // 显式指定原输出目录
+      try {
+        const realDir = (this._batchTaskOutDetail(t, true) || {}).outDir || '';
+        if (realDir && fs.existsSync(realDir)) env.BATCH_OUT_DIR = realDir;
+      } catch (e) {}
+      // 命名前的失败只能按序号补做：优先用 failedIndices（BATCH_ONLY_INDEX），没有序号时才退回按成片名过滤（BATCH_ONLY_NAMES）。
+      const idxArr = Array.isArray(t.failedIndices) ? t.failedIndices.filter((n) => Number.isInteger(n) && n > 0) : [];
+      if (idxArr.length) {
+        env.BATCH_ONLY_INDEX = idxArr.join(';');
+        delete env.BATCH_ONLY_NAMES;
+      } else {
+        env.BATCH_ONLY_NAMES = namesArr.join(';');
+      }
+    } else {
+      env.REPLICA_ONLY_NAMES = namesArr.join(';');
+      // 续写进原目录，不刷新提交时刻
+      try {
+        const realOut = String(t.outDir || '').trim();
+        if (realOut && fs.existsSync(realOut)) env.REPLICA_OUTPUT_DIR = realOut;
+      } catch (e) {}
+    }
+    // 本次补做数量与本批口径（前端用 batchBase / resumeIndices 展示「已有 X 片 · 本次补 Y 片」）
+    const onlyCnt = (t.type === 'batch' && env.BATCH_ONLY_INDEX)
+      ? String(env.BATCH_ONLY_INDEX).split(';').filter(Boolean).length
+      : namesArr.length;
+    const batchBase = t.type === 'batch' ? Math.max(0, batchTotal0 - onlyCnt) : 0;
+    t.env = env;
+    t.srcPath = src || t.srcPath;
+    t.status = 'queued';
+    t.paused = false;
+    t.endedAt = null;
+    t.failReason = '';
+    t.failedVideos = [];
+    t.progress = Object.assign({}, t.progress, {
+      current: batchBase || (t.progress || {}).current || 0,
+      total: batchTotal0 || onlyCnt,
+      batchTotal: batchTotal0 || 0,
+      batchBase: batchBase,
+    });
+    delete t.progress.resumeIndices;   // 序号清单只进后端日志，不进任务日志/持久化
+    this._enqueueTask(task);
+    this._lg('RUN', 'resume.create',
+      '继续制作 · ' + t.type + ' · 补做 ' + onlyCnt + ' 片 · 沿用原任务与目录'
+      + (t.type === 'batch' ? ' · 命名与输出目录同首次' : ''),
+      { id: t.id,
+        onlyVar: t.type === 'batch' ? (env.BATCH_ONLY_INDEX ? 'BATCH_ONLY_INDEX' : 'BATCH_ONLY_NAMES') : 'REPLICA_ONLY_NAMES',
+        only: namesArr.slice(0, 40),
+        env: this._envBrief(env) });
+    const realCount = onlyCnt;
+    return { ok: true, taskId: task.id, count: realCount };
+  }
+
+  // 批量任务续跑的配置重定位。
+  // 背景：配置正本在首次运行时被移入成片目录归档（引擎与 PS1 同语义），续跑沿用旧路径必然失效。
+  // 关键约束：成片名里含「配置所在目录名」，若直接改用归档路径，续跑产物名会多出一段目录名；
+  //   故必须先复制回原路径再以原路径运行（复制幂等，引擎读到后会再次移回归档位置）。
+  _batchMissingIndices(t, src) {
+    try {
+      const total = Number((t.env || {}).BATCH_COUNT) || 0;
+      if (!total) return [];
+      const detail = this._batchTaskOutDetail(t, true);
+      const dir = (detail && detail.outDir) || path.dirname(String(src || ''));
+      if (!dir) return [];
+      let names = [];
+      // 目录不存在 ⇒ 一个成片都没产出。此时**不该走续跑**（没有可"续"的东西，
+      // 整批重做才是对的），所以这里返回空数组让续跑自然中止 ——
+      // 界面据此只显示「重新开始」，不显示「继续制作」。
+      try { names = fs.readdirSync(dir); } catch (e) { return []; }
+      const done = new Set();
+      for (const f of names) {
+        // 临时产物不算完成（引擎先写 `*.mp4.tmp`、成功后原子改名，见 batch/index.js）：否则编码中途留下的半截文件会被当成"已完成"，该序号被永久跳过。
+        if (/\.tmp\.mp4$|\.mp4\.tmp$/i.test(f) || /\.bak$/i.test(f)) continue;
+        if (!VIDEO_EXTS.has(path.extname(f).toLowerCase())) continue;
+        const m = /-([^-\d]*)(\d+)([A-Z]?)$/.exec(path.basename(f, path.extname(f)));
+        if (m) { const n = parseInt(m[2], 10); if (n > 0) done.add(n); }
+      }
+      // 目录里一个**正式产物**都没有（首次运行 / 损坏产物刚被清理掉）→ 整批都要做。
+      // ⚠ 这里必须返回全集而不是空数组：否则「清理损坏产物之后反推为空」会让续跑彻底没有目标
+      //   （清了 3 个损坏文件后反推变成空，比不清理还糟）。
+      if (!done.size) {
+        const all = [];
+        for (let i = 1; i <= total; i++) all.push(i);
+        return all;
+      }
+      const missing = [];
+      for (let i = 1; i <= total; i++) if (!done.has(i)) missing.push(i);
+      return missing;
+    } catch (e) { return []; }
+  }
+
+  // 续跑前的产物校验与清理（清理可能存在的失败成片，如编码到一半损坏的）：
+  // 反推「还缺哪些序号」看的是文件在不在，而**半截文件也在** —— 不清理会把损坏成片当成已完成、永久跳过该序号。
+  // ⚠ 只在能明确判定损坏时才动文件：`*.mp4.tmp` 直接删；ffprobe 明确报损坏 → 改名留证；超时/启动失败/权限错误 → 一律不动。
+  // ⚠ opts.dryRun：只报告会怎么处理，绝不改文件（验证/诊断脚本一律用它）。
+
+  // 这批成片是否已经齐了（按目录里实际存在的序号去重计数，只认序号不认分组后缀）
+  _outputsComplete(task) {
+    try {
+      const detail = this._batchTaskOutDetail(task, true);
+      const dir = detail && detail.outDir;
+      if (!dir || !fs.existsSync(dir)) return false;
+      const total = Number((task.env || {}).BATCH_COUNT) || 0;
+      if (total <= 0) return false;
+      const seen = new Set();
+      for (const f of fs.readdirSync(dir)) {
+        const m = /-(\d+)[A-Z]?\.[A-Za-z0-9]+$/i.exec(f);
+        if (!m) continue;
+        const i = parseInt(m[1], 10);
+        if (i >= 1 && i <= total) seen.add(i);
+      }
+      return seen.size >= total;
+    } catch (e) { return false; }
+  }
+
+  // 续跑前产物体检入空闲队列
+  _enqueueOutputPrune(t) {
+    const id = t && t.id;
+    if (!id) return;
+    try {
+      this._verifyEnqueue('prune', id, async () => {
+        const cur = this.tasks.get(id);
+        if (!cur) return;
+        const out = await this._pruneBrokenOutputs(cur, {});
+        if (!out.broken.length) return;
+        // 序号明细只进后端日志
+        try {
+          this._lg('DEL', 'resume.prune.async',
+            '续跑后台校验 · 损坏成片 ' + out.broken.length + ' 个已移出（回收站可还原）· 下次「继续制作」自动补做',
+            { id: id, broken: out.broken.slice(0, 20).map((b) => b.name), checked: out.checked, skipped: out.skipped });
+        } catch (e) {}
+      });
+    } catch (e) {}
+  }
+
+  async _pruneBrokenOutputs(task, opts) {
+    const dryRun = !!(opts && opts.dryRun);
+    const out = { dir: '', checked: 0, broken: [], temps: [], skipped: 0 };
+    try {
+      const detail = this._batchTaskOutDetail(task, true);
+      const dir = detail && detail.outDir;
+      if (!dir) return out;
+      out.dir = dir;
+      let names = [];
+      try { names = fs.readdirSync(dir); } catch (e) { return out; }
+      // ① 临时/残缺命名：引擎的临时产物（`*.mp4.tmp`）**直接删除**（无保留价值）；其它可疑残留改名留证
+      const tempRe = /(\.tmp\.mp4$|\.tmp$|\.part$|\.ytdl$|\.temp$|^\d+-temp|temp-\d+)/i;
+      for (const f of names) {
+        if (!tempRe.test(f)) continue;
+        const p = path.join(dir, f);
+        // 仅引擎临时产物可永久删除：现行 `<随机>.tmp`（纯字母数字单段，tempNameFor 生成）
+        // + 历史形态 `*.tmp.mp4` / `*.mp4.tmp`；其它 .tmp（含点/横杠等非引擎命名）保守走改名留证
+        const tmpPath = (/(\.tmp\.mp4$|\.mp4\.tmp$)/i.test(f) || /^[0-9a-z]{6,}\.tmp$/i.test(f)) ? p : '';
+        try {
+          if (tmpPath) {
+            if (dryRun) out.temps.push(f + '(演练：将删除)');
+            else { fs.unlinkSync(tmpPath); out.temps.push(f + '(已删)'); }
+          } else { fs.renameSync(p, p + '.broken-' + Date.now() + '.bak'); out.temps.push(f); }
+        } catch (e) {}
+      }
+      // ② ffprobe 逐个校验（能读出正时长才算可播放）
+      const bin = this._resolveFfmpegBin();
+      const ffprobe = bin && bin.ffprobePath;
+      const vids = names.filter((f) => !/\.tmp\.mp4$|\.mp4\.tmp$/i.test(f) && !/\.bak$/i.test(f) && VIDEO_EXTS.has(path.extname(f).toLowerCase()));
+      if (!ffprobe || !vids.length) { out.checked = 0; return out; }
+      // 按修改时间倒序取最近若干个校验
+      // 逐个校验整目录会让「继续制作」在几百个成片时卡上几十秒。
+      const ranked = vids.map((f) => {
+        let m = 0;
+        try { m = fs.statSync(path.join(dir, f)).mtimeMs; } catch (e) {}
+        return { f, m };
+      }).sort((a, b) => b.m - a.m);
+      const targets = ranked.slice(0, PRUNE_PROBE_LIMIT).map((x) => x.f);
+      out.skipped = Math.max(0, vids.length - targets.length);
+      const probeOne = (file) => new Promise((resolve) => {
+        try {
+          require('child_process').execFile(ffprobe,
+            ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', path.join(dir, file)],
+            { windowsHide: true, timeout: 20000, maxBuffer: 1024 * 1024 },
+            (err, stdout, stderr) => {
+              const dur = parseFloat(String(stdout || '').trim());
+              if (!err && isFinite(dur) && dur > 0) return resolve({ state: 'ok' });
+              // 只有 ffprobe **确实跑起来并明确报错**时 stderr 才可信；超时/启动失败一律不下结论
+              const msg = String(stderr || (err && err.message) || '');
+              const conclusive = /moov atom not found|Invalid data found|could not find codec parameters/i.test(msg);
+              resolve({ state: conclusive ? 'broken' : 'unknown', msg: msg.slice(0, 200) });
+            });
+        } catch (e) { resolve({ state: 'unknown', msg: String((e && e.message) || e) }); }
+      });
+      // ffprobe 并发数
+      const probed = [];
+      for (let i = 0; i < targets.length; i += 4) {
+        const batch = targets.slice(i, i + 4);
+        const rs = await Promise.all(batch.map((f) => probeOne(f)));
+        for (let k = 0; k < batch.length; k++) probed.push({ f: batch[k], r: rs[k] });
+      }
+      for (const { f, r } of probed) {
+        out.checked++;
+        const fsp = fs.promises;
+        const p = path.join(dir, f);
+        let size = 0;
+        try { size = (await fsp.stat(p)).size; } catch (e) { continue; }
+        if (r.state === 'ok') continue;
+        if (r.state === 'unknown') { out.skipped++; continue; }   // 无法判定 → 绝不替用户下结论
+        // 明确损坏：移出成片目录（该序号回到未完成）。走集中式 soft 级，失败自动落数据目录暂存区。
+        let recycled = false;
+        if (dryRun) {
+          out.broken.push({ name: f, size, recycled: false, dryRun: true });
+        } else {
+          try { recycled = !!this._recycleFile(p, '续跑前校验判定损坏成片：' + f); } catch (e) { recycled = false; }
+          out.broken.push({ name: f, size, recycled });
+        }
+        // 让路：逐个校验本身就慢，期间把事件循环交还出去
+        await new Promise((r2) => setImmediate(r2));
+      }
+      if (out.broken.length || out.temps.length || out.skipped) {
+        try {
+          this._lg('DEL', 'resume.prune',
+            '续跑前产物校验 · 损坏 ' + out.broken.length + ' 个（已移出成片目录·回收站可还原）/ 临时 ' + out.temps.length + ' 个（已删）'
+            + ' / 无法判定 ' + out.skipped + ' 个（未改动）· 共校验 ' + out.checked,
+            { dir, broken: out.broken.slice(0, 10), temps: out.temps.slice(0, 10), skipped: out.skipped, checked: out.checked });
+        } catch (e) {}
+      }
+    } catch (e) {}
+    return out;
+  }
+
+  _locateBatchConfig(oldPath, t) {
+    const cur = String(oldPath || '');
+    if (!cur) return '';
+    const probe = Object.assign({}, t, { env: Object.assign({}, (t && t.env) || {}, { REPLICA_TXT: cur }) });
+    return this._ensureTaskTxt(probe);
+  }
+
+  // 遮罩叠加任务：payload 来自主窗口遮罩叠加模式（mode/rawDirs/videos/maskDirs/watermark/outputDir），
+  // 经环境变量 MASK_* 驱动内置引擎的 mask 模块；无设置页配置组，参数随任务提交
+  runMask(p) {
+    const envG = this._envGuard('run_mask');
+    if (envG) return envG;
+    if (!this.shouldUseNodeEngine('mask')) return { ok: false, error: '程序文件不完整（缺少运行组件），请重新安装或校验程序文件' };
+    const errs = [];
+    const dirs = Array.isArray(p && p.rawDirs) ? p.rawDirs.filter((d) => String(d).trim()) : [];
+    if (!dirs.length) errs.push('原片文件夹');
+    if (!String((p && p.outputDir) || '').trim()) errs.push('输出目录');
+    const mode = parseInt(p && p.mode, 10);
+    const needMask = mode === 1 || mode === 3;
+    const needWm = mode === 1 || mode === 2;
+    // 遮罩项可能是目录（扫描其下 .mov），也可能是用户添加的单个 .mov 文件（路径即文件本身）——
+    // 文件项必须归入 MASK_MASKS（遮罩清单），若混进 MASK_MASK_DIRS 会被引擎当目录判「不存在」
+    const maskDirs = [], maskFiles = [];
+    if (needMask && Array.isArray(p && p.maskDirs)) {
+      for (const d of p.maskDirs) {
+        const v = String(d || '').trim();
+        if (!v) continue;
+        const rp = path.resolve(v);
+        let isFile = false;
+        try { isFile = fs.statSync(rp).isFile(); } catch (e) {}
+        (isFile ? maskFiles : maskDirs).push(rp);
+      }
+    }
+    if (needMask && !maskDirs.length && !maskFiles.length) errs.push('遮罩');
+    if (needWm && !String((p && p.watermark) || '').trim()) errs.push('水印文件');
+    if (errs.length) return { ok: false, error: '遮罩叠加配置缺失：' + errs.join('、') };
+    // 勾选视频序列化：完整路径分号分隔（空=该文件夹全部）
+    const pickVids = [];
+    const vids = (p && p.videos) || {};
+    for (const dir of Object.keys(vids)) {
+      // 原片项可能是目录（名称+相对路径）或用户添加的单个视频文件（路径即文件本身）
+      let dirIsFile = false;
+      try { dirIsFile = fs.statSync(dir).isFile(); } catch (e) {}
+      for (const name of (vids[dir] || [])) {
+        if (String(name).trim()) pickVids.push(dirIsFile ? path.resolve(dir) : path.resolve(dir, name));
+      }
+    }
+    // 任务列表标题：项目名 / 遮罩名（遮罩名按 mov 前缀去重，与遮罩主题分组口径一致）
+    const maskPfx = (name) => String(name || '').replace(/\.[^.]+$/, '').replace(/[-_ ]+\d+$/, '').replace(/\d+$/, '');
+    const projName = String((p && p.projectName) || '').trim() || (dirs[0] ? path.basename(dirs[0]) : '');
+    const themeNames = [];
+    const themeSeen = new Set();
+    String((p && p.masks) || '').split(';').forEach((s) => {
+      const fp = String(s).trim();
+      if (!fp) return;
+      const pfx = maskPfx(path.basename(fp));
+      if (!themeSeen.has(pfx)) { themeSeen.add(pfx); themeNames.push(pfx); }
+    });
+    const title = projName + (themeNames.length ? ' / ' + themeNames.join('+') : '');
+    const env = {
+      MASK_MODE: String(mode || 1),
+      MASK_RAW_DIRS: dirs.map((d) => path.resolve(d)).join(';'),
+      MASK_VIDEOS: pickVids.join(';'),
+      MASK_MASK_DIRS: maskDirs.join(';'),
+      MASK_MASKS: [String((p && p.masks) || '').trim(), maskFiles.join(';')].filter((x) => x).join(';'),
+      MASK_WATERMARK: needWm ? path.resolve(p.watermark) : '',
+      MASK_OUTPUT_DIR: path.resolve(p.outputDir),
+      MASK_PROJECT_NAME: String((p && p.projectName) || '').trim(),
+      MASK_SUFFIX_MARK: String((p && p.suffix) || '').trim(),
+      MASK_LOG_DIR: String((p && p.logDir) || '').trim(),
+      MASK_WATERMARK_ALPHA: this._maskWmAlphaString(p && p.watermarkAlpha),
+      MASK_SUBMIT_TS: String(Date.now()),
+    };
+    Object.assign(env, this._cacheEnvBase());
+    const task = this._enqueueTask(this._createTask('mask', title, env, dirs[0]));
+    return { ok: true, taskId: task.id };
+  }
+
+  // 前端异常上报：界面报错若不落盘，事后无从回溯 —— 统一落进错误日志（与引擎失败同一份）。payload: { kind, msg, stack, where, href }
+  reportUiError(p) {
+    try {
+      const o = (p && typeof p === 'object') ? p : {};
+      const kind = String(o.kind || 'exception');
+      // 不截断：stack 全文入 data，超长由 briefData 分片多行承载；摘要取首行（formatLine 会折叠换行，此处显式取首行保扫读）
+      const msg = String(o.msg || o.message || '');
+      const stack = String(o.stack || '');
+      const where = String(o.where || '').slice(0, 80);
+      const href = String(o.href || '').slice(0, 240);
+      // 前端可带当前任务 id（logbootstrap 的 vlSetTaskId）：排查时前端异常能与任务日志串起来
+      const taskId = String(o.taskId || '').slice(0, 80);
+      // ── 用户操作与界面提示也落日志 ──
+      //   界面动作/提示（非异常）记 kind=action；level=error 的额外记一条，便于按错误筛选。
+      if (kind === 'action') {
+        const action = String(o.action || 'ui.action').slice(0, 60);
+        const level = String(o.level || 'info').toLowerCase();
+        const text = (msg || '').slice(0, 400);
+        const info = {
+          level,
+          where: where || undefined,
+          taskId: taskId || undefined,
+          ctx: (o.ctx && typeof o.ctx === 'object') ? this._briefUiCtx(o.ctx) : undefined,
+        };
+        // ⚠ 级别必须体现在 **verb** 上：runlog.logEvent 只按 verb 查级别表，data.level 形同虚设。
+        //   UIA = 普通操作（info，进 app 日志）· ERR = 需要排查（error，进 error 日志）。
+        //   分开是为了不冲淡 error 文件 —— 它保留 30 天，且是排查时第一个要看的东西。
+        info.src = 'ui-action';
+        this._lg(level === 'error' ? 'ERR' : 'UIA', action, text, info);
+        return { ok: true };
+      }
+      this._lg('UI', kind === 'rejection' ? 'ui.rejection' : 'ui.exception',
+        (msg || '前端异常（无错误消息）').split('\n')[0] + (where ? ' @ ' + where : ''),
+        { where, href, stack, taskId: taskId || undefined, ctx: (o.ctx && typeof o.ctx === 'object') ? o.ctx : undefined });
+      return { ok: true };
+    } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+  }
+
+  /** 界面动作的上下文：只留标量字段并限长（对象会被 formatLine 折行淹没，也可能含长路径） */
+  _briefUiCtx(ctx) {
+    const out = {};
+    let n = 0;
+    for (const k in ctx) {
+      if (n >= 6) break;
+      const v = ctx[k];
+      if (v == null || typeof v === 'object') continue;
+      const t = String(v);
+      if (!t) continue;
+      out[k] = t.slice(0, 60);
+      n++;
+    }
+    return out;
+  }
+
+  // ── 日志体系 ──
+  /** 运行日志读取（排查视图）：app/error/engine 三类 + lvl/mod 过滤（透传 runlog.readLog） */
+  readLog(o) {
+    try {
+      return this._ensureRunLog().readLog(o || {});
+    } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+  }
+  getLogLevel() {
+    try {
+      const log = this._ensureRunLog();
+      return { ok: true, level: log.getLevel(), persisted: this.getAppSetting('log_level', '') || '' };
+    } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+  }
+  /** 级别运行时切换（排查临时切 debug）。**同时持久化**（settings.db scope='app'），
+   *  重启后由 _restoreLogLevel 恢复 —— 否则只在本会话生效，排查一次就要重切一次。 */
+  setLogLevel(lvl) {
+    try {
+      const log = this._ensureRunLog();
+      log.setLevel(String(lvl));
+      const level = log.getLevel();
+      try { if (this._useSettings() && this._settingsStore) this._settingsStore.set('app', 'log_level', level); } catch (e) {}
+      this._lg('CFG', 'log.level', '日志级别切换 · ' + level, { level });
+      return { ok: true, level };
+    } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+  }
+  /** 启动后台恢复持久化级别（由空闲队列调用，不在启动关键路径上）：
+   *  设置库里存过就恢复，让「切到 debug 排查」在重启后依然生效。 */
+  _restoreLogLevel() {
+    try {
+      const saved = String(this.getAppSetting('log_level', '') || '').trim();
+      if (!saved) return;
+      const log = this._ensureRunLog();
+      if (log.getLevel() === saved) return;
+      log.setLevel(saved);
+      this._lg('CFG', 'log.level', '日志级别已按持久化设置恢复 · ' + log.getLevel(), { level: log.getLevel() });
+    } catch (e) {}
+  }
+  /** 一键诊断包：该任务相关的 app/error/engine 行 + env 快照 + 任务标记 + 产物清单 → 单个 txt。
+   *  包内含本机路径 → 文件头附提示（外发前自行打码）。 */
+  // 诊断包路径打码（外发前用）：只保留**文件名**，盘符与各级目录一律折叠 ——
+  // 目录名、盘符、任务名都可能含业务信息，而排查只需知道"是哪个文件"。
+  // 例：`E:\项目名\9月\0927\配置.txt` → `<路径>\配置.txt`。
+  _maskDiagPaths(text) {
+    const s = String(text == null ? '' : text);
+    return s
+      .replace(/[A-Za-z]:\\+(?:[^\\/:*?"<>|\r\n]+\\+)*[^\\/:*?"<>|\r\n]*/g, (m) => {
+        const segs = m.split(/\\+/).filter(Boolean);
+        const base = segs.length ? segs[segs.length - 1] : '';
+        return base ? '<路径>\\' + base : '<路径>';
+      })
+      .replace(/\\\\[^\\/\s"',]+\\[^\\/\s"',\\]+/g, (m) => {
+        const segs = m.split(/\\+/).filter(Boolean);
+        const base = segs.length ? segs[segs.length - 1] : '';
+        return base ? '<路径>\\' + base : '<路径>';
+      });
+  }
+
+  /** 全局现场包：没有可用任务时的诊断导出。 */
+  _exportGlobalDiagPack(opts) {
+    try {
+      const since = Date.now() - 24 * 60 * 60 * 1000;
+      const parts = [];
+      parts.push('Video Lab 诊断包（全局现场）');
+      parts.push('生成时间: ' + new Date().toLocaleString());
+      parts.push('');
+      parts.push('════ 环境快照（已脱敏）════');
+      try { parts.push(this._ensureRunLog().scrub(JSON.stringify(this._envBrief({}), null, 1))); } catch (e) { parts.push('(取不到)'); }
+      parts.push('');
+      parts.push('════ 最近任务（最多 30 条）════');
+      try {
+        const list = Array.from(this.tasks.values())
+          .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 30);
+        parts.push(list.length ? list.map((t) => [
+          String(t.id || '').slice(0, 40), String(t.type || ''), String(t.status || ''),
+          new Date(t.createdAt || 0).toLocaleString(),
+          t.endedAt ? new Date(t.endedAt).toLocaleString() : '进行中',
+          String(t.title || '').slice(0, 40),
+        ].join(' · ')).join('\n') : '(无任务)');
+      } catch (e) { parts.push('(取不到)'); }
+      parts.push('');
+      const ro = { tail: 20000, maxBytes: 16 * 1024 * 1024 };
+      for (const name of ['app', 'error', 'engine']) {
+        let r = null;
+        try { r = this._ensureRunLog().readLog(Object.assign({ file: name }, ro)); } catch (e) {}
+        parts.push('════ ' + name + '-*.log 尾部（' + (r && r.lines ? r.lines.length : 0) + ' 行）════');
+        parts.push(r && r.lines && r.lines.length ? r.lines.join('\n') : '(无)');
+        parts.push('');
+      }
+      try {
+        const all = this._ensureRunLog().readLog({ file: 'app', tail: 60000, maxBytes: 32 * 1024 * 1024 });
+        const toTs = (ln) => {
+          const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})\.(\d{3})/.exec(ln);
+          return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6], +m[7]).getTime() : 0;
+        };
+        const uiLines = (all.lines || [])
+          .filter((ln) => ln.indexOf('"verb":"UIA"') >= 0 && toTs(ln) >= since).slice(-5000);
+        parts.push('════ 近 24 小时用户操作时间线（' + uiLines.length + ' 行）════');
+        parts.push(uiLines.length ? uiLines.join('\n') : '(无)');
+        parts.push('');
+      } catch (e) {}
+      const dir = path.join(this._ensureRunLog().getDir(), '..', 'diag');
+      try { fs.mkdirSync(dir, { recursive: true }); } catch (e2) {}
+      const file = path.join(dir, 'diag-global-' + Date.now().toString(36) + (opts && opts.maskPaths ? '-masked' : '') + '.txt');
+      const body = (opts && opts.maskPaths) ? this._maskDiagPaths(parts.join('\n')) : parts.join('\n');
+      fs.writeFileSync(file, body, 'utf8');
+      this._lg('SYS', 'diag.export', '导出诊断包 · 全局现场'
+        + (opts && opts.maskPaths ? ' · 路径已打码' : '') + ' · ' + path.basename(file),
+        { path: file, masked: !!(opts && opts.maskPaths), scope: 'global' });
+      return { ok: true, path: file, masked: !!(opts && opts.maskPaths), scope: 'global' };
+    } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+  }
+
+  // 按时间范围导出反馈包，逐日保留原始日志文件
+  _exportRangeDiagPack(range, opts) {
+    try {
+      const rl = this._ensureRunLog();
+      const o = opts || {};
+      const logDir = rl.getDir();
+      const DAYS = { today: 1, '3d': 3, '7d': 7, all: 0 };
+      const days = DAYS[range] != null ? DAYS[range] : 1;
+      // 只收录 app / error / engine 三类日志
+      const RE = /^(app|error|engine)-(\d{4}-\d{2}-\d{2})(?:-\d+)?\.log(?:\.gz)?$/;
+      let cutoff = null;
+      if (days) {
+        const t = new Date();
+        cutoff = new Date(t.getFullYear(), t.getMonth(), t.getDate() - (days - 1));
+      }
+      const picked = [];
+      let names = [];
+      try { names = fs.readdirSync(logDir); } catch (e) {}
+      for (const n of names) {
+        const m = RE.exec(n);
+        if (!m) continue;
+        if (cutoff) {
+          const d = new Date(+m[2].slice(0, 4), +m[2].slice(5, 7) - 1, +m[2].slice(8, 10));
+          if (!(d >= cutoff)) continue;
+        }
+        picked.push({ name: n, day: m[2], size: 0 });
+      }
+      picked.sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : a.name.localeCompare(b.name)));
+      for (const f of picked) {
+        try { f.size = fs.statSync(path.join(logDir, f.name)).size; } catch (e) {}
+      }
+      // 日志读一次，既用于生成包内任务索引也用于打包
+      const zlib = require('node:zlib');
+      const loaded = [];
+      let failed = 0;
+      for (const f of picked) {
+        try {
+          let buf = fs.readFileSync(path.join(logDir, f.name));
+          if (/\.gz$/i.test(f.name)) { try { buf = zlib.gunzipSync(buf); } catch (e2) {} }
+          loaded.push({ f, buf });
+        } catch (e) { failed++; }
+      }
+      // 任务索引取自包内 app 日志的 task.* 事件
+      const tMap = new Map();
+      for (const it of loaded) {
+        if (!/^app-/.test(it.f.name)) continue;
+        for (const ln of it.buf.toString('utf8').split('\n')) {
+          const m = /\btask\.(\w+)\s+(.+?)\s+·\s+\{/.exec(ln);
+          if (!m) continue;
+          const id = (/"(?:taskId|id)":"(task_[^"]+)"/.exec(ln) || [])[1];
+          if (!id) continue;
+          let e = tMap.get(id);
+          if (!e) { e = { n: 0, ev: m[1], msg: m[2] }; tMap.set(id, e); }
+          e.n++;
+          if (m[1] === 'start') { e.ev = 'start'; e.msg = m[2]; }
+        }
+      }
+      const tIdx = [...tMap.entries()].map(([id, e]) =>
+        '  ' + id + ' · ' + e.n + ' 条记录 · ' + e.ev + ' · ' + String(e.msg || '').slice(0, 46));
+
+      const head = [];
+      head.push('Video Lab 问题反馈包');
+      head.push('生成时间: ' + new Date().toLocaleString());
+      head.push('日志范围: ' + (range === 'all' ? '全部' : range === 'today' ? '今天' : '近 ' + days + ' 天')
+        + '（命中 ' + picked.length + ' 个文件）');
+      head.push('');
+      head.push('════ 本机概况（设置项，敏感字段已剔除）════');
+      try {
+        const st = this._settingsStore ? this._settingsStore.all('app') : {};
+        const safe = {};
+        for (const k of Object.keys(st)) {
+          if (/token|secret|password/i.test(k)) continue;
+          safe[k] = st[k];
+        }
+        head.push(rl.scrub(JSON.stringify(safe, null, 1).slice(0, 8000)));
+      } catch (e) { head.push('(取不到)'); }
+      head.push('');
+      head.push('════ 包内任务（' + tIdx.length + ' 个）════');
+      head.push(tIdx.length ? tIdx.join('\n') : '（本次范围内没有任务日志）');
+      head.push('');
+      head.push('════ 包内文件索引 ════');
+      head.push('app-* 运行事件流（一行一事）· error-* warn/error 索引行');
+      head.push('engine-* 引擎 stdout/stderr（含 ffmpeg 行）· task-* 任务标记与产物归属');
+      head.push('');
+      head.push(picked.length ? picked.map((f) => '  ' + f.name + '  ' + rl.humanSize(f.size)).join('\n') : '（该范围内没有日志文件）');
+
+      const entries = [{ name: '概况.txt', data: head.join('\n') }];
+      const { zip } = require(path.join(__dirname, 'engines', 'base', 'zipwriter.js'));
+      for (const it of loaded) {
+        entries.push({ name: '日志/' + it.f.name.replace(/\.gz$/i, ''), data: it.buf });
+      }
+      const zipBuf = zip(entries);
+      const t = new Date();
+      const tag = range === 'all' ? '全部' : range === 'today' ? '今日' : '近' + days + '天';
+      const dflt = 'VideoLab-' + tag + '记录-' + t.getFullYear()
+        + String(t.getMonth() + 1).padStart(2, '0') + String(t.getDate()).padStart(2, '0') + '.zip';
+      const outPath = String(o.outPath || '').trim() || path.join(logDir, '..', 'diag', dflt);
+      try { fs.mkdirSync(path.dirname(outPath), { recursive: true }); } catch (e) {}
+      fs.writeFileSync(outPath, zipBuf);
+      this._lg('SYS', 'diag.export', '导出问题反馈包 · ' + tag + ' · ' + picked.length + ' 个文件 · '
+        + rl.humanSize(zipBuf.length) + (failed ? ' · ' + failed + ' 个读取失败' : ''),
+        { path: outPath, files: picked.length, bytes: zipBuf.length });
+      return { ok: true, path: outPath, files: picked.length, days: days, bytes: zipBuf.length };
+    } catch (e) {
+      const msg = String((e && e.message) || e);
+      try { this._lg('SYS', 'diag.export', '导出问题反馈包失败 · ' + msg, { error: msg, range }); } catch (e2) {}
+      return { ok: false, error: msg };
+    }
+  }
+
+  exportDiagPack(id, opts) {
+    // 按范围导出（界面的「问题反馈包」用）
+    // ⚠ 判断必须放在 try 之外：本方法块内有 `const opts` 声明，块内任意位置读参数都会撞 TDZ
+    const range = opts && opts.range;
+    if (range) {
+      try { return this._exportRangeDiagPack(range, opts); } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+    }
+    try {
+      let t = id ? this.tasks.get(id) : null;
+      if (!t && !id) {
+        // 留空 = 最近一个失败/中断/停止任务（按结束时间降序）
+        for (const t2 of this.tasks.values()) {
+          if (!['error', 'interrupted', 'stopped'].includes(t2.status)) continue;
+          if (!t || (t2.endedAt || 0) > (t.endedAt || 0)) t = t2;
+        }
+      }
+      // 无可用任务时导出全局现场包；指定了 id 但任务不存在则按原样报错
+      if (id && !t) return { ok: false, error: '任务不存在' };
+      if (!t) return this._exportGlobalDiagPack(opts);
+      id = t.id;
+      // ⚠ 刻意不叫 opts：块级 const 会遮蔽同名参数，且从块起始就进入 TDZ
+      const readOpts = { grep: id, tail: 20000, maxBytes: 16 * 1024 * 1024 };
+      const app = this._ensureRunLog().readLog(Object.assign({ file: 'app' }, readOpts));
+      const error = this._ensureRunLog().readLog(Object.assign({ file: 'error' }, readOpts));
+      const engine = this._ensureRunLog().readLog(Object.assign({ file: 'engine' }, readOpts));
+      const marker = this._loadMarker(t);
+      const outs = Array.isArray(marker && marker.videos) ? marker.videos : [];
+      const parts = [];
+      parts.push('Video Lab 诊断包');
+      parts.push('生成时间: ' + new Date().toLocaleString());
+      parts.push('任务: ' + id + ' · ' + t.type + ' · ' + String(t.title || '').slice(0, 80) + ' · 状态 ' + t.status);
+      parts.push('');
+      parts.push('════ 任务 env 快照（已脱敏）════');
+      parts.push(this._ensureRunLog().scrub(JSON.stringify(this._envBrief(t.env), null, 1)));
+      parts.push('');
+      parts.push('════ 任务标记（产物归属）════');
+      parts.push(marker ? this._ensureRunLog().scrub(JSON.stringify(marker, null, 1).slice(0, 20000)) : '(无)');
+      parts.push('');
+      parts.push('════ 产物清单（' + outs.length + ' 个文件）════');
+      parts.push(JSON.stringify(this._describeForLog(outs), null, 1));
+      parts.push('');
+      for (const [name, r] of [['app', app], ['error', error], ['engine', engine]]) {
+        parts.push('════ ' + name + '-*.log 中与该任务相关的行（' + (r.lines ? r.lines.length : 0) + ' 行，窗口内）════');
+        parts.push(r.lines && r.lines.length ? r.lines.join('\n') : '(无匹配行)');
+        parts.push('');
+      }
+      // ── 用户操作时间线（含不带 taskId 的界面动作）──
+      // 按任务时间窗收录界面动作，带不带 taskId 都算相关。
+      try {
+        const since = Number(t.startedAt || t.createdAt || 0) - 30 * 60 * 1000;   // 前置 30 分钟：覆盖操作前的准备
+        const until = Number(t.endedAt || Date.now()) + 30 * 60 * 1000;
+        const all = this._ensureRunLog().readLog({ file: 'app', tail: 60000, maxBytes: 32 * 1024 * 1024 });
+        const toTs = (ln) => {
+          const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})\.(\d{3})/.exec(ln);
+          return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6], +m[7]).getTime() : 0;
+        };
+        const uiLines = (all.lines || []).filter((ln) => {
+          if (ln.indexOf('"verb":"UIA"') < 0) return false;   // 只要界面动作（UIA）
+          const ts = toTs(ln);
+          return ts >= since && ts <= until;
+        }).slice(-3000);
+        parts.push('════ 用户操作时间线（' + uiLines.length + ' 行 · ' + new Date(since).toLocaleString() + ' ~ ' + new Date(until).toLocaleString() + ' · 含无 taskId 的动作）════');
+        parts.push(uiLines.length ? uiLines.join('\n') : '(无匹配行)');
+        parts.push('');
+      } catch (e) { /* 时间线取不到不影响其余段落 */ }
+      const dir = path.join(this._ensureRunLog().getDir(), '..', 'diag');
+      try { fs.mkdirSync(dir, { recursive: true }); } catch (e2) {}
+      const file = path.join(dir, 'diag-' + String(id).replace(/[^\w-]/g, '') + '-' + Date.now().toString(36) + (opts && opts.maskPaths ? '-masked' : '') + '.txt');
+      // 路径打码：整包统一处理一次（日志行 / env 快照 / 产物清单都含路径）
+      const body = (opts && opts.maskPaths) ? this._maskDiagPaths(parts.join('\n')) : parts.join('\n');
+      fs.writeFileSync(file, body, 'utf8');
+      this._lg('SYS', 'diag.export', '导出诊断包 · ' + t.type + (opts && opts.maskPaths ? ' · 路径已打码' : '') + ' · ' + path.basename(file), { id, path: file, masked: !!(opts && opts.maskPaths) });
+      return { ok: true, path: file, masked: !!(opts && opts.maskPaths) };
+    } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+  }
+
+  // 遮罩水印透明度解析：任务传入值优先，其次设置页配置；留空/非法回退脚本默认 0.3
+  _maskWmAlphaString(v) {
+    let raw = (v == null || String(v).trim() === '') ? this.config.mask.watermark_alpha : v;
+    const n = parseFloat(String(raw == null ? '' : raw));
+    if (!(n >= 0.05 && n <= 1)) return '0.3';
+    return String(n);
+  }
+
+  // 断点续跑：失败/中断/停止的遮罩叠加任务，仅续跑失败成片（MASK_ONLY_NAMES 过滤），不删已成功产物
+  continueMask(id) {
+    const envG = this._envGuard('continue_mask');
+    if (envG) return envG;
+    const t = this.tasks.get(id);
+    if (!t) return { ok: false, error: '任务不存在' };
+    if (t.status !== 'error' && t.status !== 'interrupted' && t.status !== 'stopped') return { ok: false, error: '仅失败/中断/停止的任务可继续制作' };
+    if (t.type !== 'mask') return { ok: false, error: '仅遮罩叠加任务支持继续制作' };
+    const failNames = new Set();
+    if (Array.isArray(t.failedVideos)) {
+      for (const f of t.failedVideos) if (f && f.name) failNames.add(f.name);
+    }
+    if (!failNames.size) {
+      for (const ln of (t.log || [])) {
+        const m = /❌ 失败成片：([^|]+)/.exec(String(ln));
+        if (m) failNames.add(String(m[1]).trim());
+      }
+    }
+    if (!failNames.size) return { ok: false, error: '没有发现需要续跑的成片，请检查任务日志' };
+    const namesArr = [...failNames].filter(Boolean);
+    const env = Object.assign({}, t.env || {});
+    env.MASK_ONLY_NAMES = namesArr.join(';');
+    env.MASK_SUBMIT_TS = String(Date.now());
+    if (!env.MASK_RAW_DIRS) return { ok: false, error: '原任务缺少原片文件夹信息，无法继续制作' };
+    // 续写进原输出目录
+    try {
+      const realOut = String(t.outDir || '').trim();
+      if (realOut && fs.existsSync(realOut)) env.MASK_OUTPUT_DIR = realOut;
+    } catch (e) {}
+    // 与批量一致：续跑沿用原任务
+    this._markRunStop(t);
+    t.env = env;
+    t.status = 'queued';
+    t.paused = false;
+    t.endedAt = null;
+    t.failReason = '';
+    t.failedVideos = [];
+    this._taskLog(t, '[继续制作] 补做 ' + namesArr.length + ' 个成片');
+    this._enqueueTask(t);
+    return { ok: true, taskId: t.id, count: namesArr.length };
+  }
+
+  // 遮罩叠加项目素材只读扫描：仅扫描遮罩叠加独立工作路径（设置-遮罩叠加 配置）。
+  listMaskProjects() {
+    // 遮罩主题组前缀：与前端 maskGroupPrefix 一致（去扩展名、去尾部序号），徽章与右栏分组口径统一
+    const _maskPrefix = (name) => {
+      let s = String(name || '').replace(/\.[^.]+$/, '');
+      s = s.replace(/[-_ ]+\d+$/, '').replace(/\d+$/, '');
+      return s;
+    };
+    // 仅使用遮罩叠加独立工作路径（不允许复用批量项目管理路径）
+    const root = (this.config && this.config.mask && String(this.config.mask.root || '').trim());
+    if (!root) return [];
+    const out = [];
+    let entries = [];
+    try { entries = fs.readdirSync(root, { withFileTypes: true }); } catch (e) { return []; }
+    // 一级目录名集合（含空目录）—— 供核验项目登记表：遮罩列表会遍历目录，所以「登记项是否还存在」的核验在这里是零额外 IO 的（外部删除 → 下次即摘除）
+    const dirNames = new Set();
+    for (const en of entries) if (en.isDirectory()) dirNames.add(en.name);
+    // 遮罩侧的项目登记表：软件内新建、暂无素材的项目（详见 _projRegKey 上方说明）
+    const regNames = this._loadProjReg(root, 'mask');
+    const regAlive = regNames.filter((n) => dirNames.has(n));
+    if (regAlive.length !== regNames.length) this._saveProjReg(root, 'mask', regAlive);
+    const regSet = new Set(regAlive);
+    for (const en of entries) {
+      if (!en.isDirectory()) continue;
+      const pdir = path.join(root, en.name);
+      // 遮罩主题：项目下直接子文件夹中任一含 mov 视频（遮罩素材仅认 .mov，mp4 不算遮罩主题）
+      let themes = [];
+      try {
+        themes = fs.readdirSync(pdir, { withFileTypes: true })
+          .filter((s) => s.isDirectory())
+          .map((s) => s.name)
+          .filter((n) => {
+            try {
+              return fs.readdirSync(path.join(pdir, n)).some((f) => /\.mov$/i.test(f));
+            } catch (e) { return false; }
+          })
+          .sort((a, b) => a.localeCompare(b, 'zh-CN'));
+      } catch (e) {}
+      // 主题组数：项目内全部 mov（根目录+任意子文件夹）按名称前缀去重，与右栏真实分组一致
+      let themeCount = 0;
+      const seenPrefix = new Set();
+      const walkMasks = (d) => {
+        let ents = [];
+        try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch (e) { return; }
+        for (const s2 of ents) {
+          if (s2.name === '已完成') continue; // 与右栏主题列表同口径：旧脚本产物目录不参与计数
+          const full = path.join(d, s2.name);
+          if (s2.isDirectory()) walkMasks(full);
+          else if (/\.mov$/i.test(s2.name)) seenPrefix.add(_maskPrefix(s2.name));
+        }
+      };
+      walkMasks(pdir);
+      themeCount = seenPrefix.size;
+      // 纳入条件：项目内有遮罩主题子文件夹，或任意位置（含根目录）存在 .mov 主题素材；或者它是软件内新建并登记过的空项目（保证「添加新项目」后立刻可见）
+      const isEmptyProject = !themes.length && themeCount === 0;
+      if (!isEmptyProject || regSet.has(en.name)) out.push({ name: en.name, path: pdir, themes, themeCount, isEmptyProject });
+    }
+    out.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+    return out;
+  }
+
+  // 扫描目录下视频/遮罩素材（含子文件夹），返回 { name, sub, dur }；时长异步探测
+  _listMaskMedia(dir, exts) {
+    const abs = path.resolve(dir);
+    if (!fs.existsSync(abs)) return Promise.resolve([]);
+    // 单文件（用户通过「添加文件或文件夹」添加的单个视频文件）：扩展名匹配则返回该文件
+    try {
+      const st = fs.statSync(abs);
+      if (st.isFile()) {
+        if (!exts.has(path.extname(abs).toLowerCase())) return Promise.resolve([]);
+        return this._maskMediaInfo(abs).then((r) => [{ name: path.basename(abs), sub: '', dur: r && r.duration > 0 ? r.duration : 0 }]);
+      }
+    } catch (e) { return Promise.resolve([]); }
+    const items = [];
+    const walk = (d, rel) => {
+      let ents = [];
+      try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch (e) { return; }
+      for (const en of ents) {
+        if (en.name === '已完成') continue; // 旧脚本妥协产物目录不参与展示
+        const full = path.join(d, en.name);
+        if (en.isDirectory()) walk(full, rel ? rel + '/' + en.name : en.name);
+        else if (exts.has(path.extname(en.name).toLowerCase())) items.push({ full, name: en.name, sub: rel || '' });
+      }
+    };
+    walk(abs, '');
+    items.sort((a, b) => (a.sub === b.sub ? a.name.localeCompare(b.name, 'zh-CN') : a.sub.localeCompare(b.sub, 'zh-CN')));
+    return this._runWithLimit(items, (it) => this._maskMediaInfo(it.full).then((r) => ({ name: it.name, sub: it.sub, dur: r && r.duration > 0 ? r.duration : 0 })), 6);
+  }
+
+  listMaskVideos(dir) { return this._listMaskMedia(dir, new Set(['.mp4', '.mov', '.avi', '.mkv', '.m4v', '.webm', '.flv'])); }
+
+  listMaskMasks(dir) { return this._listMaskMedia(dir, new Set(['.mov'])); }
+
+  // 解析 .lnk 快捷方式目标（单个）；非快捷方式/解析失败返回空串
+  resolveShortcut(p) {
+    if (!p || !/\.lnk$/i.test(p)) return '';
+    const m = this._resolveShortcutTargets([p]);
+    return (m && m[p]) ? String(m[p]) : '';
+  }
+
+  // 统一添加入口（原片/遮罩侧「添加文件或文件夹」）：接受 快捷方式 / 视频文件 / 文件夹，
+  // 快捷方式先解析目标，再按类型返回；原片=mp4 等视频，遮罩=mov。返回 { type: 'dir'|'file', path } 或 { error }
+  maskAddSource(side, p) {
+    if (!p) return { error: '空路径' };
+    let target = String(p);
+    if (/\.lnk$/i.test(target)) {
+      target = this.resolveShortcut(target);
+      if (!target) return { error: '快捷方式无效（无法解析目标）' };
+    }
+    try {
+      const st = fs.statSync(target);
+      if (st.isDirectory()) return { type: 'dir', path: target };
+      if (st.isFile()) {
+        const ext = path.extname(target).toLowerCase();
+        const okExt = side === 'theme' ? ['.mov'] : ['.mp4', '.mov', '.avi', '.mkv', '.m4v', '.webm', '.flv'];
+        if (okExt.indexOf(ext) < 0) return { error: side === 'theme' ? '遮罩仅支持 .mov 文件' : '不支持的文件类型' };
+        return { type: 'file', path: target };
+      }
+      return { error: '无法识别该路径' };
+    } catch (e) { return { error: '路径不存在' }; }
+  }
+
+  // 原片默认扫描：递归收集项目下所有含 mp4 的文件夹（以 mp4 所在文件夹为单位分组，不跳过任何目录；根目录含 mp4 也计入）
+  scanMaskRawDirs(dir) {
+    const abs = path.resolve(dir);
+    const hitDirs = [];
+    const hitKeys = {};
+    const addHit = (d) => { const k = String(d).replace(/[\\/]+$/, '').toLowerCase(); if (!hitKeys[k]) { hitKeys[k] = 1; hitDirs.push(d); } };
+    const hasMp4 = (d) => {
+      try { return fs.readdirSync(d).some((f) => /\.mp4$/i.test(f)); } catch (e) { return false; }
+    };
+    const lnks = [];
+    const walk = (d) => {
+      let ents = [];
+      try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch (e) { return; }
+      for (const en of ents) {
+        const full = path.join(d, en.name);
+        if (en.isDirectory()) {
+          if (hasMp4(full)) addHit(full);
+          walk(full);
+        } else if (en.isFile() && path.extname(en.name).toLowerCase() === '.lnk') {
+          lnks.push(full);
+        }
+      }
+    };
+    if (!fs.existsSync(abs)) return [];
+    if (hasMp4(abs)) addHit(abs);
+    walk(abs);
+    // .lnk 快捷方式：解析目标目录并递归扫描其内容；目标路径/文件夹已存在则跳过
+    if (lnks.length) {
+      const map = this._resolveShortcutTargets(lnks);
+      for (const l of lnks) {
+        const t = map[l];
+        if (!t) continue;
+        const target = String(t).trim();
+        if (!target) continue;
+        try { if (!fs.statSync(target).isDirectory()) continue; } catch (e) { continue; }
+        if (hitKeys[String(target).replace(/[\\/]+$/, '').toLowerCase()]) continue; // 目标已存在 → 跳过
+        addHit(target);
+        walk(target);
+      }
+    }
+    return hitDirs
+      .map((d) => ({ path: d, name: path.basename(d) || String(d) }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+  }
+
+  // 遮罩主题文件指纹（轻量自愈检测用：仅 readdir 收集 .mov 相对路径集，不探测，不落盘）
+  maskThemeSig(dir) {
+    try {
+      if (!dir || !fs.existsSync(dir)) return { count: 0, sig: '' };
+      const names = [];
+      const walk = (d, rel) => {
+        let ents = [];
+        try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch (e) { return; }
+        for (const en of ents) {
+          if (en.name === '已完成') continue;
+          const full = path.join(d, en.name);
+          if (en.isDirectory()) walk(full, rel ? rel + '/' + en.name : en.name);
+          else if (/\.mov$/i.test(en.name)) names.push(rel ? rel + '/' + en.name : en.name);
+        }
+      };
+      walk(dir, '');
+      names.sort();
+      return { count: names.length, sig: names.join('|') };
+    } catch (e) { return { count: 0, sig: '' }; }
+  }
+
+  // 遮罩叠加日志目录约定：项目\遮罩日志
+  _maskLogDir(projectPath) { return path.join(projectPath, '遮罩日志'); }
+
+  // 按成片名从视频缓存反查实际文件（用户手动迁移后仍可定位；日志 @out 缺失时兜底）。查全部作用域：待查成片可能来自任意模式，此处不做来源过滤。
+  _findMaskOut(videoName) {
+    const target = String(videoName == null ? '' : videoName).toLowerCase();
+    if (!target) return '';
+    if (this._useDbCache()) {
+      try {
+        const mask = this._scopes.batch | this._scopes.replica | this._scopes.mask;
+        const map = this._cacheStore.loadVideoMap({ scopesMask: mask });
+        for (const p of Object.keys(map)) {
+          if (!p || path.basename(p).toLowerCase() !== target) continue;
+          try { if (fs.existsSync(p)) return p; } catch (e) {}
+        }
+        return '';
+      } catch (e) { /* 库读取失败 → 退回内存缓存 */ }
+    }
+    try {
+      const cache = this._loadVideoCache();
+      for (const p of Object.keys(cache)) {
+        if (!p || path.basename(p).toLowerCase() !== target) continue;
+        try { if (fs.existsSync(p)) return p; } catch (e) {}
+      }
+    } catch (e) {}
+    return '';
+  }
+
+  // 从遮罩日志读取成片块中的 @out 路径行（返回候选路径，不要求文件仍存在；前端据此打开文件夹，并用 check_exists 判定「打开成片」是否可点）
+  _maskOutFromLog(logPath, videoName) {
+    const text = readText(logPath);
+    const lines = text.split(/\r?\n/).map((l) => l.trim());
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i] !== videoName) continue;
+      // 成片名行向下 8 行内找 @out（块内顺序：成片名/使用片段列表：/素材/@out），遇 === 分隔线即止；不能因紧邻的「使用片段列表：」提前退出，否则 @out 永远读不到
+      for (let j = i + 1; j < Math.min(i + 8, lines.length); j++) {
+        const m = /^@out:\s*(.+)$/.exec(lines[j]);
+        if (m) { const p = String(m[1]).trim().replace(/^"|"$/g, ''); return p ? p : ''; }
+        if (lines[j].startsWith('===')) break;
+      }
+      break;
+    }
+    return '';
+  }
+
+  // 列出项目的遮罩叠加日志：每个日志文件只读一次，同步解析成片块与 @out 实际路径；按日志目录内文件 名称+mtime 签名缓存，未变化直接复用（切换项目/进出日志视图不重复解析）
+  listMaskLogs(projectPath) {
+    const pdir = String(projectPath || '').trim();
+    const logDir = this._maskLogDir(pdir);
+    if (!pdir || !fs.existsSync(logDir)) return [];
+    let files = [];
+    try { files = fs.readdirSync(logDir).filter((n) => n.endsWith('.txt')).sort(); } catch (e) { return []; }
+    const sig = logDir + '|' + files.map((n) => { let m = 0; try { m = fs.statSync(path.join(logDir, n)).mtimeMs; } catch (e) {} return n + ':' + m; }).join('|');
+    if (this._maskLogCache && this._maskLogCache.key === sig) return JSON.parse(JSON.stringify(this._maskLogCache.logs));
+    const logs = [];
+    for (const f of files) {
+      const fp = path.join(logDir, f);
+      let text;
+      try { text = readText(fp); } catch (e) { continue; }
+      const lines = text.split(/\r?\n/);
+      // 一次扫描构建 成片名 → @out 映射：成片名行（其下一行为「使用片段列表：」）块内取 @out
+      const outMap = {};
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].trim() !== '使用片段列表：' || i < 1) continue;
+        const name = lines[i - 1].trim();
+        if (!name || /^[A-Za-z]:[\\/]/.test(name)) continue;
+        for (let j = i + 1; j < Math.min(i + 8, lines.length); j++) {
+          const tm = /^@out:\s*(.+)$/.exec(lines[j]);
+          if (tm) { const p = String(tm[1]).trim().replace(/^"|"$/g, ''); if (p) outMap[name] = p; break; }
+          if (lines[j].trim() === '使用片段列表：' || lines[j].trim().startsWith('===')) break;
+        }
+      }
+      const entries = this._parseLog(fp, text).map((e) => Object.assign({}, e, { outPath: outMap[e.video] || this._findMaskOut(e.video) }));
+      logs.push({ file: f, path: fp, name: path.basename(f, '.txt'), entries, mtime: fs.existsSync(fp) ? fs.statSync(fp).mtimeMs : 0 });
+    }
+    logs.sort((a, b) => b.mtime - a.mtime);
+    this._maskLogCache = { key: sig, logs };
+    return JSON.parse(JSON.stringify(logs));
+  }
+
+  // 删除与指定素材（原片/遮罩路径）相关的所有遮罩叠加成片：按日志块片段精确匹配，删除成片文件并同步从日志移除对应块；返回删除列表
+
+  // 原片/遮罩会话状态（缓存，非设置）：存于 cache_kv（键 mask_session:<项目名>）
+  // 不手动清除/移除就会一直在列表里；重建缓存菜单项清空后回退自动扫描
+  // 遮罩会话登记的全部素材目录（含手动添加的项目外路径）：统一刷新、作用域落库与认领共用
+  _maskSessionDirs() {
+    const out = [];
+    try {
+      const projects = (this.listProjects() || []).map((x) => (x && x.name) || x).filter(Boolean);
+      for (const name of projects) {
+        let sess = null;
+        try { sess = this.getMaskSession(name); } catch (e) { sess = null; }
+        if (!sess) continue;
+        for (const d of [].concat(sess.rawDirs || [], sess.themes || [])) {
+          const p = stripQuotes(String((d && d.path) || '').trim());
+          if (p) out.push(p);
+        }
+      }
+    } catch (e) { /* 会话不可读时返回已收集部分 */ }
+    return out;
+  }
+  getMaskSession(projectName) {
+    if (!this._useDbCache()) return null;
+    try {
+      const raw = this._cacheStore.getKv('mask_session:' + String(projectName || ''));
+      if (!raw) return null;
+      const d = JSON.parse(raw);
+      return (d && typeof d === 'object') ? d : null;
+    } catch (e) { return null; }
+  }
+  saveMaskSession(projectName, data) {
+    if (!this._useDbCache()) return { ok: false, error: '缓存库不可用' };
+    try {
+      this._cacheStore.setKv('mask_session:' + String(projectName || ''), JSON.stringify(data || {}));
+      return { ok: true };
+    } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+  }
+  // projectName 为空 = 清空全部项目会话缓存
+  clearMaskSession(projectName) {
+    if (!this._useDbCache()) return { ok: true };
+    try {
+      if (!projectName) {
+        const store = this._cacheStore;
+        store.transaction(() => {
+          for (const k of Object.keys(store.listKv('mask_session:'))) store.removeKv(k);
+        });
+        return { ok: true };
+      }
+      this._cacheStore.removeKv('mask_session:' + String(projectName || ''));
+      return { ok: true };
+    } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+  }
+
+  // —— 项目默认输出目录（项目级设置，独立于会话缓存；供底栏输出目录占位符与选择初始路径）——存于设置库 scope='mask'，键为项目名
+  getMaskDefaultDir(projectName) {
+    if (!this._useSettings()) return '';
+    try { return String(this._settingsStore.get('mask', String(projectName || ''), '') || '').trim(); } catch (e) { return ''; }
+  }
+  setMaskDefaultDir(projectName, dir) {
+    if (!this._useSettings()) return { ok: false };
+    try {
+      this._settingsStore.set('mask', String(projectName || ''), String(dir || '').trim());
+      return { ok: true };
+    } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+  }
+
+  // 删除指定遮罩叠加成片（按成片名）：删除文件并同步从日志移除对应块
+  deleteMaskVideos(projectPath, videoNames) {
+    const pdir = String(projectPath || '').trim();
+    const logDir = this._maskLogDir(pdir);
+    const names = Array.isArray(videoNames) ? videoNames.map((n) => String(n).trim()).filter(Boolean) : [];
+    if (!pdir || !fs.existsSync(logDir)) return { ok: false, error: '项目无遮罩日志' };
+    if (!names.length) return { ok: false, error: '未指定成片名' };
+    const nset = new Set(names.map((n) => n.toLowerCase()));
+    const deleted = [];
+    let files = [];
+    try { files = fs.readdirSync(logDir).filter((n) => n.endsWith('.txt')); } catch (e) { return { ok: false, error: '读取日志失败' }; }
+    for (const f of files) {
+      const fp = path.join(logDir, f);
+      const text = readText(fp);
+      const lines = text.split(/\r?\n/).map((l) => l.replace(/\r$/, ''));
+      const keep = [];
+      let i = 0;
+      let changed = false;
+      while (i < lines.length) {
+        const line = lines[i];
+        const isBlockHead = i + 1 < lines.length && lines[i + 1].trim() === '使用片段列表：';
+        if (isBlockHead) {
+          let j = i + 2;
+          while (j < lines.length) {
+            const t = lines[j].trim();
+            if (t === '使用片段列表：' || t.startsWith('===')) break;
+            j++;
+          }
+          const block = lines.slice(i, j);
+          const vname = (block[0] || '').trim();
+          if (vname && nset.has(vname.toLowerCase())) { changed = true; i = j; continue; }
+          // 未命中：整块保留（成片名/使用片段列表/素材/@out 原样）
+          for (let k = i; k < j; k++) keep.push(lines[k]);
+          i = j;
+          continue;
+        }
+        keep.push(line);
+        i++;
+      }
+      if (changed) {
+        // 先采集清单留痕，再一律移入回收站
+        const outs = [];
+        for (const vn of names) {
+          const op = this._maskOutFromLog(fp, vn) || this._findMaskOut(vn);
+          if (op && fs.existsSync(op)) outs.push(op);
+        }
+        if (outs.length) {
+          const info = this._describeForLog(outs);
+          this._lg('DEL', 'mask.videos.remove',
+            '删除遮罩成片 · ' + info.count + ' 个文件 · 共 ' + this._humanSize(info.bytes)
+            + ' · 日志 ' + path.basename(fp), Object.assign({ project: pdir }, info));
+        }
+        for (const op of outs) { this._recycleFile(op, '删除遮罩成片'); deleted.push(op); }
+        // 仅剩分隔线/空行时视为已空，移除日志文件（走回收站）；否则原子写回
+        const outText = keep.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd() + '\n';
+              if (keep.some((l) => (l || '').trim() && !/^=+$/.test((l || '').trim()))) atomicWrite(fp, outText);
+              else this._hardDelete(fp);   // 空壳日志：无信息量，hard 级
+      }
+    }
+    return { ok: true, deleted };
+  }
+
+  // 删除指定遮罩日志文件（整份 TXT，非单块）：限定在「项目遮罩日志目录」内，
+  // 不依赖批量工作路径（遮罩项目可位于任意路径，removeBranch 的 this.root 校验会误拒）；
+  // 删除后若该日志目录为空则一并清理（以遮罩日志目录为边界，不越界）
+  deleteMaskLog(projectPath, logPath) {
+    const pdir = String(projectPath || '').trim();
+    const logDir = this._maskLogDir(pdir);
+    if (!pdir || !logDir || !fs.existsSync(logDir)) return { ok: false, error: '项目无遮罩日志' };
+    const lp = String(logPath || '').trim();
+    if (!lp) return { ok: false, error: '未指定日志文件' };
+    const rl = path.resolve(lp);
+    const rdir = path.resolve(logDir);
+    if (rl !== rdir && !rl.startsWith(rdir + path.sep)) return { ok: false, error: '日志不在项目遮罩日志目录内' };
+    if (!rl.toLowerCase().endsWith('.txt')) return { ok: false, error: '仅支持移除遮罩日志 TXT' };
+    try {
+      if (!fs.existsSync(rl)) return { ok: false, error: '日志文件不存在：' + lp };
+      // 先留痕（路径/大小/原修改时间），再移入回收站
+      const info = this._describeForLog([rl]);
+      this._lg('DEL', 'mask.log.remove',
+        '删除遮罩日志 · ' + path.basename(rl) + ' · ' + this._humanSize(info.bytes),
+        Object.assign({ project: pdir }, info));
+      this._recycleFile(rl, '遮罩日志条目移除后已空');
+      try {
+        const rest = fs.readdirSync(rdir);
+        if (!rest.length) { try { fs.rmdirSync(rdir); } catch (e) {} }
+      } catch (e) {}
+    } catch (e) { return { ok: false, error: String(e) }; }
+    this._maskLogCache = null; // 日志缓存失效，下次 listMaskLogs 重读
+    return { ok: true };
+  }
+
+  // 重新定位遮罩成片：成片可能被外部移走（@out 路径失效/不在原输出目录），
+  // 用户在列表/分支右键选择新目录后，在本目录（含子目录）按「文件名完全一致」查找同名成片；
+  // 找到则把该成片所在日志块 @out 行改写成新路径并返回，前端据此刷新视图
+  relocateMaskOut(projectPath, videoName, newDir) {
+    const pdir = String(projectPath || '').trim();
+    const logDir = this._maskLogDir(pdir);
+    const vn = String(videoName || '').trim().replace(/^"|"$/g, '');
+    const nd = String(newDir || '').trim().replace(/^"|"$/g, '');
+    if (!pdir || !logDir || !fs.existsSync(logDir)) return { ok: false, error: '项目无遮罩日志' };
+    if (!vn) return { ok: false, error: '未指定成片名' };
+    if (!nd || !fs.existsSync(nd) || !fs.statSync(nd).isDirectory()) return { ok: false, error: '所选目录无效' };
+    if (!/\.mp4$/i.test(vn)) vn += '.mp4';
+    // 目录递归查找同名文件（与外部手动迁移的「文件名=同一成片」语义一致）
+    const found = this._findVideoByName(nd, vn);
+    if (!found) return { ok: false, error: '所选目录中未找到同名成片：' + path.basename(vn) };
+    // 改写日志块 @out：遍历日志文件，命中该成片名行后在其块内替换 @out
+    let written = false;
+    let files = [];
+    try { files = fs.readdirSync(logDir).filter((n) => n.endsWith('.txt')); } catch (e) { return { ok: false, error: '读取日志失败' }; }
+    for (const f of files) {
+      const fp = path.join(logDir, f);
+      const text = readText(fp);
+      const lines = text.split(/\r?\n/);
+      let changed = false;
+      const vnLow = vn.toLowerCase();
+      for (let i = 0; i < lines.length; i++) {
+        const nameLine = lines[i].replace(/\r$/, '').trim();
+        if (nameLine.toLowerCase() !== vnLow) continue;
+        // 块内 8 行内找 @out（遇 === 止；「使用片段列表：」允许越过，与 _maskOutFromLog 同口径）
+        for (let j = i + 1; j < Math.min(i + 8, lines.length); j++) {
+          const t = lines[j].replace(/\r$/, '');
+          if (t.startsWith('===')) break;
+          const m = /^@out:\s*(.+)$/.exec(t);
+          if (m) { if (String(m[1]).trim().replace(/^"|"$/g, '') !== found) { lines[j] = '@out: ' + found; changed = true; } break; }
+        }
+        break; // 同名成片只对应一个块
+      }
+      if (changed) { atomicWrite(fp, lines.join('\n')); written = true; }
+    }
+    if (!written) {
+      // 日志中无该成片记录：仍返回 ok，前端提示已定位但未改写日志
+      return { ok: true, path: found, noLog: true };
+    }
+    this._maskLogCache = null;
+    return { ok: true, path: found };
+  }
+
+  // 目录内（含子目录）按文件名（含扩展名，大小写不敏感）查找视频；找到返回完整路径，否则空串
+  _findVideoByName(dir, fileName) {
+    const target = String(fileName || '').toLowerCase();
+    const walk = (d) => {
+      let ents = [];
+      try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch (e) { return ''; }
+      for (const en of ents) {
+        const full = path.join(d, en.name);
+        if (en.isDirectory()) { const r = walk(full); if (r) return r; }
+        else if (en.isFile() && en.name.toLowerCase() === target && /\.(mp4|mov|avi|mkv|m4v)$/i.test(en.name)) return full;
+      }
+      return '';
+    };
+    return walk(dir);
+  }
+
+  // 迁移指定遮罩叠加成片到新文件夹：移动文件并同步更新遮罩日志块的 @out 路径
+  moveMaskOut(projectPath, videoName, newDir) {
+    const pdir = String(projectPath || '').trim();
+    const logDir = this._maskLogDir(pdir);
+    const vn = String(videoName || '').trim();
+    const nd = String(newDir || '').trim();
+    if (!pdir || !fs.existsSync(logDir)) return { ok: false, error: '项目无遮罩日志' };
+    if (!vn || !nd) return { ok: false, error: '缺少成片名或目标目录' };
+    if (!fs.existsSync(nd)) { try { fs.mkdirSync(nd, { recursive: true }); } catch (e) { return { ok: false, error: '创建目标目录失败' }; } }
+    let files = [];
+    try { files = fs.readdirSync(logDir).filter((n) => n.endsWith('.txt')); } catch (e) { return { ok: false, error: '读取日志失败' }; }
+    for (const f of files) {
+      const fp = path.join(logDir, f);
+      const src = this._maskOutFromLog(fp, vn) || this._findMaskOut(vn);
+      if (!src || !fs.existsSync(src)) continue;
+      const ext = path.extname(vn) || '.mp4';
+      let dest = path.join(nd, vn);
+      let k = 1;
+      while (fs.existsSync(dest)) { dest = path.join(nd, path.basename(vn, ext) + '_' + k + ext); k++; }
+      try { fs.renameSync(src, dest); } catch (e) { return { ok: false, error: '移动文件失败：' + String(e) }; }
+      // 更新日志块 @out 行
+      const text = readText(fp);
+      const lines = text.split(/\r?\n/);
+      const updated = lines.map((l) => {
+        const m = /^@out:\s*(.+)$/.exec(l.replace(/\r$/, ''));
+        if (m && path.basename(String(m[1]).trim().replace(/^"|"$/g, '')) === vn) return '@out: ' + dest;
+        return l;
+      });
+      atomicWrite(fp, updated.join('\n'));
+      return { ok: true, from: src, to: dest };
+    }
+    return { ok: false, error: '未找到成片：' + vn };
+  }
+
+  // 删除二次拼接产物：扫描项目下所有拼接日志/复刻日志，找出片段引用遮罩叠加成片的成片块，删除对应二次成片文件并同步从日志移除块（成片与日志同目录）
+  deleteSecondaryProducts(projectPath, maskOutPaths) {
+    const pdir = String(projectPath || '').trim();
+    const refs = new Set((Array.isArray(maskOutPaths) ? maskOutPaths : []).map((p) => path.basename(String(p)).toLowerCase()));
+    if (!pdir || !refs.size) return { ok: false, error: '未指定引用成片' };
+    const deleted = [];
+    const removedVideos = [];
+    const logFiles = [];
+    const walk = (d) => {
+      let ents = [];
+      try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch (e) { return; }
+      for (const en of ents) {
+        if (en.name === '遮罩日志') continue;
+        const full = path.join(d, en.name);
+        if (en.isDirectory()) walk(full);
+        else if (en.isFile() && en.name.endsWith('.txt') && /(拼接日志|复刻日志)/.test(en.name)) logFiles.push(full);
+      }
+    };
+    walk(pdir);
+    for (const fp of logFiles) {
+      const text = readText(fp);
+      const lines = text.split(/\r?\n/).map((l) => l.replace(/\r$/, ''));
+      const keep = [];
+      const fileVideos = [];   // 本文件命中的成片（不跨文件累积，避免同一成片被重复定位）
+      let i = 0;
+      let changed = false;
+      while (i < lines.length) {
+        const line = lines[i];
+        if (line.trim() === '使用片段列表：') {
+          const block = [];
+          let j = Math.max(0, i - 1);
+          while (j < lines.length) {
+            const l = lines[j];
+            if (l.trim() === '使用片段列表：' && j !== i) break;
+            if (l.trim().startsWith('===')) break;
+            block.push(l);
+            j++;
+            if (j < lines.length && lines[j].trim() === '使用片段列表：') break;
+            if (j < lines.length && lines[j].trim().startsWith('===')) { block.push(lines[j]); j++; break; }
+          }
+          const clips = block.slice(2).filter((l) => l.trim() && /^[A-Za-z]:[\\/]|^\\\\/.test(l.trim()));
+          const hit = clips.some((c) => refs.has(path.basename(c.trim()).toLowerCase()));
+          if (hit) {
+            changed = true;
+            const vname = (block[0] || '').trim();
+            if (vname) { fileVideos.push(vname); removedVideos.push(vname); }
+            i = j;
+            continue;
+          }
+          for (let k = Math.max(0, i - 1); k < j; k++) keep.push(lines[k]);
+          i = j;
+          continue;
+        }
+        keep.push(line);
+        i++;
+      }
+      if (changed) {
+        const logDir = path.dirname(fp);
+        // 先采集清单留痕，再一律移入回收站
+        const outs = [];
+        for (const vn of fileVideos) {
+          const op = path.join(logDir, vn);
+          if (fs.existsSync(op)) outs.push(op);
+        }
+        if (outs.length) {
+          const info = this._describeForLog(outs);
+          this._lg('DEL', 'secondary.products.remove',
+            '删除二次拼接产物 · ' + info.count + ' 个文件 · 共 ' + this._humanSize(info.bytes)
+            + ' · 日志 ' + path.basename(fp), Object.assign({ project: pdir }, info));
+        }
+        for (const op of outs) { this._recycleFile(op, '删除遮罩成片'); deleted.push(op); }
+        // 仅剩分隔线/空行时视为已空，移除日志文件（走回收站）；否则原子写回
+        const outText = keep.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd() + '\n';
+              if (keep.some((l) => (l || '').trim() && !/^=+$/.test((l || '').trim()))) atomicWrite(fp, outText);
+              else this._hardDelete(fp);   // 空壳日志：无信息量，hard 级
+      }
+    }
+    return { ok: true, deleted, videos: removedVideos };
+  }
+
+  // 检测应用运行所需的外部环境是否可用（ffmpeg / ffprobe / 内置引擎）；滤镜需实际运行探测，只查存在性拦不住。
+  // 内置组件目录：打包形态 = <程序目录>\resources\ffmpeg（extraResources 随包落入；引擎需 spawn 真实文件，故不放 asar）。
+  // ⚠ 未打包（开发形态）返回空：`process.resourcesPath` 指向 Electron 自身，开发形态继续走「数据目录\ffmpeg」。
+  _ffmpegBuiltinDir() {
+    try {
+      const el = require('electron');
+      if (!el || !el.app || !el.app.isPackaged) return '';
+      const rp = process.resourcesPath || '';
+      return rp ? path.join(rp, 'ffmpeg') : '';
+    } catch (e) { return ''; }
+  }
+  /** 内置组件是否就位（两个 exe 都在）—— 供启动探测据此**不自动下载/升级** */
+  ffmpegBuiltinReady() {
+    const d = this._ffmpegBuiltinDir();
+    if (!d) return false;
+    try { return fs.existsSync(path.join(d, 'ffmpeg.exe')) && fs.existsSync(path.join(d, 'ffprobe.exe')); } catch (e) { return false; }
+  }
+  // 解析 ffmpeg / ffprobe 实际路径。**优先级**：
+  //   ① 内置 `resources\ffmpeg\`（随程序发布，首启离线可用）
+  //   ② 配置字段 `ffmpeg_dir`（配置文件字段，设置页无 UI：平时由自动下载/自愈回写，供手工改 config.json 指定自备完整版）
+  //   ③ 数据目录\ffmpeg（历史下载遗留，仅为兼容旧装机保留）
+  // 逐级取**实际存在两个 exe** 的目录，取到即用；⚠ 不得回退系统 PATH，且纯同步、极快，可用于启动路径。
+  _resolveFfmpegBin() {
+    const cands = [];
+    const bi = this._ffmpegBuiltinDir();
+    if (bi) cands.push(bi);
+    const cfgDir = String((this.config && this.config.ffmpeg_dir) || '').trim();
+    if (cfgDir) cands.push(cfgDir);
+    const legacy = this._ffmpegTargetDir();
+    if (legacy) cands.push(legacy);
+    for (const d of cands) {
+      const f = path.join(d, 'ffmpeg.exe'), p = path.join(d, 'ffprobe.exe');
+      let ok = false;
+      try { ok = fs.existsSync(f) && fs.existsSync(p); } catch (e) { ok = false; }
+      if (ok) return { cfgDir: d, ffmpegPath: f, ffprobePath: p };
+    }
+    // 一处都没有：保持旧语义 —— cfgDir 指向「数据目录\ffmpeg」（历史自愈位置），路径留空由调用方走「组件缺失」提示与（已就位的）自动下载兜底。
+    return { cfgDir: legacy || (cands[0] || ''), ffmpegPath: '', ffprobePath: '' };
+  }
+
+  // ── 使用前的轻量环境校验（毫秒级：只做 existsSync + where，不启动 ffmpeg 进程）──
+  // 启动时的完整探测（checkEnvAsync）只代表「启动那一刻」；环境在运行期间失效（PATH 被改动、组件被移走、
+  // 安全软件清理入口）时不会重查，只能在使用时兜住，否则要到素材探测失败才暴露。
+  quickEnvCheck() {
+    const r = this._resolveFfmpegBin();
+    return {
+      ok: !!r.ffmpegPath && !!r.ffprobePath,
+      ffmpeg: !!r.ffmpegPath,
+      ffprobe: !!r.ffprobePath,
+      ffmpegPath: r.ffmpegPath,
+      ffprobePath: r.ffprobePath,
+    };
+  }
+  /** 环境不可用 → 记日志 + 首次提示（横幅/吐司，见 main.js onEnvLost）+ 返回简短拦截文案；可用返回 null */
+  _envGuard(where) {
+    const q = this.quickEnvCheck();
+    if (q.ok) { this._envLostNotified = false; return null; }
+    const miss = [!q.ffmpeg && 'FFmpeg', !q.ffprobe && 'FFprobe'].filter(Boolean).join(' / ');
+    const brief = miss + ' 不可用';
+    try { this._lg('ERR', 'env.lost', brief + ' · ' + String(where || ''), { ffmpeg: q.ffmpeg, ffprobe: q.ffprobe, where: where || '' }); } catch (e) {}
+    // 去重：同一次失效只提示一次（任务连发时不刷屏）；恢复可用后自动复位
+    if (!this._envLostNotified) {
+      this._envLostNotified = true;
+      try { if (typeof this.onEnvLost === 'function') this.onEnvLost({ missing: miss, ffmpeg: q.ffmpeg, ffprobe: q.ffprobe, where: where || '' }); } catch (e) {}
+    }
+    return { ok: false, error: brief + '，请重新下载组件' };
+  }
+
+  // 探测缓存：ffmpeg 路径 + 文件 大小/mtime 作指纹，命中即复用，避免每次启动重跑两个 ffmpeg 进程。
+  // ⚠ 指纹必须含文件本身的 stat —— 仅用路径会让「重装/升级 ffmpeg 后仍用旧结论」。
+  _envProbeFingerprint(ffmpegPath) {
+    if (!ffmpegPath) return '';
+    try { const st = fs.statSync(ffmpegPath, { bigint: true }); return ffmpegPath + '|' + String(st.size) + '|' + String(st.mtimeMs); }
+    catch (e) { return ffmpegPath + '|?'; }
+  }
+
+  // 环境检测（**唯一入口**）：滤镜/编码器探测走异步 execFile，不阻塞主进程事件循环。
+  // ⚠ 不得改回同步实现 —— 冷启动首次加载 ffmpeg（安全软件扫描未签名二进制）会长时间阻塞主线程，窗口显示要等很久。
+  checkEnvAsync() {
+    const { cfgDir, ffmpegPath, ffprobePath } = this._resolveFfmpegBin();
+    const finish = (missing, missingEncoders, probeFailed, probeReason) => {
+      const realMissing = missing.length > 0 || missingEncoders.length > 0;
+      return {
+        ffmpeg: !!ffmpegPath,
+        ffprobe: !!ffprobePath,
+        engine: !!this._engineRunnerPath(),
+        ffmpegPath, ffprobePath,
+        filtersOk: !!ffmpegPath && !probeFailed && missing.length === 0,
+        encodersOk: !!ffmpegPath && !probeFailed && missingEncoders.length === 0,
+        missing, missingEncoders,
+        probeFailed: !!probeFailed,
+        probeReason: probeReason || '',
+        // 只有「确证缺失」才建议下载：路径不存在，或探测**成功**却确实缺项
+        downloadNeeded: !ffmpegPath || !ffprobePath || realMissing,
+        ffmpegDir: cfgDir,
+      };
+    };
+    if (!ffmpegPath) return Promise.resolve(finish([], [], false, ''));
+    const fp = this._envProbeFingerprint(ffmpegPath);
+    if (this._envProbeCache && this._envProbeCache.fp === fp) {
+      const c = this._envProbeCache;
+      return Promise.resolve(finish(c.missing.slice(), c.missingEncoders.slice(), false, ''));
+    }
+    // 持久化命中（verify_cache 的 env:ffmpeg，按 ffmpeg 路径 + size/mtime 指纹）：
+    // 启动期直接复用上次结论 —— **不启动 ffmpeg 进程**（省一次进程启动，且消除冷态超时误报）。
+    if (fp && this._useDbCache() && this._cacheStore && typeof this._cacheStore.verifyGetMany === 'function') {
+      try {
+        const row = this._cacheStore.verifyGetMany('env:ffmpeg').get('env:ffmpeg');
+        if (row && row.fp === fp && row.result) {
+          const c = JSON.parse(row.result) || {};
+          const missing = Array.isArray(c.missing) ? c.missing : [];
+          const missingEncoders = Array.isArray(c.missingEncoders) ? c.missingEncoders : [];
+          this._envProbeCache = { fp, missing: missing.slice(), missingEncoders: missingEncoders.slice(), at: Date.now() };
+          const r = finish(missing, missingEncoders, false, '');
+          try {
+            if (this._lg) this._lg('SYS', 'env.probe', 'FFmpeg 环境探测 · 命中缓存（未启动 ffmpeg 进程）· 缺滤镜 ' + missing.length + ' 项 / 缺编码器 ' + missingEncoders.length + ' 项', { cached: true });
+          } catch (e) {}
+          return Promise.resolve(r);
+        }
+      } catch (e) {}
+    }
+    if (this._envProbeInflight) return this._envProbeInflight;   // 并发合并：同时多处调用只跑一轮
+    const startedAt = Date.now();
+    const run = (args) => new Promise((resolve) => {
+      let done = false;
+      const settle = (v) => { if (!done) { done = true; resolve(v); } };
+      try {
+        const p = require('child_process').execFile(ffmpegPath, args,
+          { windowsHide: true, timeout: ENV_PROBE_TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024 },
+          (err, stdout) => {
+            if (err) settle({ ok: false, reason: err.killed ? 'timeout' : 'error' });
+            else settle({ ok: true, out: String(stdout || '') });
+          });
+        p.on('error', () => settle({ ok: false, reason: 'spawn' }));
+      } catch (e) { settle({ ok: false, reason: 'spawn' }); }
+    });
+    this._envProbeInflight = (async () => {
+      // 两个探测可并行：互不依赖，串行只会让耗时翻倍
+      const [rf, re] = await Promise.all([run(['-hide_banner', '-filters']), run(['-hide_banner', '-encoders'])]);
+      const missing = [];
+      const missingEncoders = [];
+      // 探测成功才逐项比对；失败时不塞 missing（那是"没探到"，不是"缺失"）
+      if (rf.ok) for (const f of FFMPEG_REQUIRED_FILTERS) if (!rf.out.includes(' ' + f + ' ')) missing.push(f);
+      if (re.ok) for (const e3 of FFMPEG_REQUIRED_ENCODERS) if (!re.out.includes(' ' + e3 + ' ')) missingEncoders.push(e3);
+      const probeFailed = !rf.ok || !re.ok;
+      const probeReason = !rf.ok ? rf.reason : (!re.ok ? re.reason : '');
+      // 失败结果**不写缓存**：下次调用（前端 check_env / 启动期延迟重试）会再探一次 ——冷态超时通常几秒后就转热，缓存失败结论等于把误判钉死到进程重启。
+      this._envProbeCache = probeFailed
+        ? null
+        : { fp, missing: missing.slice(), missingEncoders: missingEncoders.slice(), at: Date.now() };
+      // 成功结论**持久化**（按 ffmpeg 路径 + size/mtime 指纹）：下次启动直接复用，不启动 ffmpeg 进程。失败仍不写（见上），避免把冷态误判钉死。
+      if (!probeFailed && fp && this._useDbCache() && this._cacheStore && typeof this._cacheStore.verifyPut === 'function') {
+        try {
+          this._cacheStore.verifyPut('env:ffmpeg', fp, JSON.stringify({ missing: missing.slice(), missingEncoders: missingEncoders.slice() }), 0, Date.now());
+        } catch (e) {}
+      }
+      this._envProbeInflight = null;
+      const r = finish(missing, missingEncoders, probeFailed, probeReason);
+      this._logEnvProbe(r, Date.now() - startedAt);
+      return r;
+    })();
+    return this._envProbeInflight;
+  }
+
+  // 环境探测留痕：冷启动是否超时、超时多久、路径是什么 —— 事后唯一可回溯的证据（进程重启后内存缓存即失效，只靠"弹窗出现过"无法判断是缺组件还是冷态没探到）
+  _logEnvProbe(r, ms) {
+    try {
+      this._lg(r.probeFailed ? 'ERR' : 'SYS', 'env.probe',
+        'FFmpeg 环境探测 · ' + (r.probeFailed ? '失败（' + r.probeReason + '）' : '完成')
+        + ' · ' + ms + 'ms · ffmpeg=' + (r.ffmpeg ? '有' : '无') + ' ffprobe=' + (r.ffprobe ? '有' : '无')
+        + ' · 缺滤镜 ' + r.missing.length + ' 项 / 缺编码器 ' + r.missingEncoders.length + ' 项'
+        + ' · 需下载=' + (r.downloadNeeded ? '是' : '否'),
+        { ms, probeFailed: r.probeFailed, probeReason: r.probeReason, path: r.ffmpegPath || '',
+          missing: r.missing.slice(0, 12), missingEncoders: r.missingEncoders.slice(0, 6),
+          downloadNeeded: r.downloadNeeded });
+    } catch (e) {}
+  }
+
+  // 注：环境检测唯一入口 = checkEnvAsync()；不要引入同步实现 —— 同步 spawn 会阻塞启动关键路径。
+
+  // 备份自动清理：删除超过保留天数的处理前备份（走回收站，可还原）；目录取设置里的「默认备份目录」，未设置时用数据目录下的 backup
+  _cleanupBackups() {
+    try {
+      if (this.config.backup_auto_clean !== true) return;
+      const days = parseInt(this.config.backup_keep_days, 10) || 7;
+      // 与实际备份根一致：用户自选目录时同样落在其下的「Video Lab 备份」层（清理才清得到）
+      const root = this.getBackupRoot();
+      if (!fs.existsSync(root)) return;
+      // ⚠ 必须在此取 shell：本文件没有模块级引入 electron，直接用 `shell` 会得到 undefined，条件恒假 → 只计数不删除。
+      const { shell } = require('electron');
+      const expire = Date.now() - days * 24 * 60 * 60 * 1000;
+      let n = 0;
+          const gone = [];
+          const walk = (d) => {
+            for (const name of fs.readdirSync(d)) {
+              const p2 = path.join(d, name);
+              let st = null;
+              try { st = fs.statSync(p2); } catch (e) { continue; }
+              if (st.isDirectory()) { walk(p2); continue; }
+              if (st.mtimeMs < expire) {
+                if (this._recycleFile(p2, '过期处理前备份（保留期 ' + days + ' 天）')) { n++; gone.push(p2); }
+              }
+            }
+          };
+          walk(root);
+          // 备份 = 原始视频副本，删了不可再生：日志必须逐条留路径，否则用户事后无从追溯
+          if (n) this._lg('DEL', 'backup.cleanup', '清理过期备份 · ' + n + ' 个文件 · 保留 ' + days + ' 天',
+            { count: n, files: gone.slice(0, 50) });
+    } catch (e) {}
+  }
+
+  // 备份自动清理（异步版，供启动后台调用）：启动路径不能同步遍历（备份目录可能在机械盘），故用 fs.promises 后台跑，与成片存在性预热同一模式。
+  async _cleanupBackupsAsync() {
+    try {
+      if (this.config.backup_auto_clean !== true) return 0;
+      const days = parseInt(this.config.backup_keep_days, 10) || 7;
+      const root = this.getBackupRoot();
+      let exists = false;
+      try { exists = (await fs.promises.stat(root)).isDirectory(); } catch (e) { exists = false; }
+      if (!exists) return 0;
+      const expire = Date.now() - days * 24 * 60 * 60 * 1000;
+      let n = 0;
+      const gone = [];
+      const walk = async (d) => {
+        let names = [];
+        try { names = await fs.promises.readdir(d); } catch (e) { return; }
+        for (const name of names) {
+          const p2 = path.join(d, name);
+          let st = null;
+          try { st = await fs.promises.stat(p2); } catch (e) { continue; }
+          if (st.isDirectory()) { await walk(p2); continue; }
+          if (st.mtimeMs < expire) {
+            if (this._recycleFile(p2, '过期处理前备份（保留期 ' + days + ' 天）')) { n++; gone.push(p2); }
+          }
+        }
+      };
+      await walk(root);
+      if (n) this._lg('DEL', 'backup.cleanup', '清理过期备份 · ' + n + ' 个文件 · 保留 ' + days + ' 天',
+        { count: n, files: gone.slice(0, 50) });
+      return n;
+    } catch (e) { return 0; }
+  }
+
+  // 启动后台：把「数据目录 backup\ 里的存量备份」迁到用户当前设置的备份根。
+  // migrateBackups 只在**保存设置时值发生变化**才触发，旧版写进数据目录的那批备份否则永远不会被搬走；
+  // 仅在用户设了自定义根时迁移（没设时数据目录就是正确位置），源目录不存在直接返回 0。
+  async migrateLegacyBackupsAsync() {
+    try {
+      const custom = String(this.config.backup_dir || '').trim();
+      if (!custom) return 0;
+      const n = await this.migrateBackups('', custom);   // rootOf('') = 数据目录 backup
+      if (n > 0) {
+        try {
+          this._lg('SYS', 'backup.migrate.legacy',
+            '已把数据目录下的存量备份迁至当前备份根（' + n + ' 个文件）', { to: this.getBackupRoot(), files: n });
+        } catch (e) {}
+      }
+      return n;
+    } catch (e) { return 0; }
+  }
+
+  // 备份目录变更时迁移旧备份：把旧备份根下的内容搬到新根（改了路径，里面的备份一起迁移）。
+  // 逐文件移动（rename 优先，跨盘失败退回「复制 + 删源」）；同名文件保留新目录已有内容（不覆盖）。
+  // ⚠ 迁移完成后只删除**已空**的旧目录（绝不 rm -rf 有内容的目录），避免中途失败时丢备份。
+  async migrateBackups(oldDir, newDir) {
+    try {
+      const rootOf = (d) => {
+        const c = String(d || '').trim();
+        return c ? path.join(c, 'Video Lab 备份')
+          : path.join(this.storageDir || process.cwd(), 'backup');
+      };
+      const from = rootOf(oldDir), to = rootOf(newDir);
+      if (path.resolve(from) === path.resolve(to)) return 0;   // 同一位置：无需迁移
+      let ok = false;
+      try { ok = (await fs.promises.stat(from)).isDirectory(); } catch (e) { ok = false; }
+      if (!ok) return 0;                                       // 旧目录不存在：无内容可迁
+      await fs.promises.mkdir(to, { recursive: true });
+      let n = 0;
+      const walk = async (rel) => {
+        const srcDir = path.join(from, rel);
+        let names = [];
+        try { names = await fs.promises.readdir(srcDir); } catch (e) { return; }
+        for (const name of names) {
+          const r = rel ? path.join(rel, name) : name;
+          const s = path.join(from, r), t = path.join(to, r);
+          let st = null;
+          try { st = await fs.promises.stat(s); } catch (e) { continue; }
+          if (st.isDirectory()) {
+            try { await fs.promises.mkdir(t, { recursive: true }); } catch (e) {}
+            await walk(r);
+            continue;
+          }
+          let exists = false;
+          try { exists = (await fs.promises.stat(t)).isFile(); } catch (e) { exists = false; }
+          if (exists) continue;                                // 目标已存在同名文件：保留目标的
+          try { await fs.promises.rename(s, t); n++; }
+          catch (e) {
+            try { await fs.promises.copyFile(s, t); await fs.promises.unlink(s); n++; } catch (e2) {}
+          }
+        }
+      };
+      await walk('');
+      // 只清理已空的旧目录壳（逐层判断，非空一律保留）
+      const pruneEmpty = async (d) => {
+        let names = [];
+        try { names = await fs.promises.readdir(d); } catch (e) { return; }
+        for (const nm of names) {
+          const p2 = path.join(d, nm);
+          let st = null;
+          try { st = await fs.promises.stat(p2); } catch (e) { continue; }
+          if (st.isDirectory()) await pruneEmpty(p2);
+        }
+        try { if (!(await fs.promises.readdir(d)).length) await fs.promises.rmdir(d); } catch (e) {}
+      };
+      await pruneEmpty(from);
+      if (n) this._lg('SYS', 'backup.migrate', '备份目录迁移 · ' + n + ' 个文件', { from, to });
+      return n;
+    } catch (e) { return 0; }
+  }
+
+  // 自动兜底清理（手动清单之外的另一路，启动后经空闲队列执行）：
+  //   ① preview\ 下的预览图（png/jpg）：生成后即删，留下的无用途；
+  //   ② txt-snap\ 里**任务记录已不存在**的快照。
+  // ⚠ 不按时间、不按任务终态清理快照；删除走回收站，并跨「当前 + 历史」数据根。
+  async _sweepLegacyAuto() {
+    try {
+      const roots = [String(this.storageDir || '')].concat(this._legacyDirs || []);
+      let n = 0, freed = 0;
+      const drop = (p) => {
+        try { const sz = this._ddSize(p); if (this._hardDelete(p)) { n++; freed += (sz || 0); } } catch (e) {}
+      };
+      for (const r of roots) {
+        // ① 预览图（成品文件即删，空壳顺手收回）
+        try {
+          const pv = path.join(r, 'preview');
+          if (fs.existsSync(pv) && fs.statSync(pv).isDirectory()) {
+            for (const f of fs.readdirSync(pv)) {
+              if (!/\.(png|jpe?g)$/i.test(f)) continue;
+              const p = path.join(pv, f);
+              try { if (fs.statSync(p).isFile()) drop(p); } catch (e) {}
+            }
+            try { if (fs.readdirSync(pv).length === 0) fs.rmdirSync(pv); } catch (e) {}
+          }
+        } catch (e) {}
+        try {
+          const sd = path.join(r, 'txt-snap');
+          if (fs.existsSync(sd) && fs.statSync(sd).isDirectory()) {
+            for (const f of fs.readdirSync(sd)) {
+              if (!/\.txt$/i.test(f)) continue;
+              const t = this.tasks.get(f.replace(/\.txt$/i, ''));
+              if (!t) drop(path.join(sd, f));
+            }
+          }
+        } catch (e) {}
+      }
+      if (n) {
+        try {
+          this._lg('SYS', 'legacy.autoSweep',
+            '遗留文件自动清理 · ' + n + ' 个文件 · 释放 ' + this._humanSize(freed),
+            { removed: n, freed, roots: roots.length });
+        } catch (e) {}
+      }
+    } catch (e) { /* 兜底清理失败绝不能影响启动 */ }
+  }
+
+  // 清掉某个目录里的过期锁（进程已死 或 mtime 超 60s）。返回清掉的个数。
+  // 引擎有**三处**写锁，落点各不相同，只清 <数据根>\.locks\ 会漏掉后两处：
+  //   batch  → <数据根>\.locks\.video-lab-batch.lock
+  //   mask   → <成片输出目录>\.video-lab-mask.lock
+  //   replica→ <成片输出根>\.video-lab-replica.lock
+  _cleanupLocksIn(dir) {
+    let n = 0;
+    try {
+      if (!dir || !fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) return 0;
+      for (const name of fs.readdirSync(dir)) {
+        if (!/\.lock$/i.test(name)) continue;
+        const lockFile = path.join(dir, name);        // 锁文件是进程间同步用的临时控制文件，非业务数据
+        let st = null;
+        try { st = fs.statSync(lockFile); } catch (e) { continue; }
+        if (!st || !st.isFile()) continue;
+        let holder = null;
+        try { holder = JSON.parse(fs.readFileSync(lockFile, 'utf8')); } catch (e) { holder = null; }
+        let alive = false;
+        if (holder && holder.pid) {
+          try { process.kill(holder.pid, 0); alive = true; } catch (e) { alive = (e && e.code === 'EPERM'); }
+        }
+        const stale = !alive || (Date.now() - (st.mtimeMs || 0) > 60 * 1000);
+        if (stale) { try { fs.unlinkSync(lockFile); n++; } catch (e) {} }
+      }
+    } catch (e) {}
+    return n;
+  }
+
+  _cleanupStaleLocks() {
+    try {
+      const base = String(this.storageDir || process.cwd());
+      const dir = path.join(base, '.locks');
+      this._cleanupLocksIn(dir);
+      // 空壳顺手收回：锁目录只建不删；⚠ 只在**真的空了**时收，还有未过期锁（任务在跑）时保持原样。
+      try {
+        if (fs.existsSync(dir) && fs.statSync(dir).isDirectory() && fs.readdirSync(dir).length === 0) fs.rmdirSync(dir);
+      } catch (e) {}
+    } catch (e) {}
+  }
+
+  // ── 应用级设置（settings.db scope='app'）──
+  // 设置项能进 settings 就进 settings —— config.json 只留「定位数据目录」的锚点，
+  // 其余业务键一律存 settings.db，读取只认 settings、**不回退读 config.json**。
+  static APP_SETTING_KEYS = ['notify_task_end',
+    'backup_dir', 'backup_auto_clean', 'backup_keep_days', 'cache_keep_days'];
+
+  // 启动时把 settings.db 的 app scope 全量载入内存 config（覆盖 DEFAULT_CONFIG 的默认值）。
+  // 未落过库的键保持默认值 —— 这就是「不回退 config」后的取值语义：
+  // 库里有就用库里的，库里没有就用默认值，绝不回头读 config.json。
+  _loadAppSettings() {
+    if (!this._useSettings()) return;
+    let all = {};
+    try { all = this._settingsStore.all('app') || {}; } catch (e) { all = {}; }
+    for (const k of Object.keys(all)) {
+      if (all[k] === undefined || all[k] === null) continue;
+      this.config[k] = all[k];
+    }
+  }
+
+  // 单个应用级设置的读取 —— 供 main 的 get_settings / 通知开关等使用。
+  // fallback 只在「设置库不可用」这一极端情形下使用（此时内存 config 也仅有默认值）。
+  getAppSetting(key, fallback) {
+    if (this._useSettings()) {
+      const v = this._settingsStore.get('app', key);
+      if (v !== undefined && v !== null) return v;
+    }
+    return (this.config && this.config[key] !== undefined) ? this.config[key] : fallback;
+  }
+
+  // 全量读取 app scope（供 main 端组装完整配置：settings.db 是唯一来源）
+  getAppSettings() {
+    if (!this._useSettings()) return {};
+    try { return this._settingsStore.all('app') || {}; } catch (e) { return {}; }
+  }
+
+  // 写入任意应用级设置（不限键）：main 端保存配置时逐键落库。
+  // 显式传对象而非默认取 this.config —— main.config 与 backend.config 是两个对象，
+  // 保存时必须由调用方给出要写的键值，避免两边不同步。
+  _saveAppSettings(values) {
+    if (!this._useSettings()) return;
+    const vals = (values && typeof values === 'object') ? values : {};
+    for (const k of Object.keys(vals)) {
+      if (vals[k] === undefined) continue;
+      try { this._settingsStore.set('app', k, vals[k]); } catch (e) {}
+    }
+  }
+
+  // 删除应用级设置键（供一次性迁移用：旧键搬走后不留残留，保持「单一真相」）
+  _removeAppSetting(key) {
+    if (!this._useSettings()) return false;
+    try { return Number(this._settingsStore.remove('app', String(key))) > 0; } catch (e) { return false; }
+  }
+
+  // ── Windows 系统通知（任务失败 / 本轮跑完）──
+  // 走主进程 Notification（app.setAppUserModelId 已在 main 设置，通知才能正常显示）；不可用时静默，提示失败绝不能影响任务流本身。
+  // ⚠ 用 toastXml 独占模式（才能控制声音/停留时长/署名行，此时 title/body/icon 被忽略）；声音走系统音（ms-winsoundevent:*）。
+  _notify(opts) {
+    try {
+      // 开关：设置的 notify_task_end —— **默认开启**（设置页「通用设置」里可关）
+      if (!(this.config && this.config.notify_task_end === true)) return;
+      const { Notification } = require('electron');
+      if (!Notification || (Notification.isSupported && !Notification.isSupported())) return;
+      const p = opts || {};
+      const lines = [].concat(p.lines || []).filter(Boolean);
+      const n = new Notification({
+        toastXml: this._toastXml(p.title, lines, p.attribution, p.sound, p.duration),
+      });
+      // 点击通知 → 主窗口置前并定位到该任务（回调由 main.js 注入，见 _noticeActivateHandler）
+      if (p.taskId) { try { n.on('click', () => this._noticeActivate(p.taskId)); } catch (e) {} }
+      n.show();
+      this._lg('RUN', 'notify', '系统通知 · ' + String(p.title || '')
+        + ' · ' + lines.concat(p.attribution ? [p.attribution] : []).join(' | ').slice(0, 120));
+    } catch (e) {}
+  }
+
+  // XML 文本转义：标题与正文来自配置名 / 失败原因，用户可以起任何名字（含 & < >）
+  _xmlEsc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  // 组装 Windows Toast XML；⚠ 开头必须有 XML 声明 —— WinRT 的 ToastNotificationManager 不接受无声明的片段
+  _toastXml(title, lines, attribution, sound, duration) {
+    const texts = ['<text>' + this._xmlEsc(title) + '</text>'];
+    for (const l of [].concat(lines || [])) { if (l) texts.push('<text>' + this._xmlEsc(l) + '</text>'); }
+    if (attribution) texts.push('<text placement="attribution">' + this._xmlEsc(attribution) + '</text>');
+    return '<?xml version="1.0" encoding="UTF-8"?>'
+      + '<toast duration="' + (duration === 'long' ? 'long' : 'short') + '">'
+      + '<visual><binding template="ToastGeneric">' + texts.join('') + '</binding></visual>'
+      + '<audio src="ms-winsoundevent:Notification.' + this._xmlEsc(sound || 'Default') + '"/>'
+      + '</toast>';
+  }
+
+  // 通知点击 → 激活主窗口并定位任务（由 main.js 注入具体实现，避免 backend 直接依赖窗口对象）
+  _noticeActivate(taskId) {
+    try {
+      if (typeof this._noticeActivateHandler === 'function') this._noticeActivateHandler(taskId);
+    } catch (e) {}
+  }
+
+  // 任务类型 → 通知标题用的中文名。⚠ 遮罩叠加的任务 type 也是 'batch'，只能靠 env 里的遮罩专有字段区分，否则会把遮罩失败报成「批量拼接失败」。
+  _noticeKind(task) {
+    const t = task || {};
+    if (t.type === 'tool') return '视频处理';
+    if (t.type === 'replica') return '复刻';
+    const E = t.env || {};
+    if (E.MASK_OUTPUT_DIR || E.MASK_THEMES || E.MASK_RAW_DIRS || E.MASK_PROJECT_NAME) return '遮罩叠加';
+    return '批量拼接';
+  }
+
+  // 失败原因 → 归类短语：完整原因在任务详情里已有，通知横幅只需「哪一类问题」。顺序：特异 → 通用（先判时长，再判环境、配置、素材，最后兜底）。
+  _noticeFailCategory(reason) {
+    const s = String(reason || '');
+    if (!s) return '未知原因，可在任务详情中查看';
+    // 顺序有讲究：
+    //   ① 「有失败成片可续跑」必须最先判 —— 它是最常见的失败，却不含任何特征词，
+    //     放到后面会被下面的宽松规则（如「时长」）误伤。
+    if (/可点击「继续制作」续跑|存在失败成片/.test(s)) return '有失败成片 · 可点「继续制作」续跑';
+    if (/没有可用素材|无任何合规视频|里没有可用素材/.test(s)) return '素材问题 · 没有可用素材';
+    if (/时长要求|找不到符合时长|时长组合|时长超标/.test(s)) return '时长不足 · 拼不出符合要求的组合';
+    if (/FFmpeg|FFprobe|编码失败|运行组件/.test(s)) return '环境问题 · FFmpeg 或编码异常';
+    if (/TXT 配置|不是 TXT 格式|水印|重复的成片名|视频路径/.test(s)) return '配置问题 · 检查 TXT 或水印';
+    if (/不存在|缺失|无可用|没有可用|没有可用的视频文件夹|无有效|没有可用于拼接/.test(s)) return '素材问题 · 视频缺失或不合规';
+    return '运行异常 · 可在任务详情中查看';
+  }
+
+  // 失败通知的**节流合并**：首次失败起 2.5 秒静默窗口，窗口内失败只累加不发送；
+  // 窗口结束发**一条**「批量拼接失败（N 项）」。
+  // ⚠ 用定时器而非「先发后合并」：toast 一旦 show 就无法修改内容，合并必然残留两条。
+  _notifyFailSoon(task) {
+    const kind = this._noticeKind(task);
+    const cat = this._noticeFailCategory(task.failReason);
+    const now = Date.now();
+    const buckets = this._noticeFailBuckets || (this._noticeFailBuckets = {});
+    const b = buckets[kind];
+    if (b && b.timer) { b.count++; b.last = task; return; }
+    const entry = { count: 1, last: task, cat, timer: null };
+    entry.timer = setTimeout(() => {
+      delete buckets[kind];
+      const n = entry.count;
+      const t = entry.last;
+      const lines = [];
+      if (n > 1) lines.push('本轮共 ' + n + ' 个任务失败');
+      lines.push(entry.cat);
+      lines.push(String(t.title || '').slice(0, 40));
+      this._notify({
+        title: kind + '失败' + (n > 1 ? '（' + n + ' 项）' : ''),
+        lines, attribution: this._noticeStamp(t), sound: 'Critical', duration: 'long', taskId: t.id,
+      });
+    }, 2500);
+    buckets[kind] = entry;
+  }
+
+  // 立刻把待发窗口内的失败通知冲出去（队列清空时用，避免与「本轮跑完」通知撞在一起）
+  _noticeFlushFail() {
+    const buckets = this._noticeFailBuckets || {};
+    for (const kind of Object.keys(buckets)) {
+      const b = buckets[kind];
+      if (!b || !b.timer) continue;
+      clearTimeout(b.timer);
+      delete buckets[kind];
+      const t = b.last;
+      this._notify({
+        title: kind + '失败' + (b.count > 1 ? '（' + b.count + ' 项）' : ''),
+        lines: [b.cat, String(t.title || '').slice(0, 40)],
+        attribution: this._noticeStamp(t), sound: 'Critical', duration: 'long', taskId: t.id,
+      });
+    }
+  }
+
+  // 署名行：时间 + 队列规模 —— 让人知道「这是刚才那批」的收尾通知
+  _noticeStamp(task) {
+    const d = new Date();
+    const p2 = (n) => (n < 10 ? '0' : '') + n;
+    const hhmm = p2(d.getHours()) + ':' + p2(d.getMinutes());
+    let n = 0;
+    try { for (const t of this.tasks.values()) if (t && (t.status === 'queued' || t.status === 'running')) n++; } catch (e) {}
+    return hhmm + ' · 队列剩余 ' + n + ' 项' + (task && task.title ? ' · ' + String(task.title).split('/')[0].trim() : '');
+  }
+
+  _ffmpegTargetDir() {
+    return path.join(this.storageDir || process.cwd(), 'ffmpeg');
+  }
+
+  // 引擎子进程的 FFmpeg 路径注入：**唯一来源**（引擎侧已无 PATH 回退 —— 缺注入即明确报「组件缺失」，
+  // 不会静默借用系统 PATH，避免出现「主进程判定与引擎实际使用不一致」）
+  _ffmpegBinEnv() {
+    // 与 _resolveFfmpegBin 同源（含「默认自愈目录」兜底）：主进程判定与引擎实际使用的必须是同一份
+    const { ffmpegPath, ffprobePath } = this._resolveFfmpegBin();
+    const out = {};
+    if (ffmpegPath) out.VL_FFMPEG_BIN = ffmpegPath;
+    if (ffprobePath) out.VL_FFPROBE_BIN = ffprobePath;
+    return out;
+  }
+
+  // 环境自愈：下载 FFmpeg / FFprobe（npmmirror 国内镜像，gzip 单文件用内置 zlib 解压）
+  // 到数据目录 ffmpeg\ 并写回 ffmpeg_dir 配置；失败回滚配置，不留半成品路径
+  async ensureFfmpeg(opts) {
+    const force = !!(opts && opts.force);
+    if (this._ffmpegBusy) return { ok: false, error: '已有 FFmpeg 修复在进行中' };
+    const env0 = await this.checkEnvAsync();
+    // force：用户显式点「自动下载」——跳过合格检查强制走完整下载（演示/重装数据目录组件）
+    if (!force && !env0.downloadNeeded) return { ok: true, skipped: true, env: env0 };
+    this._ffmpegBusy = true;
+    const emit = (p) => { try { if (typeof this.onFfmpegProgress === 'function') this.onFfmpegProgress(p); } catch (e) {} };
+    // A3'：**下载落点 = 内置目录 `resources\ffmpeg`**。
+    //   内置组件是唯一权威，缺了就地修复即可，不在数据目录再养一份副本。
+    //   仅当内置目录**不可写**（装到受保护位置 / 盘只读）才退回数据目录。
+    const biDir = this._ffmpegBuiltinDir();
+    let dir = this._ffmpegTargetDir();
+    let toBuiltin = false;
+    if (biDir) {
+      try {
+        fs.mkdirSync(biDir, { recursive: true });
+        const probe = path.join(biDir, '.write-probe');
+        fs.writeFileSync(probe, 'x');
+        fs.unlinkSync(probe);
+        dir = biDir; toBuiltin = true;
+      } catch (e) { toBuiltin = false; }
+    }
+    const prevDir = String(this.config.ffmpeg_dir || '');
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      // 落内置目录时**不写** ffmpeg_dir：解析优先内置（见 _resolveFfmpegBin），写了反而留下一条指向"数据目录那份"的旧配置；只有退回数据目录时才需要写。
+      if (!toBuiltin) this.config.ffmpeg_dir = dir;
+      emit({ phase: 'check' });
+      // ── 主源：npmmirror 的 FFmpeg-Builds 镜像（BtbN 构建，国内可直连，版本可达 8.x）──
+      // 该源进度行含 elapsed（实际耗时）；ffmpeg-static 最高只到 6.1.1 且进度行缺 elapsed，
+      // 用旧源会让界面「已用时」那一行永远为空。
+      let ver = '';
+      let src = 'npmmirror:ffmpeg-static';   // 实际使用的源，写入 _meta.json 供事后核对
+      try {
+        const pick = await this._pickFfmpegBuilds();
+        if (pick) {
+          const url = 'https://registry.npmmirror.com/-/binary/ffmpeg-builds/' + pick.ver + '/' + pick.file;
+          await this._downloadFile(url, path.join(dir, '_ffmpeg.tar.xz'), (pct) => {
+            emit({ phase: 'download', file: 'ffmpeg-builds', percent: Math.min(80, Math.round(pct * 0.8)) });
+          });
+          await this._extractFfmpegBuild(path.join(dir, '_ffmpeg.tar.xz'), dir);
+          ver = String(pick.ver).replace(/^v/, '');
+          src = 'npmmirror:ffmpeg-builds';
+        }
+      } catch (e) {
+        this._lg('ENV', 'ffmpeg.ensure', 'FFmpeg-Builds 源失败，回退 ffmpeg-static · ' + String((e && e.message) || e));
+      }
+      try { fs.rmSync(path.join(dir, '_ffmpeg.tar.xz'), { force: true }); } catch (e) {}
+      // 回退：ffmpeg-static（gzip 单文件，内置 zlib 解压）—— 最高 6.1.1，但一定能用
+      if (!ver) {
+        let v = 'b6.1.1';
+        try {
+          const list = await this._httpGetJson('https://registry.npmmirror.com/-/binary/ffmpeg-static/');
+          const vers = (list || []).map((x) => String(x.name || ''))
+            .filter((n) => /^b[\d.]+\/$/.test(n)).map((n) => n.replace(/\/$/, ''))
+            .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+          if (vers.length) v = vers[vers.length - 1];
+        } catch (e) {}
+        const base = 'https://registry.npmmirror.com/-/binary/ffmpeg-static/' + v + '/';
+        let pctBase = 0;
+        for (const pair of [['ffmpeg-win32-x64.gz', 'ffmpeg.exe'], ['ffprobe-win32-x64.gz', 'ffprobe.exe']]) {
+          await this._downloadGunzip(base + pair[0], path.join(dir, pair[1]), (pct) => {
+            emit({ phase: 'download', file: pair[1], percent: Math.min(99, Math.round(pctBase + pct / 2)) });
+          });
+          pctBase += 50;
+        }
+        ver = v;
+      }
+      const env1 = await this.checkEnvAsync();
+      if (env1.downloadNeeded) throw new Error('下载完成但校验未通过：' + (env1.missing || []).join('、'));
+      // 落地元信息（_meta.json）：事后可核对「两个版本用的是不是同一份组件 / 何时下载的 / 版本号」，双版本共用数据目录时，这份记录是「用的是不是同一份组件」的唯一凭据
+      try {
+        const meta = { version: ver, downloadedAt: new Date().toISOString(), source: src, files: {} };
+        for (const n of ['ffmpeg.exe', 'ffprobe.exe']) {
+          const st = fs.statSync(path.join(dir, n));
+          meta.files[n] = { size: st.size, mtimeMs: Math.round(st.mtimeMs) };
+        }
+        atomicWrite(path.join(dir, '_meta.json'), JSON.stringify(meta, null, 2) + '\n');
+      } catch (e) {}
+      emit({ phase: 'done', ok: true, dir: dir, version: ver });
+      this._lg('ENV', 'ffmpeg.ensure', 'FFmpeg 环境就绪 · ' + ver + ' · ' + dir, { dir: dir, version: ver });
+      return { ok: true, dir: dir, version: ver, env: env1 };
+    } catch (e) {
+      if (!toBuiltin) this.config.ffmpeg_dir = prevDir;   // 没改过它就不回滚（落内置目录时压根没写）
+      emit({ phase: 'error', error: String((e && e.message) || e) });
+      this._lg('ERR', 'ffmpeg.ensure', 'FFmpeg 自动下载失败 · ' + String((e && e.message) || e), { dir: dir, toBuiltin: toBuiltin });
+      return { ok: false, error: String((e && e.message) || e) };
+    } finally { this._ffmpegBusy = false; }
+  }
+
+  /**
+   * 从 npmmirror 的 FFmpeg-Builds 镜像挑最新的 Windows x64 构建（BtbN 出品，国内可直连）。
+   * 目录形如 v6.1.3/ v7.1.5/ v8.1.3/（含 v8.1/ 这类聚合项，跳过）。
+   */
+  async _pickFfmpegBuilds() {
+    const list = await this._httpGetJson('https://registry.npmmirror.com/-/binary/ffmpeg-builds/');
+    const vers = (list || []).map((x) => String(x.name || '').replace(/\/$/, ''))
+      .filter((n) => /^v\d+\.\d+\.\d+$/.test(n))
+      .sort((a, b) => {
+        const pa = a.replace(/^v/, '').split('.').map(Number);
+        const pb = b.replace(/^v/, '').split('.').map(Number);
+        for (let i = 0; i < 3; i++) if (pa[i] !== pb[i]) return pa[i] - pb[i];
+        return 0;
+      });
+    if (!vers.length) return null;
+    for (let i = vers.length - 1; i >= 0; i--) {
+      const ver = vers[i];
+      const n = String(ver).replace(/^v/, '');
+      // 全功能（gpl）版：编码要用 libx264 等；只用静态包（非 shared，免带 dll）
+      const file = 'ffmpeg-' + n + '-win32-x64-gpl.tar.xz';
+      try {
+        const items = await this._httpGetJson('https://registry.npmmirror.com/-/binary/ffmpeg-builds/' + ver + '/');
+        if ((items || []).some((x) => String(x.name || '') === file)) return { ver: ver, file: file };
+      } catch (e) {}
+    }
+    return null;
+  }
+
+  /** 下载到文件（一次性缓冲；仅在组件自愈时用，140MB 级一次性操作可接受） */
+  _downloadFile(url, dest, onPct) {
+    return new Promise((resolve, reject) => {
+      this._httpGet(url, (buf) => {
+        try { fs.writeFileSync(dest, buf); resolve(dest); } catch (e) { reject(e); }
+      }, reject);
+    }).then((r) => { if (typeof onPct === 'function') onPct(100); return r; });
+  }
+
+  /**
+   * 解压 FFmpeg-Builds 的 tar.xz 并取出 ffmpeg.exe / ffprobe.exe 到目标目录。
+   * 用 Windows 自带的 tar.exe（bsdtar，支持 xz）—— 不引入新依赖，也不依赖系统 PATH 上的 7z。
+   * 压缩包内结构：<name>/bin/ffmpeg.exe
+   */
+  _extractFfmpegBuild(archive, destDir) {
+    return new Promise((resolve, reject) => {
+      const tmp = path.join(destDir, '_xtmp');
+      try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (e) {}
+      fs.mkdirSync(tmp, { recursive: true });
+      const { execFile } = require('child_process');
+      execFile('tar', ['-xf', archive, '-C', tmp], { windowsHide: true, timeout: 600000, maxBuffer: 8 * 1024 * 1024 }, (err) => {
+        if (err) { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (e2) {} return reject(new Error('解压失败：' + String(err.message || err))); }
+        try {
+          const find = (name) => {
+            const stack = [tmp];
+            while (stack.length) {
+              const d = stack.pop();
+              let ents = [];
+              try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch (e) { continue; }
+              for (const e of ents) {
+                const p = path.join(d, e.name);
+                if (e.isDirectory()) stack.push(p);
+                else if (String(e.name).toLowerCase() === name) return p;
+              }
+            }
+            return '';
+          };
+          const f1 = find('ffmpeg.exe'), f2 = find('ffprobe.exe');
+          if (!f1 || !f2) throw new Error('包内缺少 ffmpeg.exe / ffprobe.exe');
+          fs.copyFileSync(f1, path.join(destDir, 'ffmpeg.exe'));
+          fs.copyFileSync(f2, path.join(destDir, 'ffprobe.exe'));
+          fs.rmSync(tmp, { recursive: true, force: true });
+          resolve(true);
+        } catch (e2) {
+          try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (e3) {}
+          reject(e2);
+        }
+      });
+    });
+  }
+
+  _httpGetJson(url) {
+    return new Promise((resolve, reject) => {
+      this._httpGet(url, (buf) => {
+        try { resolve(JSON.parse(buf.toString('utf8'))); } catch (e) { reject(e); }
+      }, reject);
+    });
+  }
+
+  _httpGet(url, onOk, onErr) {
+    const mod = url.indexOf('https:') === 0 ? require('node:https') : require('node:http');
+    const req = mod.get(url, { headers: { 'User-Agent': 'VideoLab' }, timeout: 20000 }, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        res.resume(); this._httpGet(res.headers.location, onOk, onErr); return;
+      }
+      if (res.statusCode !== 200) { res.resume(); onErr(new Error('HTTP ' + res.statusCode)); return; }
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => onOk(Buffer.concat(chunks)));
+      res.on('error', onErr);
+    });
+    req.on('timeout', () => req.destroy(new Error('连接超时')));
+    req.on('error', onErr);
+  }
+
+  // 下载 gz → 流式解压写盘；进度按 5% 步进回调
+  _downloadGunzip(url, dest, onPct) {
+    return new Promise((resolve, reject) => {
+      const get = (u, n) => {
+        const mod = u.indexOf('https:') === 0 ? require('node:https') : require('node:http');
+        const req = mod.get(u, { headers: { 'User-Agent': 'VideoLab' }, timeout: 30000 }, (res) => {
+          if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && n < 5) {
+            res.resume(); get(res.headers.location, n + 1); return;
+          }
+          if (res.statusCode !== 200) { res.resume(); reject(new Error('HTTP ' + res.statusCode)); return; }
+          const zlib = require('node:zlib');
+          const total = parseInt(res.headers['content-length'], 10) || 0;
+          const chunks = []; let got = 0, last = 0;
+          res.on('data', (c) => {
+            got += c.length; chunks.push(c);
+            const pct = total ? Math.floor((got / total) * 100) : 0;
+            if (pct - last >= 5) { last = pct; if (onPct) onPct(pct); }
+          });
+          res.on('end', () => {
+            try { fs.writeFileSync(dest, zlib.gunzipSync(Buffer.concat(chunks))); resolve(); }
+            catch (e) { reject(e); }
+          });
+          res.on('error', reject);
+        });
+        req.on('timeout', () => req.destroy(new Error('下载超时')));
+        req.on('error', reject);
+      };
+      get(url, 0);
+    });
+  }
+}
+
+module.exports = { Api, DEFAULT_CONFIG };

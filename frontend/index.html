@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-skin="white_blue">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Video Lab</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="skins/white_blue.css">
+  <link rel="stylesheet" href="skins/Black_Orange.css">
+  <link rel="stylesheet" href="skins/Maid_Atelier.css">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="../icon/app-icon.png">
+  <script>
+    if (location.protocol.startsWith('http')) {
+var m = new URL(location.href).searchParams.get('token');
+      if (m) localStorage.setItem('tx_token', m);
+      // 注册 Service Worker（PWA 安装条件）
+      if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(function () {});
+    }
+  </script>
+</head>
+<body>
+  <!-- 自制标题栏（frame:false）；data-main-titlebar 标记主窗口，仅此处使用品牌字体 -->
+  <div class="win-titlebar" id="winTitlebar" data-main-titlebar>
+    <!-- 视频处理工具入口：固定在**窗口最左上角**（品牌区之外，不参与居中计算） -->
+    <button class="win-titlebar__mode win-titlebar__entry" id="winToolToggle" title="视频处理工具（对已有视频做后处理：去黑屏 / 变速 / 转分辨率 / 叠加图片 …）">
+      <i data-icon="video" data-size="13"></i><span class="win-titlebar__mode-label">视频处理</span>
+    </button>
+    <div class="win-titlebar__brand">
+      <span class="win-titlebar__title">Video Lab</span>
+      <button class="win-titlebar__mode" id="winModeToggle" title="切换 配置管理 / 遮罩叠加 模式">
+        <i data-icon="layers" data-size="13"></i><span class="win-titlebar__mode-label" id="winModeLabel">配置管理</span>
+      </button>
+    </div>
+    <div class="win-titlebar__controls">
+      <button class="win-titlebar__btn" data-wctl="min" title="最小化">
+        <svg viewBox="0 0 12 12"><line x1="2" y1="6" x2="10" y2="6" stroke="currentColor" stroke-width="1"/></svg>
+      </button>
+      <button class="win-titlebar__btn" data-wctl="max" title="最大化">
+        <svg class="win-titlebar__svg-max" viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1"/></svg>
+        <svg class="win-titlebar__svg-restore" viewBox="0 0 12 12" style="display:none"><rect x="2.5" y="3.5" width="6" height="6" fill="none" stroke="currentColor" stroke-width="1"/><path d="M4 3.5V2H9v6H8.5" fill="none" stroke="currentColor" stroke-width="1"/></svg>
+      </button>
+      <button class="win-titlebar__btn win-titlebar__btn--close" data-wctl="close" title="关闭">
+        <svg viewBox="0 0 12 12"><path d="M3 3l6 6M9 3L3 9" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+  </div>
+  <!-- 工作路径扫描时的载入遮罩 -->
+  <!-- 前台遮罩 busyOverlay 已移除：扫描/检测类等待改走底部状态栏，
+       界面保持可交互；预检测进度由状态栏右侧的 probe-mini 承担 -->
+  <!-- 模式切换（批量 ↔ 遮罩叠加）的中间过渡：两种模式的中栏 / 侧栏结构完全不同，
+       切换必然整片重建；重建在遮罩之下进行，用户看到的是一次干净的切换而非中间态 -->
+  <div id="modeMask" class="mode-mask" style="display:none">
+    <div class="mode-mask__box">
+      <div class="busy-spinner"></div>
+      <span class="mode-mask__text" id="modeMaskText">正在切换…</span>
+    </div>
+  </div>
+  <!-- 设置面板：改为在主窗口内以 iframe 内嵌设置页（原独立窗口已取消）——
+       同源、共用 preload（主窗口已开 nodeIntegrationInSubFrames），打开即显示、关闭仅隐藏，
+       避免独立窗口每次重建都重新加载整套皮肤资源（64KB CSS + 1.7MB 图片） -->
+  <div id="settingsDim" class="settings-dim" style="display:none">
+    <iframe id="settingsFrame" class="settings-frame" src="settings.html" title="设置"></iframe>
+  </div>
+  <!-- 首次引导（工作路径缺失时）：同为内嵌面板，独立引导窗口已取消 -->
+  <div id="guideDim" class="settings-dim" style="display:none">
+    <iframe id="guideFrame" class="guide-frame" src="guide.html" title="首次设置"></iframe>
+  </div>
+  <div class="app-shell">
+
+    <!-- ═══ Main Content ═══ -->
+    <div class="main-content">
+
+      <!-- Left Sidebar -->
+      <div class="sidebar">
+        <div class="sidebar__root">
+          <div class="sidebar__header">
+            <span class="sidebar__header-title">项目列表</span>
+            <button class="sidebar__new-config" id="btnNewConfig" title="点击在该项目下新增配置">
+              <i data-icon="plus" data-size="12"></i>
+            </button>
+            <div class="sidebar__sort">
+              <button class="sort-toggle sort-toggle--active" id="btnSortName" title="按名称排序">名称</button>
+              <button class="sort-toggle" id="btnSortTime" title="按时间排序">时间</button>
+            </div>
+          </div>
+          <div class="sidebar__search">
+            <div class="ds-input">
+              <i data-icon="search" data-size="14"></i>
+              <input type="text" placeholder="搜索配置名..." id="searchInput">
+            </div>
+          </div>
+          <div class="sidebar__tree-wrap">
+            <div class="sidebar__az-index" id="azIndexBar" title="拖动字母快速跳转"></div>
+            <div class="sidebar__tree" id="sidebarTree"></div>
+            <div class="sidebar-menu" id="sidebarMenu" style="display:none">
+              <button class="sidebar-menu__item" id="menuRefreshConfigs" title="重新扫描工作路径下的所有配置，并清理重复的外部 * 配置">
+                <i data-icon="refresh-cw" data-size="14"></i>刷新配置列表
+              </button>
+              <button class="sidebar-menu__item" id="menuMaskRescan" title="重新扫描当前遮罩项目的原片分组与遮罩素材（保留仍存在的勾选）；不涉及视频信息缓存，刷缓存请用下方「刷新预缓存」">
+                <i data-icon="refresh-cw" data-size="14"></i>刷新素材列表
+              </button>
+              <button class="sidebar-menu__item" id="menuResetPrecheck" title="刷新预缓存：更新变化的视频并清理失效缓存（含批量与遮罩素材）">
+                <i data-icon="rotate-ccw" data-size="14"></i>刷新预缓存
+              </button>
+              <button class="sidebar-menu__item" id="menuChoosePath" title="选择工作路径">
+                <i data-icon="folder" data-size="14"></i>选择路径
+              </button>
+              <button class="sidebar-menu__item" id="menuOpenBrowser" title="在浏览器中打开">
+                <i data-icon="globe" data-size="14"></i>在浏览器中打开
+              </button>
+              <button class="sidebar-menu__item" id="menuSettings" title="设置">
+                <i data-icon="settings" data-size="14"></i>设置
+              </button>
+            </div>
+          </div>
+          <div class="sidebar__footer" data-maid-sidebar-footer>
+            <button class="sidebar-menu-btn" id="sidebarToTop" title="跳转至列表顶端" aria-label="跳转至列表顶端">
+              <i data-icon="arrow-up" data-size="20"></i>
+            </button>
+            <button class="sidebar-menu-btn" id="sidebarMenuBtn" title="菜单">
+              <i data-icon="menu" data-size="20"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 左侧列表栏宽度调节：铆钉透明栏承载三竖线按钮，拖拽调整项目列表宽度 -->
+      <div class="workspace-resizer sidebar-resizer" id="workspaceResizer" title="拖拽调整项目列表宽度">
+        <button class="sidebar-resize-btn" id="sidebarResizeBtn" title="拖拽调整项目列表宽度">
+          <i data-icon="grip-lines" data-size="14"></i>
+        </button>
+      </div>
+
+      <!-- Workspace -->
+      <div class="workspace">
+        <div class="workspace-body">
+
+          <!-- Center Panel -->
+          <div class="center-panel" id="centerPanel">
+            <div class="center-global-search" id="centerGlobalSearch">
+              <div class="ds-input">
+                <i data-icon="search" data-size="14"></i>
+                <input type="text" placeholder="搜索成片名..." id="logSearchInput">
+              </div>
+            </div>
+            <div class="center-top" id="centerTop">
+              <div class="center-top__header">
+                <span class="center-top__title">日期分支</span>
+                <div class="center-top__toggles">
+                  <button class="mode-toggle mode-toggle--active" data-mode="filelist" id="modeFilelist">
+                    <i data-icon="list" data-size="12"></i>配置列表
+                  </button>
+                  <button class="mode-toggle" data-mode="log" id="modeLog">
+                    <i data-icon="scroll-text" data-size="12"></i>日志
+                  </button>
+                </div>
+              </div>
+              <div class="center-top__dates" id="dateBranches"></div>
+            </div>
+            <div class="center-bottom" id="centerBottom"></div>
+          </div>
+
+          <!-- 预览栏宽度调节尺寸栏：位于中间配置列表与右侧预览栏之间的固定 5px 布局位，
+               贯穿预览栏全高，常态不显示、hover 面板或条本体时浮现，拖拽调整预览宽度 -->
+          <div class="preview-resizer-anchor" id="previewResizerAnchor">
+            <div class="preview-resizer" id="previewResizer" title="拖拽调整预览宽度"></div>
+          </div>
+
+          <!-- Right Panel: 预览 -->
+          <div class="right-panel" id="rightPanel">
+            <div class="right-panel__header">
+              <div class="right-panel__toggle">
+                <button class="preview-toggle preview-toggle--active" id="btnPreviewModified" title="显示修改后的 TXT 预览">
+                  <i data-icon="save" data-size="12"></i>实时
+                </button>
+                <button class="preview-toggle" id="btnPreviewRaw" title="显示原始 TXT 内容">
+                  <i data-icon="file-text" data-size="12"></i>原始
+                </button>
+                <button class="preview-toggle preview-toggle--active" id="btnLogSimple" title="简化显示日志片段路径（默认）" style="display:none">
+                  <i data-icon="list" data-size="12"></i>简化
+                </button>
+                <button class="preview-toggle" id="btnLogRaw" title="显示日志完整原始内容" style="display:none">
+                  <i data-icon="file-text" data-size="12"></i>原始
+                </button>
+              </div>
+              <div class="right-panel__header-right">
+                <button class="right-panel__edit" id="btnExternalEdit" title="外部编辑">
+                  <i data-icon="pencil" data-size="13"></i>外部编辑
+                </button>
+              </div>
+            </div>
+            <div class="right-panel__subtitle" id="rightPanelSubtitle">请选择一个日期分支</div>
+            <div class="right-panel__content" id="rightPanelContent">
+              <div class="right-panel__line-numbers" id="rightLineNumbers"></div>
+              <div class="right-panel__code" id="rightCode"></div>
+            </div>
+          </div>
+
+          <!-- 界面右上角圆形折叠按钮：独立于预览栏，始终可见，
+               点击折叠/展开预览栏；颜色风格同侧栏置顶按钮 -->
+          <button class="preview-collapse-round" id="previewCollapseRound" title="展开预览面板">
+            <i data-icon="panel-right" data-size="12"></i>
+          </button>
+        </div>
+
+        <!-- 配置栏：横跨除左侧项目列表外的整个底部 -->
+        <div class="config-bar" id="configBar"></div>
+      </div>
+
+    </div>
+
+    <!-- ═══ Status Bar ═══ -->
+    <div class="status-bar">
+      <span class="status-bar__left">
+        <span class="status-bar__version" id="versionTag"></span>
+        <span class="status-bar__divider"></span>
+        <span id="statusLeft">就绪</span>
+        <!-- 进度类反馈紧跟状态文字：原先放在右侧，
+             导致同一次「扫描 / 预检测」的文字在左、进度在右，来回跳着看很割裂 -->
+        <span class="probe-mini" id="probeMini" style="display:none">
+          <span class="probe-mini__label" id="probeMiniLabel">预检测 0/0</span>
+          <span class="probe-mini__track"><span class="probe-mini__fill" id="probeMiniFill" style="width:0%"></span></span>
+          <button type="button" class="probe-mini__cancel" id="probeMiniCancel" title="取消后台预检测">✕</button>
+        </span>
+        <span class="update-mini" id="updateMini" style="display:none">
+          <span class="update-mini__label" id="updateMiniLabel">更新中…</span>
+          <span class="update-mini__track"><span class="update-mini__fill" id="updateMiniFill" style="width:0%"></span></span>
+          <span class="update-mini__text" id="updateMiniText">0%</span>
+        </span>
+      </span>
+      <span class="status-bar__right">
+        <span id="envWarnMark" class="status-bar__envwarn" style="display:none"></span>
+        <button class="status-bar__tasks-btn" id="btnOpenTasks" title="打开任务列表，查看运行日志">
+          <i data-icon="list" data-size="12"></i>任务<span class="status-bar__tasks-count" id="tasksCount" style="display:none"></span>
+        </button>
+      </span>
+    </div>
+
+    <!-- ═══ 更新提示条 ═══ 悬浮于底部状态栏上方，居中显示；由 update_available 事件驱动显示 -->
+    <div class="update-banner" id="updateBanner" style="display:none">
+      <div class="update-banner__icon"><i data-icon="download" data-size="20"></i></div>
+      <div class="update-banner__body">
+        <div class="update-banner__title" id="updateBannerTitle">发现新版本 v1.4.0</div>
+        <div class="update-banner__desc" id="updateBannerDesc">当前版本 v1.3.0 · 点击立即更新获取最新功能</div>
+        <div class="update-banner__progress" id="updateBannerProgress" style="display:none">
+          <div class="update-banner__progress-track"><div class="update-banner__progress-fill" id="updateBannerProgressFill" style="width:0%"></div></div>
+          <span class="update-banner__progress-text" id="updateBannerProgressText">0%</span>
+        </div>
+      </div>
+      <div class="update-banner__actions">
+        <button class="update-banner__btn update-banner__btn--ghost" id="updateLaterBtn">忽略</button>
+        <button class="update-banner__btn update-banner__btn--primary" id="updateNowBtn">立即更新</button>
+      </div>
+    </div>
+
+    <!-- ═══ 检查更新结果（统一弹窗）═══ 设置页 / 主窗口 / 托盘三条入口的结果都走这里：
+         设置页是主窗口内的 iframe，它自己弹的浮层会被裁切，故统一由主窗口出；
+         后台静默检查不会触发（main 侧三处事件都有 !silent 闸门）。 -->
+    <div class="update-result" id="updateResultMask" style="display:none">
+      <div class="update-result__box">
+        <div class="update-result__icon" id="updateResultIcon">✓</div>
+        <div class="update-result__body">
+          <div class="update-result__title" id="updateResultTitle"></div>
+          <div class="update-result__desc" id="updateResultDesc"></div>
+        </div>
+        <div class="update-result__actions">
+          <button class="update-banner__btn update-banner__btn--ghost" id="updateResultClose">知道了</button>
+          <button class="update-banner__btn update-banner__btn--primary" id="updateResultGo" style="display:none">立即更新</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ═══ 未配置工作路径时的引导态：项目列表为空，列表内居中指引选择路径 ═══ -->
+  <div class="boot-guide" id="bootGuide" style="display:none">
+    <div class="boot-guide__inner">
+      <i data-icon="folder" data-size="22"></i>
+      <div class="boot-guide__title">请选择工作路径</div>
+      <div class="boot-guide__desc">项目列表为空，请选择配置文件所在路径</div>
+      <button class="boot-guide__btn" id="bootGuidePick">选择路径</button>
+    </div>
+  </div>
+
+  <script src="icons.js"></script>
+  <script src="txapi.js"></script>
+<script src="common.js"></script>
+  <script src="logbootstrap.js"></script>
+  <script src="titlebar.js"></script>
+  <script src="skins/skin-loader.js"></script>
+  <script src="skins/Maid_Atelier.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,132 @@
+/* 深色 —— 基于 Nerv 深色模板，深色背景 + 橙色品牌强调 */
+html[data-skin="Black_Orange"] {
+  /* 背景层：近黑深灰 */
+  --vl-alias-bg-base-default: #0A0A0B;
+  --vl-alias-bg-base-secondary: #111113;
+  --vl-alias-bg-base-tertiary: #18181A;
+  --vl-alias-bg-overlay-l1: rgba(255, 255, 255, 0.04);
+  --vl-alias-bg-overlay-l2: rgba(255, 255, 255, 0.08);
+  --vl-alias-bg-overlay-l3: rgba(255, 255, 255, 0.12);
+  --vl-alias-bg-overlay-l4: rgba(255, 255, 255, 0.16);
+  --vl-alias-bg-white: #0A0A0B;
+  --vl-alias-bg-menu: #111113;
+  --vl-alias-bg-tooltip: #1A1A1C;
+  --vl-alias-bg-invert: #F0F0F0;
+  --vl-alias-bg-invert-hover: #FFFFFF;
+  --vl-alias-bg-invert-active: #E0E0E0;
+  --vl-alias-bg-invert-disabled: rgba(240, 240, 240, 0.20);
+
+  /* 品牌色：橙色 */
+  --vl-alias-bg-brand: #FF6600;
+  --vl-alias-bg-brand-hover: #FF8533;
+  --vl-alias-bg-brand-active: #CC5200;
+  --vl-alias-bg-brand-disabled: rgba(255, 102, 0, 0.25);
+  --vl-alias-bg-brand-popup: rgba(255, 102, 0, 0.22);
+
+  /* 文字层 */
+  --vl-alias-text-default: #F0F0F0;
+  --vl-alias-text-default-hover: #FFFFFF;
+  --vl-alias-text-default-active: #FFFFFF;
+  --vl-alias-text-secondary: #A0A0A0;
+  --vl-alias-text-secondary-hover: #F0F0F0;
+  --vl-alias-text-secondary-active: #F0F0F0;
+  --vl-alias-text-tertiary: #707070;
+  --vl-alias-text-disabled: #505050;
+  --vl-alias-text-onbrand: #0A0A0B;
+  --vl-alias-text-onaccent: #0A0A0B;
+  --vl-alias-text-white: #F0F0F0;
+  --vl-alias-text-brand: #FF6600;
+  --vl-alias-text-brand-hover: #FF8533;
+
+  /* 图标层 */
+  --vl-alias-icon-default: #F0F0F0;
+  --vl-alias-icon-default-hover: #FFFFFF;
+  --vl-alias-icon-default-active: #FFFFFF;
+  --vl-alias-icon-secondary: #A0A0A0;
+  --vl-alias-icon-secondary-hover: #F0F0F0;
+  --vl-alias-icon-secondary-active: #F0F0F0;
+  --vl-alias-icon-tertiary: #707070;
+  --vl-alias-icon-disabled: #505050;
+  --vl-alias-icon-onbrand: #0A0A0B;
+  --vl-alias-icon-onaccent: #0A0A0B;
+  --vl-alias-icon-white: #F0F0F0;
+  --vl-alias-icon-brand: #FF6600;
+  --vl-alias-icon-brand-hover: #FF8533;
+
+  /* 边框层 */
+  --vl-alias-border-neutral-l1: rgba(255, 255, 255, 0.08);
+  --vl-alias-border-neutral-l2: rgba(255, 255, 255, 0.12);
+  --vl-alias-border-neutral-l3: rgba(255, 255, 255, 0.24);
+  --vl-alias-border-contrast: #F0F0F0;
+  --vl-alias-border-brand: #FF6600;
+
+  /* 强调色：以橙色为主 */
+  --vl-alias-accent-coral: #FF6B45;
+  --vl-alias-accent-amber: #FF9900;
+  --vl-alias-accent-cyan: #FF8533;
+
+  /* 状态色：在深色主题下微调保持可读 */
+  --vl-alias-status-primary-default: #FF6600;
+  --vl-alias-status-primary-hover: #FF8533;
+  --vl-alias-status-primary-active: #CC5200;
+  --vl-alias-status-primary-surface-l1: rgba(255, 102, 0, 0.12);
+  --vl-alias-status-primary-surface-l2: rgba(255, 102, 0, 0.18);
+  --vl-alias-status-primary-surface-l3: rgba(255, 102, 0, 0.36);
+
+  /* 品牌色阶（橙色系） */
+  --vl-alias-brand-50: #FFF4EB;
+  --vl-alias-brand-100: #FFE5D0;
+  --vl-alias-brand-200: #FFC9A3;
+  --vl-alias-brand-300: #FFA06B;
+  --vl-alias-brand-400: #FF7A3D;
+  --vl-alias-brand-500: #FF6600;
+  --vl-alias-brand-600: #E55A00;
+  --vl-alias-brand-700: #B34400;
+  --vl-alias-brand-800: #7A2E00;
+  --vl-alias-brand-900: #421900;
+  --vl-alias-brand-950: #1F0B00;
+  --vl-alias-brand-grey-50: #141414;
+  --vl-alias-brand-grey-100: #1A1A1A;
+  --vl-alias-brand-grey-200: #242424;
+  --vl-alias-brand-grey-300: #333333;
+  --vl-alias-brand-grey-400: #525252;
+  --vl-alias-brand-grey-500: #737373;
+  --vl-alias-brand-grey-600: #A0A0A0;
+  --vl-alias-brand-grey-700: #C7C7C7;
+  --vl-alias-brand-grey-800: #E0E0E0;
+  --vl-alias-brand-grey-900: #F0F0F0;
+  --vl-alias-brand-grey-950: #FAFAFA;
+
+  /* 可视化图表 */
+  --vl-alias-viz-series-brand: var(--vl-alias-bg-brand);
+  --vl-alias-viz-series-brand-soft: var(--vl-alias-brand-300);
+  --vl-alias-viz-series-brand-mid: var(--vl-alias-brand-500);
+  --vl-alias-viz-series-brand-deep: var(--vl-alias-brand-700);
+  --vl-alias-viz-series-neutral: var(--vl-alias-brand-grey-500);
+  --vl-alias-viz-series-coral: #FF6B45;
+  --vl-alias-viz-series-amber: #FF9900;
+  --vl-alias-viz-ui-bg-chart: var(--vl-alias-bg-base-secondary);
+  --vl-alias-viz-ui-bg-tooltip: var(--vl-alias-bg-tooltip);
+  --vl-alias-viz-ui-chart-title: var(--vl-alias-text-default);
+  --vl-alias-viz-ui-chart-subtitle: var(--vl-alias-text-secondary);
+  --vl-alias-viz-ui-chart-axis: var(--vl-alias-border-neutral-l2);
+  --vl-alias-viz-ui-chart-tick: var(--vl-alias-text-secondary);
+  --vl-alias-viz-ui-legend-label: var(--vl-alias-text-secondary);
+  --vl-alias-viz-ui-legend-value: var(--vl-alias-text-default);
+
+  /* 代码高亮：在黑底上保持对比 */
+  --vl-alias-code-text: #F0F0F0;
+  --vl-alias-code-doc: #8A9AA8;
+  --vl-alias-code-link: #FF8533;
+  --vl-alias-code-number: #FF6B9D;
+  --vl-alias-code-action: #C084FC;
+  --vl-alias-code-instruction: #D4A5FF;
+  --vl-alias-code-function: #FF7A3D;
+  --vl-alias-code-constant: #6B9FFF;
+  --vl-alias-code-parameter: #7ED957;
+  --vl-alias-code-attribute: #FFB347;
+  --vl-alias-code-tag: #FF5C5C;
+  /* toast 固定实色（深色浮层实底：层次深灰卡片 + 灰边框） */
+  --toast-bg: #1e1e20;
+  --toast-border: #3a3a3e;
+}

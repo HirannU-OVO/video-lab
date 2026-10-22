@@ -1,0 +1,206 @@
+// -*- coding: utf-8 -*-
+// Electron preload：通过 contextBridge 向渲染进程暴露后端 API。
+'use strict';
+
+const { contextBridge, ipcRenderer } = require('electron');
+
+const invoke = (channel, ...args) => ipcRenderer.invoke(channel, ...args);
+
+// 是否运行在主窗口内的 iframe（设置页面板）中 —— preload 经 nodeIntegrationInSubFrames
+// 也会注入子框架；iframe 内的窗口类操作必须区别对待，见下方 window_* 接口。
+const IN_SUBFRAME = (() => { try { return window.self !== window.top; } catch (e) { return false; } })();
+
+contextBridge.exposeInMainWorld('txapi', {
+  list_projects: (force) => invoke('list_projects', force),
+  list_versions: (project, name, force) => invoke('list_versions', project, name, force),
+  read_config: (p) => invoke('read_config', p),
+  save_config: (p, folders, excludes, watermark, newName) =>
+    invoke('save_config', p, folders, excludes, watermark, newName),
+  save_config_today: (project, name, configName, folders, excludes, watermark) =>
+    invoke('save_config_today', project, name, configName, folders, excludes, watermark),
+  new_empty_config: (project) => invoke('new_empty_config', project),
+  create_project: (name, kind) => invoke('create_project', name, kind),
+  rename_project: (oldName, newName, kind) => invoke('rename_project', oldName, newName, kind),
+  remove_branch: (p, scope) => invoke('remove_branch', p, scope),
+  branch_other_txt: (p) => invoke('branch_other_txt', p),
+  precheck: (paths, excludes) => invoke('precheck', paths, excludes),
+  reset_precheck: () => invoke('reset_precheck'),
+  refresh_precache: () => invoke('refresh_precache'),
+  clean_video_cache: () => invoke('clean_video_cache'),
+  cache_info: () => invoke('cache_info'),
+  cache_stats: () => invoke('cache_stats'),
+  clean_caches: () => invoke('clean_caches'),
+  data_dir_scan: () => invoke('data_dir_scan'),                 // A6 数据目录清理：扫描可清项
+  data_dir_clean: (keys) => invoke('data_dir_clean', keys),    // A6 数据目录清理：执行（进回收站）
+  uninstall_confirm: (opts) => invoke('uninstall_confirm', opts), // 卸载准备：确认卸载（可一并删除个人数据）
+  uninstall_cancel: () => invoke('uninstall_cancel'),           // 卸载准备：取消
+  cancel_precheck: () => invoke('cancel_precheck'),
+
+  on_reset_progress: (cb) => {
+    const ch = (e, s) => { try { cb(s); } catch (err) {} };
+    ipcRenderer.on('reset_progress', ch);
+    return () => { ipcRenderer.removeListener('reset_progress', ch); };
+  },
+  on_scan_progress: (cb) => {
+    const ch = (e, p) => { try { cb(p); } catch (err) {} };
+    ipcRenderer.on('scan_progress', ch);
+    return () => { ipcRenderer.removeListener('scan_progress', ch); };
+  },
+  list_logs: (project, name, versionPath) => invoke('list_logs', project, name, versionPath),
+  search_logs: (query) => invoke('search_logs', query),
+  get_log_content: (fromPath, configName) => invoke('get_log_content', fromPath, configName),
+  list_log_files: (fromPath, configName) => invoke('list_log_files', fromPath, configName),
+  find_replica_output: (logPath, videoName) => invoke('find_replica_output', logPath, videoName),
+  check_exists: (paths) => invoke('check_exists', paths),
+  open_folder_select: (p, opts) => invoke('open_folder_select', p, opts),
+  check_watermark_project: (project, wm) => invoke('check_watermark_project', project, wm),
+  find_watermark_project: (project, wm) => invoke('find_watermark_project', project, wm),
+  get_project_watermark: (project) => invoke('get_project_watermark', project),
+  set_project_watermark: (project, wm, enabled, applyToAll, group, groupEnabled) => invoke('set_project_watermark', project, wm, enabled, applyToAll, group, groupEnabled),
+  run_batch: (p, count, group) => invoke('run_batch', p, count, group),
+  run_replica: (logPath, mode, entryVideo, opts) => invoke('run_replica', logPath, mode, entryVideo, opts),
+  continue_replica: (taskId) => invoke('continue_replica', taskId),
+  run_mask: (payload) => invoke('run_mask', payload),
+  continue_mask: (taskId) => invoke('continue_mask', taskId),
+  list_mask_projects: () => invoke('list_mask_projects'),
+  list_mask_videos: (dir) => invoke('list_mask_videos', dir),
+  list_mask_masks: (dir) => invoke('list_mask_masks', dir),
+  scan_mask_raw_dirs: (dir) => invoke('scan_mask_raw_dirs', dir),
+  scan_mask_theme_sig: (dir) => invoke('scan_mask_theme_sig', dir),
+  list_mask_logs: (projectPath) => invoke('list_mask_logs', projectPath),
+  get_mask_session: (name) => invoke('get_mask_session', name),
+  get_mask_default_dir: (name) => invoke('get_mask_default_dir', name),
+  set_mask_default_dir: (name, dir) => invoke('set_mask_default_dir', name, dir),
+  save_mask_session: (name, data) => invoke('save_mask_session', name, data),
+  clear_mask_session: (name) => invoke('clear_mask_session', name),
+  delete_mask_videos: (projectPath, names) => invoke('delete_mask_videos', projectPath, names),
+  move_mask_out: (projectPath, videoName, newDir) => invoke('move_mask_out', projectPath, videoName, newDir),
+  relocate_mask_out: (projectPath, videoName, newDir) => invoke('relocate_mask_out', projectPath, videoName, newDir),
+  delete_mask_log: (projectPath, logPath) => invoke('delete_mask_log', projectPath, logPath),
+  delete_secondary_products: (projectPath, maskOutPaths) => invoke('delete_secondary_products', projectPath, maskOutPaths),
+  choose_mask_file: (prev) => invoke('choose_mask_file', prev),
+  list_tasks: () => invoke('list_tasks'),
+  locate_task: (taskId, target) => { try { return invoke('locate_task', taskId, target); } catch (e) {} },
+  open_replica_output: (taskId) => invoke('open_replica_output', taskId),
+  task_replica_outdir: (taskId) => invoke('task_replica_outdir', taskId),
+  on_locate: (cb) => { ipcRenderer.on('locate_request', (evt, info) => { try { cb(info); } catch (err) {} }); },
+  stop_task: (id) => invoke('stop_task', id),
+  rerun_task: (id) => invoke('rerun_task', id),
+  pin_task: (id) => invoke('pin_task', id),
+  reorder_tasks: (ids) => invoke('reorder_tasks', ids),
+  pause_task: (id) => invoke('pause_task', id),
+  resume_task: (id) => invoke('resume_task', id),
+  clear_finished_tasks: (statuses) => invoke('clear_finished_tasks', statuses),
+  clear_done_tasks: (opts) => invoke('clear_done_tasks', opts),
+  get_changelog: () => invoke('get_changelog'),
+  get_changelog_popup: () => invoke('get_changelog_popup'),
+  ack_changelog_popup: () => invoke('ack_changelog_popup'),
+  get_readme: () => invoke('get_readme'),
+  get_about_info: () => invoke('get_about_info'),
+  clear_task: (id) => invoke('clear_task', id),
+  regroup_task: (id, groupCount) => invoke('regroup_task', id, groupCount),
+  resume_all_tasks: () => invoke('resume_all_tasks'),
+  pause_all_tasks: () => invoke('pause_all_tasks'),
+  confirm_quit: () => invoke('confirm_quit'),
+  on_confirm_quit_request: (cb) => { ipcRenderer.on('confirm_quit_request', () => { try { cb(); } catch (e) {} }); },
+  choose_close_behavior: (behavior, skip) => invoke('choose_close_behavior', behavior, !!skip),
+  on_close_behavior_request: (cb) => {
+    const ch = () => { try { cb(); } catch (e) {} };
+    ipcRenderer.on('close_behavior_request', ch);
+    return () => { ipcRenderer.removeListener('close_behavior_request', ch); };
+  },
+  open_task_window: () => invoke('open_task_window'),
+  open_settings_window: () => invoke('open_settings_window'),
+  // 视频处理工具（第 4 个模块）：独立窗口 + 步骤 schema + 建任务
+  open_tool_window: () => invoke('open_tool_window'),
+  list_tools: () => invoke('list_tools'),
+  run_tool: (spec) => invoke('run_tool', spec),
+  rerun_tool_task: (id) => invoke('rerun_tool_task', id),
+  list_dir: (dir) => invoke('list_dir', dir),
+  pick_image: (prev) => invoke('pick_image', prev),
+  // 画布合成（竖转横）：单帧预览 / 背景候选 / 参数预设
+  canvas_preview_frame: (payload) => invoke('canvas_preview_frame', payload),
+  canvas_list_backgrounds: (dir) => invoke('canvas_list_backgrounds', dir),
+  canvas_list_sources: (root, recursive) => invoke('canvas_list_sources', root, recursive),
+  canvas_preset_list: () => invoke('canvas_preset_list'),
+  canvas_preset_save: (name, params) => invoke('canvas_preset_save', name, params),
+  canvas_preset_delete: (name) => invoke('canvas_preset_delete', name),
+  // agent 友好接口：运行日志 / 环境上下文 / 接口清单
+  get_runlog: (opts) => invoke('get_runlog', opts),
+  get_app_info: () => invoke('get_app_info'),
+  get_api_index: () => invoke('get_api_index'),
+  tray_menu_click: (action) => invoke('tray_menu_click', action),
+  clean_duplicate_star: (commit) => invoke('clean_duplicate_star', commit),
+  open_external: (url) => invoke('open_external', url),
+  check_update: (silent) => invoke('check_update', !!silent),
+  apply_update_pref: (pref) => invoke('apply_update_pref', pref),
+
+  get_app_version: () => invoke('get_app_version'),
+  get_browser_url: () => invoke('get_browser_url'),
+  start_update: () => invoke('start_update'),
+  apply_update: () => invoke('apply_update'),
+  on_update_available: (cb) => { ipcRenderer.on('update_available', (e, info) => { try { cb(info); } catch (err) {} }); },
+  on_env_fix_available: (cb) => { ipcRenderer.on('env_fix_available', (e, info) => { try { cb(info); } catch (err) {} }); },
+  on_env_fix_progress: (cb) => { ipcRenderer.on('env_fix_progress', (e, info) => { try { cb(info); } catch (err) {} }); },
+  on_env_fix_done: (cb) => { ipcRenderer.on('env_fix_done', (e, info) => { try { cb(info); } catch (err) {} }); },
+  on_env_lost: (cb) => { ipcRenderer.on('env_lost', (e, info) => { try { cb(info); } catch (err) {} }); },
+  env_fix_start: () => invoke('env_fix_start'),
+  on_update_progress: (cb) => { ipcRenderer.on('update_downloading', (e, info) => { try { cb(info); } catch (err) {} }); },
+  on_update_status: (cb) => { ipcRenderer.on('update_status', (e, text) => { try { cb(text); } catch (err) {} }); },
+  on_update_none: (cb) => { ipcRenderer.on('update_none', (e, info) => { try { cb(info); } catch (err) {} }); },
+  on_update_error: (cb) => { ipcRenderer.on('update_error', (e, info) => { try { cb(info); } catch (err) {} }); },
+  on_update_ready: (cb) => { ipcRenderer.on('update_ready', (e, info) => { try { cb(info); } catch (err) {} }); },
+  on_update_downloaded: (cb) => { ipcRenderer.on('update_downloaded', (e, info) => { try { cb(info); } catch (err) {} }); },
+  on_check_update_result: (cb) => { ipcRenderer.on('check_update_result', (e, info) => { try { cb(info); } catch (err) {} }); },
+  get_settings: () => invoke('get_settings'),
+  save_settings: (s) => invoke('save_settings', s),
+  pick_directory: (title, defaultPath) => invoke('pick_directory', title, defaultPath),
+  pick_save_file: (title, defaultName) => invoke('pick_save_file', title, defaultName),
+  on_settings_saved: (cb) => { ipcRenderer.on('settings_saved', (e, cfg) => { try { cb(cfg); } catch (err) {} }); },
+  notify_dirty: (d) => { try { ipcRenderer.send('settings_dirty', !!d); } catch (e) {} },
+  // 关闭设置面板（面板内点击外部 / Esc）：统一走主进程，保持「设置是否打开」的状态一致
+  close_settings_panel: () => invoke('close_settings_panel'),
+  // 内嵌面板标题栏关闭按钮（设置页/引导页共用）：主进程按当前面板分派
+  close_embed_panel: () => invoke('close_embed_panel'),
+  on_guide_window_opened: (cb) => { ipcRenderer.on('guide_window_opened', () => { try { cb(); } catch (e) {} }); },
+  on_guide_window_closed: (cb) => { ipcRenderer.on('guide_window_closed', () => { try { cb(); } catch (e) {} }); },
+  on_settings_window_opened: (cb) => { ipcRenderer.on('settings_window_opened', () => { try { cb(); } catch (e) {} }); },
+  on_settings_window_closed: (cb) => { ipcRenderer.on('settings_window_closed', () => { try { cb(); } catch (e) {} }); },
+  on_task_update: (cb) => { ipcRenderer.on('task_update', (e, tasks) => { try { cb(tasks); } catch (err) {} }); },
+  on_versions_changed: (cb) => { ipcRenderer.on('versions_changed', () => { try { cb(); } catch (err) {} }); },
+  on_confirm_discard_config: (cb) => { ipcRenderer.on('confirm_discard_config_request', () => { try { cb(); } catch (err) {} }); },
+  respond_discard_config: (a) => { try { ipcRenderer.send('respond_discard_config', a); } catch (e) {} },
+  open_path: (p) => invoke('open_path', p),
+  report_ui_error: (p) => invoke('report_ui_error', p),
+  read_log: (o) => invoke('read_log', o),
+  get_log_level: () => invoke('get_log_level'),
+  set_log_level: (lvl) => invoke('set_log_level', lvl),
+  export_diag_pack: (id, opts) => invoke('export_diag_pack', id, opts),
+  open_parent: (p) => invoke('open_parent', p),
+  open_project_dir: (p) => invoke('open_project_dir', p),
+  external_edit: (p) => invoke('external_edit', p),
+  pick_watermark: (prev) => invoke('pick_watermark', prev),
+  pick_exclude: () => invoke('pick_exclude'),
+  pick_paths: () => invoke('pick_paths'),
+  pick_single_folder: () => invoke('pick_single_folder'),
+  pick_paths_files: () => invoke('pick_paths_files'),
+  pick_paths_dirs: () => invoke('pick_paths_dirs'),
+  resolve_shortcut: (p) => invoke('resolve_shortcut', p),
+  mask_add_source: (side, p) => invoke('mask_add_source', side, p),
+  get_root: () => invoke('get_root'),
+  save_guide: (s) => invoke('save_guide', s),
+  check_env: () => invoke('check_env'),
+  get_skin: () => invoke('get_skin'),
+  set_skin: (skin) => invoke('set_skin', skin),
+  choose_workdir: () => invoke('choose_workdir'),
+  // 自制标题栏（frame:false）窗口控制
+  // 窗口控制：iframe（设置页面板）内必须区别对待 ——
+  // 关闭应「关闭设置面板」，最小化/最大化在面板里无意义；否则点面板右上角 X 会关掉整个主窗口。
+  window_caps: () => (IN_SUBFRAME ? Promise.resolve({ minimizable: false, maximizable: false, closable: true }) : invoke('window_caps')),
+  window_minimize: () => (IN_SUBFRAME ? Promise.resolve({ ok: true }) : invoke('window_minimize')),
+  window_toggle_maximize: () => (IN_SUBFRAME ? Promise.resolve({ ok: true }) : invoke('window_toggle_maximize')),
+  window_close: () => (IN_SUBFRAME ? invoke('close_embed_panel') : invoke('window_close')),
+  listen_window_max: () => { try { ipcRenderer.send('window_max_changed_listen'); } catch (e) {} },
+  on_window_max_changed: (cb) => { ipcRenderer.on('window_max_changed', (e, m) => { try { cb(!!m); } catch (err) {} }); },
+});
+

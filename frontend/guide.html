@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-skin="white_blue">
+<head>
+  <meta charset="UTF-8">
+  <title>Video Lab - 首次设置</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="skins/white_blue.css">
+  <link rel="stylesheet" href="skins/Black_Orange.css">
+  <link rel="stylesheet" href="skins/Maid_Atelier.css">
+  <link rel="stylesheet" href="settings.css">
+  <link rel="stylesheet" href="guide.css">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="../icon/app-icon.png">
+  <script>
+    // 皮肤首屏注入：与设置页同理 —— 渲染前同步应用已缓存的皮肤，避免"先白后换"的闪烁。
+    // 缓存缺失时再向主进程要一次（iframe 与主窗口同源也能读到，但首次进引导页时可能还没写）。
+    try { var _sk0 = localStorage.getItem('vl_skin'); if (_sk0) document.documentElement.setAttribute('data-skin', _sk0); } catch (e) {}
+    document.addEventListener('DOMContentLoaded', function () {
+      // 内嵌为主窗口 iframe 时：外层窗口已提供标题栏，隐藏自绘的那条（否则标题叠加）
+      try { if (window.self !== window.top) document.body.classList.add('is-embedded'); } catch (e) { document.body.classList.add('is-embedded'); }
+      try {
+        var api = window.txapi;
+        if (api && api.get_skin) {
+          api.get_skin().then(function (id) {
+            if (!id) return;
+            document.documentElement.setAttribute('data-skin', id);
+            try { localStorage.setItem('vl_skin', id); } catch (e) {}
+          }).catch(function () {});
+        }
+      } catch (e) {}
+    });
+    if (location.protocol.startsWith('http')) {
+var m = new URL(location.href).searchParams.get('token');
+      if (m) localStorage.setItem('tx_token', m);
+      if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(function () {});
+    }
+  </script>
+</head>
+<body>
+<div class="win-titlebar" id="winTitlebar">
+  <span class="win-titlebar__title">Video Lab - 首次设置</span>
+  <div class="win-titlebar__controls">
+    <button class="win-titlebar__btn win-titlebar__btn--close" data-wctl="close" title="关闭">
+      <svg viewBox="0 0 12 12"><path d="M3 3l6 6M9 3L3 9" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+</div>
+<div class="settings-shell guide-shell">
+  <div class="guide-hero">
+    <img class="guide-hero__icon" src="../icon/app-icon.png" alt="Video Lab" draggable="false">
+    <div class="guide-hero__text">
+      <div class="guide-hero__title">欢迎使用 Video Lab</div>
+      <div class="guide-hero__sub">先选一个工作路径 —— 各项目文件夹与 TXT 配置都存放在这里。</div>
+    </div>
+  </div>
+  <div class="guide-body">
+    <div class="guide-field">
+      <label class="guide-field__label" for="guideRoot">工作路径</label>
+      <div class="dir-row">
+        <input class="form-input" id="guideRoot" type="text" placeholder="尚未选择" readonly>
+        <button class="btn btn-ghost" id="guidePick">选择文件夹</button>
+      </div>
+      <div class="guide-hint">选好后点右下角「保存并开始」。也可以直接关闭本窗口，之后在设置页里设置。</div>
+    </div>
+    <div class="guide-actions">
+      <span class="guide-actions__status" id="guideStatus"></span>
+      <button class="btn btn-primary" id="guideSave">保存并开始</button>
+    </div>
+  </div>
+</div>
+<script src="icons.js"></script>
+<script src="txapi.js"></script>
+<script src="common.js"></script>
+<script src="titlebar.js"></script>
+<script src="guide.js"></script>
+</body>
+</html>

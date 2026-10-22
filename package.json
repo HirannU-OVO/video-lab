@@ -1,0 +1,99 @@
+{
+  "name": "video-lab",
+  "version": "2.6.1",
+  "description": "Video Lab",
+  "author": "HirannU",
+  "license": "MIT",
+  "main": "main.js",
+  "scripts": {
+    "start": "node run.js",
+    "build:dir": "electron-builder --win --x64"
+  },
+  "build": {
+    "appId": "com.videolab.manager",
+    "productName": "Video Lab",
+    "npmRebuild": false,
+    "electronLanguages": [
+      "zh-CN",
+      "en-US"
+    ],
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://github.com/HirannU-OVO/video-lab/releases/latest/download"
+      }
+    ],
+    "directories": {
+      "output": "../../../Setup"
+    },
+    "afterPack": "build/afterPack.js",
+    "files": [
+      "main.js",
+      "preload.js",
+      "backend.js",
+      "server.js",
+      "engines/engine-runner.js",
+      "engines/registry.js",
+      "engines/base/**/*",
+      "engines/modules/**/*",
+      "engines/tools/**/*",
+      "frontend/**/*",
+      "icon/**/*",
+      "README.md",
+      "CHANGELOG.md",
+      "LICENSE",
+      "LICENSE-ARTWORK",
+      "NOTICE",
+      "package.json",
+      "build/uninstall-entry.js"
+    ],
+    "extraResources": [
+      {
+        "from": "engines",
+        "to": "Engines",
+        "filter": [
+          "**/*",
+          "!tests/**"
+        ]
+      },
+      {
+        "from": "../ffmpeg",
+        "to": "ffmpeg"
+      },
+      {
+        "from": "build/uninstaller.exe",
+        "to": "uninstaller.exe"
+      }
+    ],
+    "win": {
+      "icon": "icon/app-icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Video Lab",
+      "deleteAppDataOnUninstall": false,
+      "differentialPackage": false,
+      "artifactName": "Video-Lab-${version}-x64-Setup.${ext}",
+      "include": "build/installer.nsh"
+    }
+  },
+  "devDependencies": {
+    "electron": "44.9.0",
+    "electron-builder": "^26.15.3"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  }
+}
