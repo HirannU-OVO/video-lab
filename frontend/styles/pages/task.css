@@ -1,0 +1,237 @@
+@layer reset, tokens, base, layout, components, pages, skins, utilities;
+@layer pages {
+* { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body { display: flex; flex-direction: column; overflow: hidden; padding-top: 34px; }
+    .task-header {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 12px; flex-shrink: 0;
+      border-bottom: 1px solid var(--vl-alias-border-neutral-l1);
+      background: var(--vl-alias-bg-base-secondary);
+    }
+    .task-header__title { font-size: var(--vl-type-body-base-size); font-weight: var(--vl-font-font-weight-strong); color: var(--vl-alias-text-default); }
+    .task-list { flex: 1; overflow-y: auto; padding: 8px 12px; display: flex; flex-direction: column; gap: 8px; }
+    .task-empty { color: var(--vl-alias-text-tertiary); font-size: var(--vl-type-body-sm-size); text-align: center; margin-top: 40px; }
+    /* 顶部模式切换：正在运行 / 已完成 / 已停止 */
+    .task-main { flex: 1; position: relative; display: flex; flex-direction: column; min-height: 0; }
+    .task-tabs { display: flex; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--vl-alias-border-neutral-l1); background: var(--vl-alias-bg-base-secondary); flex-shrink: 0; }
+    .task-tab {
+      flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      height: 34px; border: 1px solid var(--vl-alias-border-neutral-l2); border-radius: 6px;
+      background: transparent; color: var(--vl-alias-text-secondary); cursor: pointer;
+      font-family: var(--vl-font-family-base); font-size: 16px;
+      transition: background .15s ease, color .15s ease, border-color .15s ease;
+    }
+    .task-tab:hover { background: var(--vl-alias-bg-overlay-l1); color: var(--vl-alias-text-default-hover); }
+    .task-tab--active { background: var(--vl-alias-brand-500); border-color: var(--vl-alias-brand-500); color: var(--vl-alias-text-onaccent); }
+    .task-tab--active:hover { background: var(--vl-alias-brand-600); border-color: var(--vl-alias-brand-600); color: var(--vl-alias-text-onaccent); }
+    .task-tab__icon { display: inline-flex; }
+    .task-tab__count {
+      min-width: 18px; height: 18px; padding: 0 5px; line-height: 18px; border-radius: 9px;
+      text-align: center; font-size: 10px; font-variant-numeric: tabular-nums;
+      background: var(--vl-alias-bg-overlay-l2); color: var(--vl-alias-text-secondary);
+    }
+    .task-tab--active .task-tab__count { background: color-mix(in srgb, var(--vl-alias-text-onaccent) 24%, transparent); color: var(--vl-alias-text-onaccent); }
+    /* 已停止 tab：新增报错任务时浅红底提醒，点击查看后消除 */
+    .task-tab--alert { background: var(--vl-alias-status-error-surface-l1); border-color: var(--vl-alias-status-error-default); color: var(--vl-alias-status-error-default); }
+    .task-tab--alert .task-tab__count { background: var(--vl-alias-status-error-default); color: var(--vl-alias-text-onaccent); }
+    .task-tab--alert:hover { background: var(--vl-alias-status-error-surface-l1); color: var(--vl-alias-status-error-default); }
+    /* 右下角悬浮按钮：正在运行=「全部继续（左）/全部暂停（右）」；已完成/已停止=清除列表；不带品牌色，用背景色 */
+    .task-fab {
+      position: absolute; right: 16px; bottom: 16px; z-index: 6;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: 1px solid var(--vl-alias-border-neutral-l2); background: var(--vl-alias-bg-base-default); color: var(--vl-alias-text-secondary);
+      display: inline-flex; align-items: center; justify-content: center;
+      cursor: pointer; box-shadow: 0 6px 18px color-mix(in srgb, var(--vl-alias-text-default) 14%, transparent);
+      transition: transform .15s ease, background .15s ease, color .15s ease;
+    }
+    .task-fab:hover { transform: translateY(-2px); background: var(--vl-alias-bg-overlay-l1); color: var(--vl-alias-text-default); }
+    /* 三个悬浮按钮按功能实色底 + 白色图标（全部续绿 / 全部暂停橙 / 清除红），颜色取自主题变量便于换肤 */
+    #fabResumeAll { background: var(--vl-alias-status-success-default); border-color: var(--vl-alias-status-success-default); color: var(--vl-alias-text-onaccent); }
+    #fabResumeAll:hover { background: var(--vl-alias-status-success-default); filter: brightness(1.08); transform: translateY(-2px); }
+    #fabPauseAll { background: var(--vl-alias-status-warning-default); border-color: var(--vl-alias-status-warning-default); color: var(--vl-alias-text-onaccent); }
+    #fabPauseAll:hover { background: var(--vl-alias-status-warning-default); filter: brightness(1.08); transform: translateY(-2px); }
+    #taskFab { background: var(--vl-alias-status-error-default); border-color: var(--vl-alias-status-error-default); color: var(--vl-alias-text-onaccent); }
+    #taskFab:hover { background: var(--vl-alias-status-error-default); filter: brightness(1.08); transform: translateY(-2px); }
+    .task-fab-actions {
+      position: absolute; right: 16px; bottom: 16px; z-index: 6;
+      display: inline-flex; gap: 10px;
+    }
+    .task-fab-actions .task-fab { position: static; width: 42px; height: 42px; }
+    .task-card { border: 1px solid var(--vl-alias-border-neutral-l1); border-radius: 6px; background: var(--vl-alias-bg-base-secondary); overflow: hidden; flex-shrink: 0; }
+    /* 已完成列表按完成日期分组：左侧 yy.mm.dd + 延伸线 + 共 N 个视频；点击整行展开/折叠 */
+    .task-day-group {
+      display: flex; align-items: center; gap: 8px;
+      padding: 5px 4px 2px;
+      cursor: pointer;
+      user-select: none;
+      border-radius: 6px;
+    }
+    .task-day-group:hover { background: var(--vl-alias-bg-overlay-l1); }
+    .task-day-group__label {
+      flex-shrink: 0; font-size: 11px; line-height: 14px;
+      font-weight: var(--vl-font-font-weight-medium);
+      color: var(--vl-alias-text-tertiary);
+    }
+    .task-day-group__line {
+      flex: 1; height: 1px; background: var(--vl-alias-border-neutral-l1);
+    }
+    .task-day-group__count {
+      flex-shrink: 0; font-size: 11px; line-height: 14px;
+      color: var(--vl-alias-text-tertiary);
+      white-space: nowrap;
+    }
+    /* 展开/折叠箭头指示（伪元素，无底色圆形区） */
+    .task-day-group::after {
+      content: ''; display: inline-flex;
+      width: 14px; height: 14px; flex-shrink: 0;
+      -webkit-mask-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M5 6l3 3 3-3' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      mask-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M5 6l3 3 3-3' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      -webkit-mask-repeat: no-repeat; -webkit-mask-position: center; -webkit-mask-size: contain;
+      mask-repeat: no-repeat; mask-position: center; mask-size: contain;
+      background: var(--vl-alias-text-tertiary);
+      transition: transform 0.15s ease;
+    }
+    .task-day-group.is-collapsed::after { transform: rotate(-90deg); }
+    .task-card__header { display: flex; align-items: center; gap: 8px; padding: 6px 10px; cursor: pointer; user-select: none; }
+    .task-card__status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
+    /* 状态徽章：运行中=绿（高亮行），排队=序号徽章蓝，暂停=橙，已完成=主题色，停止/失败=红 */
+    .task-card--running .task-card__status-dot { background: var(--vl-alias-status-success-default); }
+    .task-card--queued .task-card__status-dot { background: var(--vl-alias-status-primary-default); }
+    .task-card--paused .task-card__status-dot { background: var(--vl-alias-status-warning-default); }
+    .task-card--waiting .task-card__status-dot { background: var(--vl-alias-status-warning-default); }
+    .task-card--done .task-card__status-dot { background: var(--vl-alias-brand-500); }
+    .task-card--error .task-card__status-dot { background: var(--vl-alias-status-error-default); }
+    .task-card--stopped .task-card__status-dot { background: var(--vl-alias-status-error-default); }
+    .task-card--interrupted .task-card__status-dot { background: var(--vl-alias-status-error-default); }
+    /* 运行中任务：浅主题色底 + 与下方任务的分隔横线 */
+    .task-card--running {
+      background: color-mix(in srgb, var(--vl-alias-brand-500) 8%, var(--vl-alias-bg-base-secondary));
+      border-color: color-mix(in srgb, var(--vl-alias-brand-500) 45%, var(--vl-alias-border-neutral-l1));
+      border-bottom: 2px solid var(--vl-alias-border-neutral-l2);
+    }
+    /* 排队：状态圆点放大为序号徽章；暂停：橙色实心圆点 */
+    .task-card__status-dot.task-card__queue {
+      min-width: 16px; height: 16px; padding: 0 4px; line-height: 16px; border-radius: 8px;
+      font-size: 10px; font-variant-numeric: tabular-nums;
+      background: var(--vl-alias-brand-500); color: var(--vl-alias-text-onaccent);
+    }
+    .task-card__status-dot.task-card__queue--paused { background: transparent; width: 8px; height: 8px; }
+    .task-card__status-dot .task-card__pause-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--vl-alias-status-warning-default); }
+    /* 左侧排序把手：仅排队中的任务可拖拽换序，运行中/已结束灰显 */
+    .task-card__handle {
+      flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
+      width: 18px; height: 20px; border-radius: 4px;
+      color: var(--vl-alias-text-tertiary); cursor: grab;
+    }
+    .task-card__handle:hover { background: var(--vl-alias-bg-overlay-l1); color: var(--vl-alias-text-default); }
+    .task-card__handle--disabled { color: var(--vl-alias-text-disabled); cursor: default; }
+    .task-card__handle--disabled:hover { background: transparent; color: var(--vl-alias-text-disabled); }
+    .task-card--dragging { position: relative; z-index: 10; }
+    /* 排队位置徽章：排队显示序号，暂停用与暂停颜色一致的圆点代替序号 */
+    .task-card__queue {
+      flex-shrink: 0; min-width: 16px; height: 16px; padding: 0 4px; line-height: 16px; border-radius: 8px;
+      text-align: center; font-size: 10px; font-variant-numeric: tabular-nums;
+      background: var(--vl-alias-brand-500); color: var(--vl-alias-text-onaccent);
+    }
+    .task-card__queue--paused { background: transparent; }
+    .task-card__queue--paused .task-card__pause-dot {
+      display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+      background: var(--vl-alias-status-warning-default); opacity: .6; vertical-align: middle;
+    }
+    .task-card__failreason {
+      flex-shrink: 0; max-width: 42%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      font-size: var(--vl-type-body-xs-size); font-weight: var(--vl-font-font-weight-strong);
+      color: var(--vl-alias-status-error-default);
+    }
+    .task-card__status-text { font-size: var(--vl-type-body-xs-size); color: var(--vl-alias-text-tertiary); flex-shrink: 0; }
+    .task-card__title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--vl-type-body-sm-size); color: var(--vl-alias-text-default); }
+    /* 成片已不在磁盘：置灰 + 删除线提示，任务行本身保留（明暗主题均适用） */
+    .task-card__title--missing { color: var(--vl-alias-text-tertiary); opacity: 0.65; text-decoration: line-through; }
+    /* 成片已删除：状态文字（原「已完成」）由 status-text 换为警示色红色「已删除」 */
+    .task-card__status-text--deleted { color: var(--vl-alias-status-error-default); font-weight: var(--vl-font-font-weight-strong); }
+    .task-card__tag {
+      flex-shrink: 0; padding: 0 6px; height: 16px; line-height: 16px; border-radius: 8px;
+      font-size: 10px; background: var(--vl-alias-bg-overlay-l2); color: var(--vl-alias-text-secondary);
+    }
+    /* 按任务模式区分徽章颜色（变量随皮肤，不写死） */
+    .task-card__tag--batch { background: var(--vl-alias-brand-500); color: var(--vl-alias-text-onaccent); }
+    .task-card__tag--replica { background: var(--vl-alias-status-success-default); color: var(--vl-alias-text-onaccent); }
+    .task-card__tag--mask { background: var(--vl-alias-accent-magenta); color: var(--vl-alias-text-onaccent); }
+    /* 视频处理（工具）：琥珀色 —— 与三模块区分；工具任务没有成片概念，删除时只移除列表项 */
+    /* 视频处理（工具）：琥珀色 —— 与三模块区分；任务徽章颜色在**深色主题皮肤**下会与
+       模块主色撞色（女仆的品牌金 ≈ 琥珀、深色的品牌橙 ≈ 琥珀），按皮肤覆盖为冷色区分 */
+    .task-card__tag--tool { background: var(--vl-alias-accent-amber); color: var(--vl-alias-text-onaccent); }
+    html[data-skin="Maid_Atelier"] .task-card__tag--tool { background: var(--vl-alias-accent-violet); }
+    html[data-skin="Black_Orange"] .task-card__tag--tool { background: var(--vl-alias-accent-blue); }
+    .task-card__lock { flex-shrink: 0; font-size: var(--vl-type-body-xs-size); }
+    .task-card__lock--waiting { color: var(--vl-alias-status-warning-default); }
+    .task-card__lock--locked { color: var(--vl-alias-status-primary-default); }
+    .task-card__lock--released { color: var(--vl-alias-status-success-default); }
+    .task-card__time { flex-shrink: 0; font-size: var(--vl-type-body-xs-size); color: var(--vl-alias-text-tertiary); }
+    .task-card__pause, .task-card__stop {
+      flex-shrink: 0; height: 20px; padding: 0 8px; border-radius: 4px;
+      display: inline-flex; align-items: center; gap: 4px;
+      font-family: var(--vl-font-family-base); font-size: var(--vl-type-body-xs-size); cursor: pointer;
+    }
+    .task-card__pause svg, .task-card__stop svg { flex-shrink: 0; }
+    .task-card__pause { border: 1px solid var(--vl-alias-status-warning-default); background: transparent; color: var(--vl-alias-status-warning-default); }
+    .task-card__pause:hover { background: var(--vl-alias-status-warning-surface-l1); }
+    .task-card__pause--resume { border-color: var(--vl-alias-status-success-default); color: var(--vl-alias-status-success-default); }
+    .task-card__pause--resume:hover { background: var(--vl-alias-status-success-surface-l1); }
+    .task-card__pause:disabled { border-color: var(--vl-alias-border-neutral-l2); color: var(--vl-alias-text-disabled); cursor: default; background: transparent; }
+    .task-card__stop { border: 1px solid var(--vl-alias-status-error-default); background: transparent; color: var(--vl-alias-status-error-default); }
+    .task-card__stop:hover { background: var(--vl-alias-status-error-surface-l1); }
+    .task-card__stop:disabled { border-color: var(--vl-alias-border-neutral-l2); color: var(--vl-alias-text-disabled); cursor: default; background: transparent; }
+    /* 失败任务重新开始按钮：品牌主题色实底，与「保存为当日配置」按钮同一主题 */
+    .task-card__rerun {
+      flex-shrink: 0; height: 20px; padding: 0 8px; border-radius: 4px;
+      display: inline-flex; align-items: center; gap: 4px;
+      font-family: var(--vl-font-family-base); font-size: var(--vl-type-body-xs-size); cursor: pointer;
+      border: 1px solid var(--vl-alias-brand-500); background: var(--vl-alias-brand-500); color: var(--vl-alias-text-onbrand);
+    }
+    .task-card__rerun:hover { background: var(--vl-alias-brand-400); border-color: var(--vl-alias-brand-400); }
+    .task-card__rerun svg { flex-shrink: 0; }
+    /* 继续制作按钮：与重新开始同主题，但以描边呈现以区分「不删除已成功产物」 */
+    .task-card__continue {
+      flex-shrink: 0; height: 20px; padding: 0 8px; border-radius: 4px;
+      display: inline-flex; align-items: center; gap: 4px;
+      font-family: var(--vl-font-family-base); font-size: var(--vl-type-body-xs-size); cursor: pointer;
+      border: 1px solid var(--vl-alias-brand-500); background: transparent; color: var(--vl-alias-brand-500);
+    }
+    .task-card__continue:hover { background: var(--vl-alias-brand-500); color: var(--vl-alias-text-onbrand); }
+    .task-card__continue svg { flex-shrink: 0; }
+    /* 行级删除按钮：样式与配置模式排除字段删除按钮（.config-exclude-row__remove）完全一致 */
+    .task-card__del {
+      flex-shrink: 0; width: 20px; height: 20px; padding: 0;
+      border: none; border-radius: 50%;
+      background: transparent; color: var(--vl-alias-text-tertiary);
+      cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+      transition: all 0.1s ease;
+    }
+    .task-card__del:hover { background: var(--vl-alias-status-error-surface-l1); color: var(--vl-alias-status-error-default); }
+    .task-card__del svg { flex-shrink: 0; }
+    .task-card__body { border-top: 1px solid var(--vl-alias-border-neutral-l1); }
+    .task-card__progress {
+      display: none; flex-direction: column; gap: 4px;
+      padding: 0 10px 8px; margin-top: -2px;
+    }
+    .task-card__progress-text {
+      display: flex; justify-content: flex-start; align-items: center; gap: 8px;
+      font-size: var(--vl-type-body-sm-size); color: var(--vl-alias-text-default);
+      font-variant-numeric: tabular-nums; line-height: 1.4;
+    }
+    .task-card__progress-pct { flex-shrink: 0; min-width: 36px; text-align: right; color: var(--vl-alias-text-secondary); margin-left: auto; }
+    .task-card__progress-label { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .task-card__progress-elapsed { flex-shrink: 0; min-width: 92px; text-align: left; color: var(--vl-alias-text-tertiary); padding-left: 17px; padding-right: 12px; /* 固定起始空位右移；与右端百分比保持间隔 */ }
+    .task-card__progress-sub { margin: 2px 0 4px; font-size: 12px; line-height: 1.4; color: var(--vl-alias-text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .task-card__progress-track { height: 6px; border-radius: 3px; background: var(--vl-alias-bg-overlay-l2); overflow: hidden; }
+    .task-card__progress-fill { height: 100%; width: 0; border-radius: 3px; background: var(--vl-alias-status-primary-default); transition: width .3s ease; }
+    .task-card__log {
+      max-height: 260px; overflow-y: auto; padding: 6px 10px;
+      font-family: Consolas, "Courier New", monospace; font-size: 11px; line-height: 1.5;
+      color: var(--vl-alias-text-secondary); white-space: pre-wrap; word-break: break-all;
+    }
+    /* 任务窗口 toast 统一左下角（主窗口保持在右下角） */
+    .toast-host { right: auto; left: 16px; bottom: 16px; align-items: flex-start; }
+}
