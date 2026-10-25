@@ -1135,17 +1135,17 @@ body[data-preview-collapsed] .center-global-search .ds-input {
   background: var(--vl-alias-bg-base-tertiary);
   color: var(--vl-alias-text-secondary);
 }
-.sort-toggle--active {
+.sort-toggle[aria-pressed="true"] {
   background: var(--vl-alias-brand-500);
   border-color: var(--vl-alias-brand-500);
   color: var(--vl-alias-text-onaccent);
 }
-.sort-toggle--active:hover {
+.sort-toggle[aria-pressed="true"]:hover {
   background: var(--vl-alias-brand-600);
   border-color: var(--vl-alias-brand-600);
   color: var(--vl-alias-text-onaccent);
 }
-.sort-toggle--active .sort-toggle__arrow {
+.sort-toggle[aria-pressed="true"] .sort-toggle__arrow {
   color: inherit;
 }
 .sidebar__search {
@@ -1638,10 +1638,10 @@ body[data-preview-collapsed] .center-global-search .ds-input {
 }
 /* 未激活态悬浮变深灰（右上角 txt 切换一致）；激活态悬浮保持品牌色 */
 .mode-toggle:hover { background: var(--vl-alias-bg-base-tertiary); color: var(--vl-alias-text-secondary); border-color: var(--vl-alias-border-neutral-l2); }
-.mode-toggle--active:hover { background: var(--vl-alias-brand-600); color: var(--vl-alias-text-onbrand); border-color: var(--vl-alias-brand-600); }
+.mode-toggle[aria-pressed="true"]:hover { background: var(--vl-alias-brand-600); color: var(--vl-alias-text-onbrand); border-color: var(--vl-alias-brand-600); }
 .mode-toggle:disabled { opacity: .5; cursor: not-allowed; color: var(--vl-alias-text-disabled); background: var(--vl-alias-bg-base-secondary); }
 .mode-toggle:disabled:hover { background: var(--vl-alias-bg-base-secondary); }
-.mode-toggle--active {
+.mode-toggle[aria-pressed="true"] {
   background: var(--vl-alias-brand-500);
   color: var(--vl-alias-text-onbrand);
   border-color: var(--vl-alias-brand-500);
@@ -2726,12 +2726,12 @@ body[data-preview-collapsed] .center-global-search .ds-input {
   background: var(--vl-alias-bg-base-tertiary);
   color: var(--vl-alias-text-secondary);
 }
-.preview-toggle--active {
+.preview-toggle[aria-pressed="true"] {
   background: var(--vl-alias-brand-500);
   border-color: var(--vl-alias-brand-500);
   color: var(--vl-alias-text-onaccent);
 }
-.preview-toggle--active:hover {
+.preview-toggle[aria-pressed="true"]:hover {
   background: var(--vl-alias-brand-600);
   border-color: var(--vl-alias-brand-600);
   color: var(--vl-alias-text-onaccent);

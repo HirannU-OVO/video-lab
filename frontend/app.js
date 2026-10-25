@@ -536,7 +536,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     return list;
   }
   function updateSortButtons() {
-    function render(id, active, arrow) { var b = $(id); if (!b) return; b.innerHTML = '<span class="sort-toggle__arrow">' + arrow + '</span>' + (id === 'btnSortName' ? '名称' : '时间'); b.classList.toggle('sort-toggle--active', active); }
+    function render(id, active, arrow) { var b = $(id); if (!b) return; b.innerHTML = '<span class="sort-toggle__arrow">' + arrow + '</span>' + (id === 'btnSortName' ? '名称' : '时间'); b.setAttribute('aria-pressed', active ? 'true' : 'false'); }
     render('btnSortName', state.sortMode === 'name', state.sortAsc ? '▲' : '▼');
     render('btnSortTime', state.sortMode === 'time', state.sortTimeDesc ? '▼' : '▲');
   }
@@ -1777,8 +1777,8 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       state._locateLogPath = info.logPath;
       state.activeLogPath = null; state.activeLogDate = null;
       state.mode = 'log';
-      if (ml) ml.classList.add('mode-toggle--active');
-      if (mf) mf.classList.remove('mode-toggle--active');
+      if (ml) ml.setAttribute('aria-pressed', 'true');
+      if (mf) mf.setAttribute('aria-pressed', 'false');
       jumpToVersionPath(info.txtPath, info.project || state.activeProject);
       return;
     }
@@ -1787,8 +1787,8 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     state._locateLogPath = null;
     state.activeLogPath = null; state.activeLogDate = null;
     state.mode = 'filelist';
-    if (ml) ml.classList.remove('mode-toggle--active');
-    if (mf) mf.classList.add('mode-toggle--active');
+    if (ml) ml.setAttribute('aria-pressed', 'false');
+    if (mf) mf.setAttribute('aria-pressed', 'true');
     jumpToVersionPath(info.txtPath, info.project || state.activeProject);
   }
   // 侧栏「新增配置」：在当前选定项目下新建空白配置（今日目录），完成后定位并打开
@@ -2251,8 +2251,8 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     state.focusVideo = video;
     state.activeProject = project;
     state.mode = 'log';
-    $('modeLog').classList.add('mode-toggle--active');
-    $('modeFilelist').classList.remove('mode-toggle--active');
+    $('modeLog').setAttribute('aria-pressed', 'true');
+    $('modeFilelist').setAttribute('aria-pressed', 'false');
     state.logSearchQuery = '';
     var input = $('logSearchInput');
     if (input) input.value = video;
@@ -2298,8 +2298,8 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
   // 右侧预览栏模式切换按钮组：配置模式显示「实时/原始」，日志模式显示「简化/原始」，与当前模式同步
   function syncRightToggle() {
     var isLog = state.mode === 'log';
-    ['btnPreviewModified', 'btnPreviewRaw'].forEach(function (id) { var el = $(id); if (el) { el.style.display = isLog ? 'none' : ''; el.classList.toggle('preview-toggle--active', id === 'btnPreviewModified' ? !!state.rightPreview : !state.rightPreview); } });
-    ['btnLogSimple', 'btnLogRaw'].forEach(function (id) { var el = $(id); if (el) { el.style.display = isLog ? '' : 'none'; el.classList.toggle('preview-toggle--active', id === 'btnLogSimple' ? state.logViewMode === 'simple' : state.logViewMode === 'raw'); } });
+    ['btnPreviewModified', 'btnPreviewRaw'].forEach(function (id) { var el = $(id); if (el) { el.style.display = isLog ? 'none' : ''; el.setAttribute('aria-pressed', (id === 'btnPreviewModified' ? !!state.rightPreview : !state.rightPreview) ? 'true' : 'false'); } });
+    ['btnLogSimple', 'btnLogRaw'].forEach(function (id) { var el = $(id); if (el) { el.style.display = isLog ? '' : 'none'; el.setAttribute('aria-pressed', (id === 'btnLogSimple' ? state.logViewMode === 'simple' : state.logViewMode === 'raw') ? 'true' : 'false'); } });
   }
   // 退出日志模式时恢复预览面板折叠（仅当进入日志前本就折叠）
   function restorePreviewFromLog() {
@@ -2766,8 +2766,8 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
         state.configData = null; state.logContent = null;
         state.mode = 'log';
         var ml = $('modeLog'), mf = $('modeFilelist');
-        if (ml) ml.classList.add('mode-toggle--active');
-        if (mf) mf.classList.remove('mode-toggle--active');
+        if (ml) ml.setAttribute('aria-pressed', 'true');
+        if (mf) mf.setAttribute('aria-pressed', 'false');
         state.expandedProject = project;
         buildSidebar(false, true);
         // 点击配置＝用户交互：重建动画中则动画结束再判定，无动画直接判定
@@ -2783,8 +2783,8 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       state.selectMode = false; state.selectedLogPaths = {};
       state.mode = 'filelist';
       var mlT = $('modeLog'), mfT = $('modeFilelist');
-      if (mfT) mfT.classList.add('mode-toggle--active');
-      if (mlT) mlT.classList.remove('mode-toggle--active');
+      if (mfT) mfT.setAttribute('aria-pressed', 'true');
+      if (mlT) mlT.setAttribute('aria-pressed', 'false');
       state.activeProject = project; state.activeTxt = name;
       // 跳转后自动展开目标配置所在项目（与 jumpToVersionPath 行为一致），树中可见并高亮，避免跳转后侧栏无选中项
       state.expandedProject = project;
@@ -3295,7 +3295,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
           });
         }
       } catch (e) {}
-      state.selectMode = false; state.selectedLogPaths = {}; state.mode = 'filelist'; $('modeFilelist').classList.add('mode-toggle--active'); $('modeLog').classList.remove('mode-toggle--active'); buildDateBranches(); buildCenterBottom(); buildRightPanel();
+      state.selectMode = false; state.selectedLogPaths = {}; state.mode = 'filelist'; $('modeFilelist').setAttribute('aria-pressed', 'true'); $('modeLog').setAttribute('aria-pressed', 'false'); buildDateBranches(); buildCenterBottom(); buildRightPanel();
     });
     $('modeLog').addEventListener('click', function () {
       // 视图切换进日志（与「日志 → 配置」同一入口、同一理由：这一步会改变按钮可用性）
@@ -3307,7 +3307,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
           });
         }
       } catch (e) {}
-      state.mode = 'log'; state._fromConfig = true; $('modeLog').classList.add('mode-toggle--active'); $('modeFilelist').classList.remove('mode-toggle--active'); buildDateBranches(); buildCenterBottom(); buildRightPanel(); });
+      state.mode = 'log'; state._fromConfig = true; $('modeLog').setAttribute('aria-pressed', 'true'); $('modeFilelist').setAttribute('aria-pressed', 'false'); buildDateBranches(); buildCenterBottom(); buildRightPanel(); });
     $('searchInput').addEventListener('input', onProjectSearchInput);
     bindBatchLogSearch(); // 批量模式成片搜索（遮罩模式 clone 输入框后由 exit 强制重绑）
     // ── 左下角菜单按钮：刷新配置列表 / 选择路径 / 重置预检测缓存 / 设置 ──
@@ -3372,8 +3372,8 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     // 标题栏「视频处理」入口：独立非模态窗口（与设置窗口不同，可与主窗口并排操作）
     var wtt = $('winToolToggle');
     if (wtt) wtt.addEventListener('click', function () { call('open_tool_window').catch(function () { notify('打开视频处理窗口失败'); }); });
-    $('btnPreviewRaw').addEventListener('click', function () { state.rightPreview = false; $('btnPreviewRaw').classList.add('preview-toggle--active'); $('btnPreviewModified').classList.remove('preview-toggle--active'); buildRightPanel(); });
-    $('btnPreviewModified').addEventListener('click', function () { state.rightPreview = true; $('btnPreviewModified').classList.add('preview-toggle--active'); $('btnPreviewRaw').classList.remove('preview-toggle--active'); buildRightPanel(); });
+    $('btnPreviewRaw').addEventListener('click', function () { state.rightPreview = false; $('btnPreviewRaw').setAttribute('aria-pressed', 'true'); $('btnPreviewModified').setAttribute('aria-pressed', 'false'); buildRightPanel(); });
+    $('btnPreviewModified').addEventListener('click', function () { state.rightPreview = true; $('btnPreviewModified').setAttribute('aria-pressed', 'true'); $('btnPreviewRaw').setAttribute('aria-pressed', 'false'); buildRightPanel(); });
     $('btnLogSimple').addEventListener('click', function () { state.logViewMode = 'simple'; syncRightToggle(); renderLogRightPanel(); });
     $('btnLogRaw').addEventListener('click', function () { state.logViewMode = 'raw'; syncRightToggle(); renderLogRightPanel(); });
     $('btnExternalEdit').addEventListener('click', function () { if (!state.activeVersion) return flashNeedSelect(); var p = state.activeVersion.path; if (String(p).indexOf(REPLICA_MARK) === 0) { var lf = state.logFiles || []; var cur = null; if (state.activeLogPath) cur = lf.find(function (f) { return f.path === state.activeLogPath; }); if (!cur && state.activeLogDate) cur = lf.find(function (f) { return f.date === state.activeLogDate; }); if (!cur && lf.length) cur = lf[lf.length - 1]; if (cur) p = cur.path; } call('external_edit', p); });
@@ -4387,8 +4387,8 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       top.innerHTML = '<div class="center-top__header">' +
         '<span class="center-top__title">遮罩叠加</span>' +
         '<div class="center-top__toggles">' +
-        '<button class="mode-toggle' + (maskState.view === 'config' ? ' mode-toggle--active' : '') + '" data-maskview="config" id="maskViewConfig">' + icon('list', 12) + '配置</button>' +
-        '<button class="mode-toggle' + (maskState.view === 'log' ? ' mode-toggle--active' : '') + '" data-maskview="log" id="maskViewLog">' + icon('scroll-text', 12) + '日志</button>' +
+        '<button class="mode-toggle" aria-pressed="' + (maskState.view === 'config' ? 'true' : 'false') + '" data-maskview="config" id="maskViewConfig">' + icon('list', 12) + '配置</button>' +
+        '<button class="mode-toggle" aria-pressed="' + (maskState.view === 'log' ? 'true' : 'false') + '" data-maskview="log" id="maskViewLog">' + icon('scroll-text', 12) + '日志</button>' +
         '</div></div>' +
         '<div class="center-top__dates" id="maskDateBranches"></div>' +
         '<div class="center-top__ornament-host" id="maskOrnamentHost" aria-hidden="true"></div>';
@@ -4429,8 +4429,8 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     top.innerHTML = '<div class="center-top__header">' +
       '<span class="center-top__title">日期分支</span>' +
       '<div class="center-top__toggles">' +
-      '<button class="mode-toggle mode-toggle--active" data-mode="filelist" id="modeFilelist">' + icon('list', 12) + '配置列表</button>' +
-      '<button class="mode-toggle" data-mode="log" id="modeLog">' + icon('scroll-text', 12) + '日志</button>' +
+      '<button class="mode-toggle" aria-pressed="true" data-mode="filelist" id="modeFilelist">' + icon('list', 12) + '配置列表</button>' +
+      '<button class="mode-toggle" aria-pressed="false" data-mode="log" id="modeLog">' + icon('scroll-text', 12) + '日志</button>' +
       '</div></div>' +
       '<div class="center-top__dates" id="dateBranches"></div>';
     // 恢复右侧预览结构（遮罩模式重写过 rightPanelContent，行号/代码容器需重建）
@@ -4442,11 +4442,11 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     var bar = $('configBar'); if (bar) bar.innerHTML = '';
     var mf2 = $('modeFilelist'), ml2 = $('modeLog');
     if (mf2) mf2.addEventListener('click', function () {
-      state.mode = 'filelist'; mf2.classList.add('mode-toggle--active'); if (ml2) ml2.classList.remove('mode-toggle--active');
+      state.mode = 'filelist'; mf2.setAttribute('aria-pressed', 'true'); if (ml2) ml2.setAttribute('aria-pressed', 'false');
       buildDateBranches(); buildCenterBottom(); buildRightPanel();
     });
     if (ml2) ml2.addEventListener('click', function () {
-      state.mode = 'log'; ml2.classList.add('mode-toggle--active'); if (mf2) mf2.classList.remove('mode-toggle--active');
+      state.mode = 'log'; ml2.setAttribute('aria-pressed', 'true'); if (mf2) mf2.setAttribute('aria-pressed', 'false');
       buildDateBranches(); buildCenterBottom(); buildRightPanel();
     });
     updateModeToggle();

@@ -609,19 +609,19 @@ html[data-skin="Maid_Atelier"] :is(.mode-toggle, .sort-toggle, .preview-toggle):
   color: var(--vl-skin-maid-gold-soft);
   border-color: transparent;
 }
-html[data-skin="Maid_Atelier"] :is(.mode-toggle--active, .sort-toggle--active, .preview-toggle--active) {
+html[data-skin="Maid_Atelier"] :is(.mode-toggle[aria-pressed="true"], .sort-toggle[aria-pressed="true"], .preview-toggle[aria-pressed="true"]) {
   background: transparent;
   border-color: transparent;
   color: #fff7e6;
 }
-html[data-skin="Maid_Atelier"] :is(.mode-toggle--active, .sort-toggle--active, .preview-toggle--active):hover {
+html[data-skin="Maid_Atelier"] :is(.mode-toggle[aria-pressed="true"], .sort-toggle[aria-pressed="true"], .preview-toggle[aria-pressed="true"]):hover {
   background: rgba(255, 252, 243, 0.08);
   color: #fff7e6;
   border-color: transparent;
 }
 /* 激活态底部金色下划线 + 光晕（移植母本 tab[aria-selected='true']::after）
    位置上移：紧挨文字下方（bottom:0，原 bottom:-7px 悬在按钮下方，再下移 2px 后的位置） */
-html[data-skin="Maid_Atelier"] :is(.mode-toggle--active, .sort-toggle--active, .preview-toggle--active)::after {
+html[data-skin="Maid_Atelier"] :is(.mode-toggle[aria-pressed="true"], .sort-toggle[aria-pressed="true"], .preview-toggle[aria-pressed="true"])::after {
   content: '';
   position: absolute;
   left: 50%;
