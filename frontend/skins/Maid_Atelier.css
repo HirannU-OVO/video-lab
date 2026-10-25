@@ -654,17 +654,17 @@ html[data-skin="Maid_Atelier"] .task-tab:hover {
   color: var(--vl-skin-maid-gold-soft);
   border-color: transparent;
 }
-html[data-skin="Maid_Atelier"] .task-tab--active {
+html[data-skin="Maid_Atelier"] .task-tab[aria-selected="true"] {
   background: transparent;
   border-color: transparent;
   color: #fff7e6;
 }
-html[data-skin="Maid_Atelier"] .task-tab--active:hover {
+html[data-skin="Maid_Atelier"] .task-tab[aria-selected="true"]:hover {
   background: rgba(255, 252, 243, 0.08);
   color: #fff7e6;
   border-color: transparent;
 }
-html[data-skin="Maid_Atelier"] .task-tab--active::after {
+html[data-skin="Maid_Atelier"] .task-tab[aria-selected="true"]::after {
   content: '';
   position: absolute;
   left: 50%;
@@ -677,7 +677,7 @@ html[data-skin="Maid_Atelier"] .task-tab--active::after {
   border-radius: 1px;
   pointer-events: none;
 }
-html[data-skin="Maid_Atelier"] .task-tab--active .task-tab__count {
+html[data-skin="Maid_Atelier"] .task-tab[aria-selected="true"] .task-tab__count {
   background: rgba(255, 247, 230, 0.16);
   color: #fff7e6;
 }

@@ -32,14 +32,14 @@ var m = new URL(location.href).searchParams.get('token');
       </button>
     </div>
   </div>
-  <div class="task-tabs" id="taskTabs">
-    <button class="task-tab task-tab--active" data-tab="running" id="tabRunning">
+  <div class="task-tabs" id="taskTabs" role="tablist">
+    <button class="task-tab" role="tab" aria-selected="true" data-tab="running" id="tabRunning">
       <i data-icon="play" data-size="16"></i><span>正在运行</span><span class="task-tab__count" id="cntRunning">0</span>
     </button>
-    <button class="task-tab" data-tab="done" id="tabDone">
+    <button class="task-tab" role="tab" aria-selected="false" data-tab="done" id="tabDone">
       <i data-icon="check" data-size="16"></i><span>已完成</span><span class="task-tab__count" id="cntDone">0</span>
     </button>
-    <button class="task-tab" data-tab="stopped" id="tabStopped">
+    <button class="task-tab" role="tab" aria-selected="false" data-tab="stopped" id="tabStopped">
       <i data-icon="stop" data-size="16"></i><span>已停止</span><span class="task-tab__count" id="cntStopped">0</span>
     </button>
   </div>

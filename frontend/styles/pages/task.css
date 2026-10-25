@@ -23,15 +23,15 @@
       transition: background .15s ease, color .15s ease, border-color .15s ease;
     }
     .task-tab:hover { background: var(--vl-alias-bg-overlay-l1); color: var(--vl-alias-text-default-hover); }
-    .task-tab--active { background: var(--vl-alias-brand-500); border-color: var(--vl-alias-brand-500); color: var(--vl-alias-text-onaccent); }
-    .task-tab--active:hover { background: var(--vl-alias-brand-600); border-color: var(--vl-alias-brand-600); color: var(--vl-alias-text-onaccent); }
+    .task-tab[aria-selected="true"] { background: var(--vl-alias-brand-500); border-color: var(--vl-alias-brand-500); color: var(--vl-alias-text-onaccent); }
+    .task-tab[aria-selected="true"]:hover { background: var(--vl-alias-brand-600); border-color: var(--vl-alias-brand-600); color: var(--vl-alias-text-onaccent); }
     .task-tab__icon { display: inline-flex; }
     .task-tab__count {
       min-width: 18px; height: 18px; padding: 0 5px; line-height: 18px; border-radius: 9px;
       text-align: center; font-size: 10px; font-variant-numeric: tabular-nums;
       background: var(--vl-alias-bg-overlay-l2); color: var(--vl-alias-text-secondary);
     }
-    .task-tab--active .task-tab__count { background: color-mix(in srgb, var(--vl-alias-text-onaccent) 24%, transparent); color: var(--vl-alias-text-onaccent); }
+    .task-tab[aria-selected="true"] .task-tab__count { background: color-mix(in srgb, var(--vl-alias-text-onaccent) 24%, transparent); color: var(--vl-alias-text-onaccent); }
     /* 已停止 tab：新增报错任务时浅红底提醒，点击查看后消除 */
     .task-tab--alert { background: var(--vl-alias-status-error-surface-l1); border-color: var(--vl-alias-status-error-default); color: var(--vl-alias-status-error-default); }
     .task-tab--alert .task-tab__count { background: var(--vl-alias-status-error-default); color: var(--vl-alias-text-onaccent); }

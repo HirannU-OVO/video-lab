@@ -1237,7 +1237,7 @@
     state.tab = tab;
     Array.prototype.forEach.call(document.querySelectorAll('.task-tab'), function (b) {
       var active = b.getAttribute('data-tab') === tab;
-      b.classList.toggle('task-tab--active', active);
+      b.setAttribute('aria-selected', active ? 'true' : 'false');
     });
     if (tab === 'stopped') state._viewedErr = state._errCount; // 进入查看即消除红底
     updateFab();
