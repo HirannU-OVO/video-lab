@@ -1909,7 +1909,7 @@
     Array.prototype.forEach.call(tabs, function (btn) {
       btn.addEventListener('click', function () {
         var name = btn.getAttribute('data-tab');
-        Array.prototype.forEach.call(tabs, function (b) { b.classList.toggle('tl-tab--active', b === btn); });
+        Array.prototype.forEach.call(tabs, function (b) { b.setAttribute('aria-selected', b === btn ? 'true' : 'false'); });
         var isCanvas = name === 'canvas';
         $('panePost').hidden = isCanvas;
         $('paneCanvas').hidden = !isCanvas;

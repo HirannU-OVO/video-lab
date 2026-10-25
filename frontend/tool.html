@@ -52,9 +52,9 @@ var m = new URL(location.href).searchParams.get('token');
     <div class="tl-hint" id="inputHint"></div>
   </div>
 
-  <div class="tl-tabs">
-    <button class="tl-tab tl-tab--active" data-tab="post"><i data-icon="settings" data-size="14"></i>后处理</button>
-    <button class="tl-tab" data-tab="canvas"><i data-icon="layers" data-size="14"></i>画布合成</button>
+  <div class="tl-tabs" role="tablist">
+    <button class="tl-tab" role="tab" aria-selected="true" data-tab="post"><i data-icon="settings" data-size="14"></i>后处理</button>
+    <button class="tl-tab" role="tab" aria-selected="false" data-tab="canvas"><i data-icon="layers" data-size="14"></i>画布合成</button>
   </div>
 
   <div class="tl-scroll">

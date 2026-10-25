@@ -40,7 +40,8 @@
       font-family: var(--vl-font-family-base); font-size: var(--vl-type-body-sm-size);
     }
     .tl-tab:hover { background: var(--vl-alias-bg-overlay-l1); color: var(--vl-alias-text-default-hover); }
-    .tl-tab--active { background: var(--vl-alias-bg-base-tertiary); border-color: var(--vl-alias-border-neutral-l1); color: var(--vl-alias-text-default); font-weight: var(--vl-font-font-weight-strong); }
+    .tl-tab[aria-selected="true"] { background: var(--vl-alias-bg-base-tertiary); border-color: var(--vl-alias-border-neutral-l1); color: var(--vl-alias-text-default); font-weight: var(--vl-font-font-weight-strong); }
+    .tl-tab[aria-selected="true"]:hover { background: var(--vl-alias-bg-overlay-l1); color: var(--vl-alias-text-default-hover); }
 
     /* ── 滚动区 ── */
     .tl-scroll { flex: 1; overflow-y: auto; padding: 10px 14px 14px; }
