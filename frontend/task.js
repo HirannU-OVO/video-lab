@@ -13,14 +13,9 @@
     var t = ev.target;
     if (t && t.tagName === 'INPUT' && (t.type === 'number' || t.type === 'range')) ev.preventDefault();
   }, { passive: false });
-  function $(id) { return document.getElementById(id); }
-  function getApi() { return window.txapi || null; }
-  function call(method) {
-    var args = Array.prototype.slice.call(arguments, 1);
-    var api = getApi();
-    if (!api || typeof api[method] !== 'function') return Promise.reject(new Error('功能暂不可用'));
-    return Promise.resolve().then(function () { return api[method].apply(api, args); });
-  }
+  var $ = VL.$;   // 取元素：实现见 common.js
+  function getApi() { return VL.api.getApi(); }
+  var call = VL.api.call;   // 调用原生能力：实现见 common.js
 
   // 任务状态文案统一取 VL.STATUS_TEXT，勿在本文件另写一份
   var STATUS_TEXT = (window.VL && window.VL.STATUS_TEXT) || { queued: '排队中', paused: '已暂停', running: '运行中', done: '已完成', error: '失败', stopped: '已停止', interrupted: '已中断' };
@@ -121,11 +116,9 @@
   }
 
   // 图标统一来自 icons.js 全局库（硬约束：不在业务文件维护 ICONS/icon 副本）
-  function icon(name, size, cls) { return window.VL_icon ? window.VL_icon(name, size, cls) : ''; }
-  function hydrateIcons(root) { if (window.VL_hydrateIcons) window.VL_hydrateIcons(root); }
-  function escapeHtml(s) {
-    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  }
+  var icon = window.VL_icon || function () { return ''; };
+  var hydrateIcons = window.VL_hydrateIcons || function () {};
+  var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
   // 主窗口同款模态弹窗（按钮样式复用 styles.css 的 .modal-btn / .modal-card）
   function showDialog(opts) { try { return VL.ui.dialog(opts); } catch (e) { return null; } }
   try { VL.ui.registerDialog(_dialogRender); } catch (e) { /* 门面未就绪也要让页面继续跑 */ }
@@ -171,29 +164,7 @@
   // 提示统一走 VL.ui 门面：日志由门面记一次（唯一日志点），这里只负责渲染。
   function toast(message, type) { try { return VL.ui.toast(message, type); } catch (e) { return null; } }
   try { VL.ui.registerToast(_toastRender); } catch (e) { /* 门面未就绪也要让页面继续跑 */ }
-  function _toastRender(message, type) {
-    var host = document.getElementById('toastHost');
-    if (!host) {
-      host = document.createElement('div');
-      host.id = 'toastHost';
-      host.className = 'toast-host';
-      document.body.appendChild(host);
-    }
-    var el = document.createElement('div');
-    var t = type === true ? 'error' : (String(type || 'info'));
-    var ic = t === 'ok' ? '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>'
-      : t === 'error' ? '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>'
-      : '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="16" y2="12"/><line x1="12" x2="12.01" y1="8" y2="8"/></svg>';
-    el.className = 'toast toast--' + t;
-    el.innerHTML = '<span class="toast__icon">' + ic + '</span><span class="toast__text"></span>';
-    el.querySelector('.toast__text').textContent = String(message || '');
-    host.appendChild(el);
-    requestAnimationFrame(function () { el.classList.add('toast--show'); });
-    setTimeout(function () {
-      el.classList.remove('toast--show');
-      setTimeout(function () { try { el.remove(); } catch (e) {} }, 300);
-    }, 3200);
-  }
+  function _toastRender(message, type) { return VL.ui.toastRender(message, type); }
   // 记录最后一次点击的可作为锚点的元素：气泡确认未显式传 anchor 时用它定位（气泡内部交互不更新）
   var _popAnchor = null; // { el, rect }：rect 为元素当时的位置快照，供元素随后被移除时仍能定位
   // 设置气泡的归属锚点：气泡应锚在「被操作对象」（如任务卡片）上，而非临时菜单项

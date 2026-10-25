@@ -34,6 +34,8 @@
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ESC[c]; });
   }
+  root.VL.esc = esc;
+  root.VL.escapeHtml = esc;   // 历史命名，等价
 
   /** 秒 → 12.3s / 1m05s / 1h02m03s（够到分钟才进位，保持"一眼看出大概多久"）。 */
   function fmtDur(sec) {
@@ -443,7 +445,6 @@
   root.VL = root.VL || {};
   root.VL.ui = VLUI;
   root.VL.STATUS_TEXT = STATUS_TEXT;
-  root.VL.esc = esc;
   root.VL.fmtDur = fmtDur;
   root.VL.fmtSize = fmtSize;
   root.VL.vlLogAction = vlLogAction;
@@ -458,4 +459,47 @@
   root.VL.pairByWidth = pairByWidth;
   root.VL.pairByHeight = pairByHeight;
   root.VL.createSizeLink = createSizeLink;
+
+  // 取元素：跨页统一从这里取，不在各页重复定义（页面脚本均在 common.js 之后加载）
+  function $(id) { return document.getElementById(id); }
+  root.VL.$ = $;
+
+  // 原生能力入口：各页统一从这里取，不各自判断 window.txapi
+  function getApi() { return root.txapi || null; }
+  function call(method) {
+    var args = Array.prototype.slice.call(arguments, 1);
+    var api = getApi();
+    if (!api || typeof api[method] !== 'function') return Promise.reject(new Error('功能暂不可用'));
+    return Promise.resolve().then(function () { return api[method].apply(api, args); });
+  }
+  root.VL.api = { getApi: getApi, call: call };
+
+  // 提示条渲染：各页共用同一实现。差异通过 opts 传入：
+  //   opts.duration      显示时长（默认 3200ms）
+  //   opts.removeDelay   淡出后移除延迟（默认 300ms）
+  function toastRender(message, type, opts) {
+    var o = opts || {};
+    var host = document.getElementById('toastHost');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'toastHost';
+      host.className = 'toast-host';
+      document.body.appendChild(host);
+    }
+    var el = document.createElement('div');
+    var t = type === true ? 'error' : (String(type || 'info'));
+    var ic = t === 'ok' ? '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>'
+      : t === 'error' ? '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>'
+      : '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="16" y2="12"/><line x1="12" x2="12.01" y1="8" y2="8"/></svg>';
+    el.className = 'toast toast--' + t;
+    el.innerHTML = '<span class="toast__icon">' + ic + '</span><span class="toast__text"></span>';
+    el.querySelector('.toast__text').textContent = String(message || '');
+    host.appendChild(el);
+    requestAnimationFrame(function () { el.classList.add('toast--show'); });
+    setTimeout(function () {
+      el.classList.remove('toast--show');
+      setTimeout(function () { try { el.remove(); } catch (e) { } }, o.removeDelay == null ? 300 : o.removeDelay);
+    }, o.duration == null ? 3200 : o.duration);
+  }
+  root.VL.ui.toastRender = toastRender;
 })(typeof window !== 'undefined' ? window : globalThis);

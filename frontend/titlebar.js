@@ -3,7 +3,7 @@
 // 依赖 preload 暴露的 txapi.window_* 系列；无 txapi（纯浏览器预览）时按钮静默无操作。
 (function () {
   'use strict';
-  function $(id) { return document.getElementById(id); }
+  var $ = VL.$;   // 取元素：实现见 common.js
   function applyCaps() {
     var bar = $('winTitlebar');
     if (!bar || !window.txapi || !txapi.window_caps) return;

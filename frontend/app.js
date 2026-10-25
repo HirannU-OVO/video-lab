@@ -2,6 +2,22 @@
  * Video Lab — 前端逻辑
  */
 (function () {
+  /* 分区导航（按一级定义顺序，行号会变，按节名检索即可）
+     第 1 节 基础工具与提示层：图标、行模板、toast、气泡、对话框、项目/水印对话框
+     第 2 节 菜单、原生调用与排序：菜单、getApi/call、排序键、排序函数
+     第 3 节 侧栏与字母索引：侧栏构建、字母条、高亮同步
+     第 4 节 日志路径解析与日期分支：日期与版本路径推导、日期分支渲染
+     第 5 节 配置快照、预检与编辑器绑定：快照比对、预检、编辑器事件
+     第 6 节 路径与水印表单：路径行增删、水印校验
+     第 7 节 保存、项目跳转与脚本执行：保存落盘、跳转定位、任务脚本
+     第 8 节 日志列表、下拉与右侧预览：日志列表、搜索下拉、右侧面板
+     第 9 节 状态栏、进度与提示：状态文案、忙碌遮罩、进度条
+     第 10 节 皮肤、数据刷新与版本切换：皮肤应用、数据刷新、版本选择
+     第 11 节 路径选择、关闭行为与更新提示：目录选择、关闭询问、更新横幅与变更日志
+     第 12 节 遮罩（批量）模式：选中、素材、日志、任务启动与自愈
+     第 13 节 启动入口：boot
+     对外契约：本文件的所有能力通过 window.VL.* 与 window.txapi 交互；
+     跨页共享的取元素/转义/原生调用/图标/格式化一律走 common.js 的 VL.*，不在本文件重复定义。 */
   'use strict';
 
   // 数字输入框：禁用滚轮滚动改值（仅保留手动输入）
@@ -11,8 +27,8 @@
   }, { passive: false });
 
   // 图标统一来自 icons.js 全局库（硬约束：不在业务文件维护 ICONS/icon 副本）
-  function icon(name, size, cls) { return window.VL_icon ? window.VL_icon(name, size, cls) : ''; }
-  function hydrateIcons(root) { if (window.VL_hydrateIcons) window.VL_hydrateIcons(root); }
+  var icon = window.VL_icon || function () { return ''; };
+  var hydrateIcons = window.VL_hydrateIcons || function () {};
   // 局部替换图标：元素内可能已有插入的 svg，直接重建（私有，不污染全局图标库）
   function hydIcon(el, name) {
     if (!el) return;
@@ -24,9 +40,7 @@
       if (svg && svg.setAttribute) { svg.setAttribute('class', 'preview-collapse__icon'); }
     }
   }
-  function escapeHtml(s) {
-    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  }
+var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
   // 路径 → 文件名（不含扩展名）；用于水印栏简洁展示
   function baseNameNoExt(p) {
     var s = String(p || '').replace(/[\\/]+$/, '');
@@ -52,29 +66,7 @@
   // 提示统一走 VL.ui 门面：日志由门面记一次（唯一日志点），这里只负责渲染。
   function toast(message, type) { try { return VL.ui.toast(message, type); } catch (e) { return null; } }
   try { VL.ui.registerToast(_toastRender); } catch (e) { /* 门面未就绪也要让页面继续跑 */ }
-  function _toastRender(message, type) {
-    var host = document.getElementById('toastHost');
-    if (!host) {
-      host = document.createElement('div');
-      host.id = 'toastHost';
-      host.className = 'toast-host';
-      document.body.appendChild(host);
-    }
-    var el = document.createElement('div');
-    var t = type === true ? 'error' : (String(type || 'info'));
-    var ic = t === 'ok' ? '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>'
-      : t === 'error' ? '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>'
-      : '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="16" y2="12"/><line x1="12" x2="12.01" y1="8" y2="8"/></svg>';
-    el.className = 'toast toast--' + t;
-    el.innerHTML = '<span class="toast__icon">' + ic + '</span><span class="toast__text"></span>';
-    el.querySelector('.toast__text').textContent = String(message || '');
-    host.appendChild(el);
-    requestAnimationFrame(function () { el.classList.add('toast--show'); });
-    setTimeout(function () {
-      el.classList.remove('toast--show');
-      setTimeout(function () { try { el.remove(); } catch (e) {} }, 300);
-    }, 3200);
-  }
+  function _toastRender(message, type) { return VL.ui.toastRender(message, type); }
   // 记录最后一次点击的可作为锚点的元素：气泡确认未显式传 anchor 时用它定位，
   // 使既有 showDialog 调用点改成气泡时几乎无需改动（气泡内部交互不更新锚点）
   var _popAnchor = null; // { el, rect }：rect 为元素当时的位置快照，供元素随后被移除（如右键菜单关闭）时仍能定位
@@ -447,6 +439,8 @@
   }
   // ownerEl：气泡的归属元素（被右键/点击操作的对象）。菜单项点击后菜单即移除，
   // 故把锚点改回归属元素，使气泡出现在「真正的对象」旁，而不是菜单项位置。
+
+  // ── 第 2 节：菜单、原生调用与排序 ──────────────────────────────────────────────
   function showMenu(x, y, items, ownerEl) {
     var old = document.getElementById('ctxMenu');
     if (old) old.remove();
@@ -478,9 +472,7 @@
     setTimeout(function () { document.addEventListener('mousedown', onDocMd, true); }, 0);
     document.addEventListener('contextmenu', onCtx, true);
   }
-  function getApi() {
-    return window.txapi || (window.pywebview && window.pywebview.api) || null;
-  }
+  function getApi() { return VL.api.getApi(); }
   // 全局统一：灰显按钮（.is-vl-disabled）点击弹 toast 说明不可用原因（不开新窗）。
   // 捕获阶段拦截，优先于业务点击处理；水印行/模式切换等所有 is-vl-disabled 按钮统一走此
   document.addEventListener('click', function (e) {
@@ -493,12 +485,7 @@
       e.stopPropagation();
     }
   }, true);
-  function call(method) {
-    var args = Array.prototype.slice.call(arguments, 1);
-    var api = getApi();
-    if (!api || typeof api[method] !== 'function') return Promise.reject(new Error('功能暂不可用'));
-    return Promise.resolve().then(function () { return api[method].apply(api, args); });
-  }
+  var call = VL.api.call;   // 调用原生能力：实现见 common.js
   // 左下角菜单关闭（全局可用，供 initMaskMode 等独立函数调用）
   function closeMenu() { var m = $('sidebarMenu'); if (m) m.style.display = 'none'; }
   var state = {
@@ -517,7 +504,7 @@
   // 复刻虚拟项目：仅含日志无配置，配置名对应复刻模式；REPLICA_MARK 为路由标记，透传回后端
   var REPLICA_PROJECT = '复刻';
   var REPLICA_MARK = 'REPLICA:';
-  function $(id) { return document.getElementById(id); }
+  var $ = VL.$;   // 取元素：实现见 common.js
 
   // 时间排序键：取标签前 4 位 MMdd 作主键 + 后缀序号（-1/-2/* 等）作细分，0802 与 0802-1 同组但后者排前面
   function branchNum(s) {
@@ -574,6 +561,8 @@
     var m = /^(\d{2})/.exec(String(label || '').trim());
     return m ? parseInt(m[1], 10) : 0;
   }
+
+  // ── 第 3 节：侧栏与字母索引 ─────────────────────────────────────────────────
   function buildSidebar(forceAz, noBadgeAnim) {
     if (maskOn()) return; // 遮罩模式：批量侧栏渲染一律拒绝，防模式污染
     var tree = $('sidebarTree');
@@ -807,6 +796,8 @@
     // 不自动判定高亮：由点击/滚动/拖拽交互触发（无交互保持初始排布）
   }
   // 仅当配置分支名/日期为严格 4 位 MMdd 时返回该日期，否则返回空串
+
+  // ── 第 4 节：日志路径解析与日期分支 ─────────────────────────────────────────────
   function mmddOf(label) { var s = String(label || ''); return /^\d{4}$/.test(s.slice(0, 4)) ? s.slice(0, 4) : ''; }
 
   // 返回去除项目名后的展示相对路径（如 8月\0819\...\xxx.txt）
@@ -1053,6 +1044,8 @@
   }
   // 项目设置了「默认分组数」时：以占位符提示默认值（输入框 value 保持为空，
   // 用户不输入分组数时自动使用该默认值；一旦输入即用自己的分组数）
+
+  // ── 第 5 节：配置快照、预检与编辑器绑定 ───────────────────────────────────────────
   function applyDefaultGroupInput() {
     var inp = $('inputGroupCount');
     if (!inp || !state.activeProject) return;
@@ -1519,6 +1512,8 @@
     container._delegatedChange = onContainerChange;
     container.addEventListener('change', container._delegatedChange);
   }
+
+  // ── 第 6 节：路径与水印表单 ─────────────────────────────────────────────────
   function reindexPathRows() { $('pathList').querySelectorAll('.config-path-row').forEach(function (r, i) { r.dataset.index = i; }); }
   function updatePathCount() { var n = $('pathList').querySelectorAll('.config-path-row').length; var col = document.querySelector('.config-editor__col--paths .config-editor__col-count'); if (col) col.textContent = n; }
   function updateExcludeCount() { var n = $('excludeList').querySelectorAll('.config-exclude-row').length; var col = document.querySelector('.config-editor__col--exclude .config-editor__col-count'); if (col) col.textContent = n; }
@@ -1615,6 +1610,8 @@
       });
     }
   // 归属确认：当前水印命中其他项目主流时，弹窗让用户选择保存到的目标项目；未命中/取消 → 留在当前项目
+
+  // ── 第 7 节：保存、项目跳转与脚本执行 ────────────────────────────────────────────
   function resolveDestProject() {
     var wmV = state.configData && state.configData.watermark ? String(state.configData.watermark) : '';
     if (!wmV || !state.activeProject) return Promise.resolve(state.activeProject);
@@ -1922,6 +1919,8 @@
     }).catch(function () {});
   }
   // 滚动日志成片列表时，右侧同步跳转到第一个可见成片所在行
+
+  // ── 第 8 节：日志列表、下拉与右侧预览 ────────────────────────────────────────────
   function bindLogListScroll(container) {
     var list = container.querySelector('.log-list');
     if (!list) return;
@@ -2141,10 +2140,10 @@
     });
     setTimeout(function () {
       var outside = function (e) { if (!d.contains(e.target)) closeProjDropdown(); };
-      var esc = function (e) { if (e.key === 'Escape') closeProjDropdown(); };
-      d.__outside = outside; d.__esc = esc;
+      var onProjDropdownEsc = function (e) { if (e.key === 'Escape') closeProjDropdown(); };
+      d.__outside = outside; d.__esc = onProjDropdownEsc;
       document.addEventListener('mousedown', outside);
-      document.addEventListener('keydown', esc);
+      document.addEventListener('keydown', onProjDropdownEsc);
     }, 0);
   }
   function onProjectSearchInput() {
@@ -2216,10 +2215,10 @@
     });
     setTimeout(function () {
       var outside = function (e) { if (!d.contains(e.target)) closeLogDropdown(); };
-      var esc = function (e) { if (e.key === 'Escape') closeLogDropdown(); };
-      d.__outside = outside; d.__esc = esc;
+      var onLogDropdownEsc = function (e) { if (e.key === 'Escape') closeLogDropdown(); };
+      d.__outside = outside; d.__esc = onLogDropdownEsc;
       document.addEventListener('mousedown', outside);
-      document.addEventListener('keydown', esc);
+      document.addEventListener('keydown', onLogDropdownEsc);
     }, 0);
   }
   // 批量模式成片搜索绑定（可重复调用：遮罩模式 clone 输入框后由 exit 强制重绑）
@@ -2511,6 +2510,8 @@
       content.scrollTop = Math.max(0, targetTop - 8);
     }
   }
+
+  // ── 第 9 节：状态栏、进度与提示 ───────────────────────────────────────────────
   function setStatus(msg) { try { return VL.ui.status(msg); } catch (e) {} }
   function _statusRender(msg) { var el = $('statusLeft'); if (!el) return; el.classList.remove('status-bar__success'); el.textContent = msg; }
   try { VL.ui.registerStatus(_statusRender); } catch (e) { /* 同上 */ }
@@ -2656,6 +2657,8 @@
 
   // ── 皮肤切换 ──
   // 皮肤列表按下拉名拼音升序：浅色 < 深色
+
+  // ── 第 10 节：皮肤、数据刷新与版本切换 ───────────────────────────────────────────
   var SKINS = [
     { id: 'white_blue', label: '浅色', bg: '#F5F5F5', theme: '#4B3FE3' },
     { id: 'Black_Orange', label: '深色', bg: '#111113', theme: '#FF6600' },
@@ -3434,6 +3437,8 @@
       if (roundBtn) roundBtn.addEventListener('click', togglePreviewCollapsed);
     }
   }
+
+  // ── 第 11 节：路径选择、关闭行为与更新提示 ─────────────────────────────────────────
   function choosePath() {
     showBusy('正在检测工作路径文件，请稍候…');
     call('choose_workdir').then(function (r) {
@@ -3760,7 +3765,7 @@
 
   // 轻量 Markdown 渲染（标题 / 有序无序列表 / 表格 / 引用 / 行内链接与粗体 / 代码块 / 空行）
   function renderMdMd(text) {
-    var esc = function (s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
+    var esc = VL.esc;   // HTML 转义：实现见 common.js
     function inline(s) {
       s = String(s == null ? '' : s).replace(/<img[^>]*>/gi, '');
       s = s.replace(/!\[[^\]]*\]\([^)]*\)/g, ''); // 剥离 markdown 图片语法（badge 图等）
@@ -3975,6 +3980,8 @@
     if (!bad) { if (typeof refreshLogConfigBar === 'function') refreshLogConfigBar(); applyPrecheckValidity(); refreshConfigModified(); }
   }
   // ════════════ 遮罩叠加模式（复用主窗口：左侧项目 / 右侧配置 / 底部输出+启动） ════════════
+
+  // ── 第 12 节：遮罩（批量）模式 ───────────────────────────────────────────────
   var maskState = {
     on: false, projects: [], project: null, mode: 1, view: 'config', search: '',
     maskLogBranch: '', // 日志视图当前选中的日期分支（对应某日志文件路径，空=自动最新）
@@ -5822,6 +5829,8 @@
     if (maskState.view === 'log') buildMaskLogView();
   }
 
+
+  // ── 第 13 节：启动入口 ───────────────────────────────────────────────────
   var booted = false;
   function boot() { if (booted) return; booted = true; init(); }
   window.addEventListener('pywebviewready', boot);

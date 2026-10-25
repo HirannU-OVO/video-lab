@@ -10,13 +10,9 @@
   'use strict';
 
   var api = window.txapi;
-  function $(id) { return document.getElementById(id); }
-  function esc(s) {
-    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
-      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-    });
-  }
-  function icon(name, size) { return window.VL_icon ? window.VL_icon(name, size) : ''; }
+  var $ = VL.$;   // 取元素：实现见 common.js
+  var esc = VL.esc;   // HTML 转义：实现见 common.js
+  var icon = window.VL_icon || function () { return ''; };
   function iconEl(name, size) { return '<i data-icon="' + name + '" data-size="' + (size || 14) + '"></i>'; }
 
   var state = {
@@ -46,29 +42,7 @@
   // 提示统一走 VL.ui 门面：日志由门面记一次（唯一日志点），这里只负责渲染。
   function toast(message, type) { try { return VL.ui.toast(message, type); } catch (e) { return null; } }
   try { VL.ui.registerToast(_toastRender); } catch (e) { /* 门面未就绪也要让页面继续跑 */ }
-  function _toastRender(message, type) {
-    var host = document.getElementById('toastHost');
-    if (!host) {
-      host = document.createElement('div');
-      host.id = 'toastHost';
-      host.className = 'toast-host';
-      document.body.appendChild(host);
-    }
-    var el = document.createElement('div');
-    var t = type === true ? 'error' : (String(type || 'info'));
-    var ic = t === 'ok' ? '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>'
-      : t === 'error' ? '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>'
-      : '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="16" y2="12"/><line x1="12" x2="12.01" y1="8" y2="8"/></svg>';
-    el.className = 'toast toast--' + t;
-    el.innerHTML = '<span class="toast__icon">' + ic + '</span><span class="toast__text"></span>';
-    el.querySelector('.toast__text').textContent = message || '';
-    host.appendChild(el);
-    requestAnimationFrame(function () { el.classList.add('toast--show'); });
-    setTimeout(function () {
-      el.classList.remove('toast--show');
-      setTimeout(function () { el.remove(); }, 200);
-    }, t === 'error' ? 4200 : 2600);
-  }
+  function _toastRender(message, type) { return VL.ui.toastRender(message, type, { duration: (type === true || String(type) === 'error') ? 4200 : 2600, removeDelay: 200 }); }
 
   // ── 大窗确认（与主窗口 showDialog 同一套样式类；高风险动作才用它，不用气泡）──
   function showDialog(opts) { try { return VL.ui.dialog(opts); } catch (e) { return null; } }

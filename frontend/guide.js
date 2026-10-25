@@ -2,7 +2,7 @@
 // Video Lab — 首次引导窗口（选择工作路径；水印自动配置）
 'use strict';
 (function () {
-  var $ = function (id) { return document.getElementById(id); };
+  var $ = VL.$;   // 取元素：实现见 common.js
   var api = window.txapi;
 
   // 提示统一走 VL.ui 门面：日志由门面记一次（唯一日志点），这里只负责渲染。
