@@ -52,6 +52,10 @@
   @property --vl-static-radius-16 { syntax: '<length>'; inherits: true; initial-value: 16px; }
   @property --vl-static-radius-full { syntax: '<length>'; inherits: true; initial-value: 999px; }
   @property --vl-static-border-width-default { syntax: '<length>'; inherits: true; initial-value: 1px; }
+  /* 状态层强度：hover / focus-visible / pressed 的交互反馈叠加比例（统一一处产出） */
+  @property --vl-static-state-hover { syntax: '<percentage>'; inherits: true; initial-value: 8%; }
+  @property --vl-static-state-focus { syntax: '<percentage>'; inherits: true; initial-value: 10%; }
+  @property --vl-static-state-pressed { syntax: '<percentage>'; inherits: true; initial-value: 12%; }
   @property --vl-static-spacer-2 { syntax: '<length>'; inherits: true; initial-value: 2px; }
   @property --vl-static-spacer-4 { syntax: '<length>'; inherits: true; initial-value: 4px; }
   @property --vl-static-spacer-6 { syntax: '<length>'; inherits: true; initial-value: 6px; }
@@ -434,6 +438,10 @@
   --vl-static-radius-24: 24px;
   --vl-static-radius-32: 32px;
   --vl-static-radius-full: 999px;
+  /* 状态层强度 */
+  --vl-static-state-hover: 8%;
+  --vl-static-state-focus: 10%;
+  --vl-static-state-pressed: 12%;
   --vl-alias-radius-xs: var(--vl-static-radius-2);
   --vl-alias-radius-sm: var(--vl-static-radius-4);
   --vl-alias-radius-md: var(--vl-static-radius-6);

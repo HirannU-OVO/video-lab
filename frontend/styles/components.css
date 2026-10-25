@@ -43,8 +43,8 @@
     -webkit-user-select: none;
     user-select: none;
   }
-  .vl-btn:hover:not([disabled]):not([aria-disabled="true"]) { background: var(--vl-alias-bg-base-secondary); }
-  .vl-btn:active:not([disabled]):not([aria-disabled="true"]) { background: var(--vl-alias-bg-base-tertiary); }
+  .vl-btn:hover:where(:not([disabled]):not([aria-disabled="true"])) { background: var(--vl-alias-bg-base-secondary); }
+  .vl-btn:active:where(:not([disabled]):not([aria-disabled="true"])) { background: var(--vl-alias-bg-base-tertiary); }
   .vl-btn:focus-visible { outline: 2px solid var(--vl-alias-accent-blue); outline-offset: 1px; }
 
   /* variant */
@@ -53,22 +53,22 @@
     border-color: var(--vl-alias-bg-brand);
     color: var(--vl-alias-text-white);
   }
-  .vl-btn--primary:hover:not([disabled]):not([aria-disabled="true"]) { background: var(--vl-alias-bg-brand-hover); border-color: var(--vl-alias-bg-brand-hover); }
-  .vl-btn--primary:active:not([disabled]):not([aria-disabled="true"]) { background: var(--vl-alias-bg-brand-active); border-color: var(--vl-alias-bg-brand-active); }
+  .vl-btn--primary:hover:where(:not([disabled]):not([aria-disabled="true"])) { background: var(--vl-alias-bg-brand-hover); border-color: var(--vl-alias-bg-brand-hover); }
+  .vl-btn--primary:active:where(:not([disabled]):not([aria-disabled="true"])) { background: var(--vl-alias-bg-brand-active); border-color: var(--vl-alias-bg-brand-active); }
 
   .vl-btn--danger {
     background: var(--vl-alias-status-error-default);
     border-color: var(--vl-alias-status-error-default);
     color: var(--vl-alias-text-white);
   }
-  .vl-btn--danger:hover:not([disabled]):not([aria-disabled="true"]) { background: var(--vl-alias-status-error-hover); border-color: var(--vl-alias-status-error-hover); }
-  .vl-btn--danger:active:not([disabled]):not([aria-disabled="true"]) { background: var(--vl-alias-status-error-active); border-color: var(--vl-alias-status-error-active); }
+  .vl-btn--danger:hover:where(:not([disabled]):not([aria-disabled="true"])) { background: var(--vl-alias-status-error-hover); border-color: var(--vl-alias-status-error-hover); }
+  .vl-btn--danger:active:where(:not([disabled]):not([aria-disabled="true"])) { background: var(--vl-alias-status-error-active); border-color: var(--vl-alias-status-error-active); }
 
   .vl-btn--ghost { background: transparent; border-color: transparent; }
-  .vl-btn--ghost:hover:not([disabled]):not([aria-disabled="true"]) { background: var(--vl-alias-bg-overlay-l1); }
+  .vl-btn--ghost:hover:where(:not([disabled]):not([aria-disabled="true"])) { background: var(--vl-alias-bg-overlay-l1); }
 
   .vl-btn--subtle { background: var(--vl-alias-bg-base-secondary); border-color: transparent; color: var(--vl-alias-text-secondary); }
-  .vl-btn--subtle:hover:not([disabled]):not([aria-disabled="true"]) { color: var(--vl-alias-text-default); background: var(--vl-alias-bg-base-tertiary); }
+  .vl-btn--subtle:hover:where(:not([disabled]):not([aria-disabled="true"])) { color: var(--vl-alias-text-default); background: var(--vl-alias-bg-base-tertiary); }
 
   /* size */
   .vl-btn--xs { --vl-btn-h: 20px; --vl-btn-px: 6px; --vl-btn-fs: 11px; border-radius: var(--vl-static-radius-4); }
@@ -223,5 +223,44 @@
     cursor: pointer;
     user-select: none;
     --vl-sh-pad-y: 7px;
+  }
+}
+
+@layer components {
+  /* ── 状态层：统一的交互反馈叠加 ──
+     目的：交互反馈由一处统一产出，新组件加进 :is() 列表即自动获得 hover / focus / pressed，
+           不必为每个变体各配一套状态色，也不必靠提高特异性去和页面规则竞争。
+     载体用 ::after（叠一层 currentColor，z-index:-1 位于文字之下、背景之上），
+           而不是 background-image —— 后者会**覆盖**皮肤给的装饰背景图
+           （实测女仆皮肤的可折叠标题行带装饰图，hover 时会被状态层替换掉）。
+     ⚠ 接入前提：该组件的 ::after 必须未被自身规则占用（opt-check 画勾、btn 画图标即属此类）。
+           接入清单由 verify-state-layer.js 校验，冲突即报。
+     分工（与「每态一色」并行，不替代）：
+       · 实心色块（primary / danger / 选中态）：仍用每态一色，语义更强；
+       · 表面/透明类（可折叠标题行、后续接入的 tag / check）：用本状态层。
+     变量：--vl-static-state-hover / -focus / -pressed（静态层令牌，可被皮肤覆盖）。 */
+  :is(.vl-section-head--interactive) {
+    position: relative;
+    isolation: isolate;
+  }
+  :is(.vl-section-head--interactive)::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    background: currentColor;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .12s ease;
+  }
+  :is(.vl-section-head--interactive):hover::after {
+    opacity: var(--vl-static-state-hover);
+  }
+  :is(.vl-section-head--interactive):focus-visible::after {
+    opacity: var(--vl-static-state-focus);
+  }
+  :is(.vl-section-head--interactive):active::after {
+    opacity: var(--vl-static-state-pressed);
   }
 }
