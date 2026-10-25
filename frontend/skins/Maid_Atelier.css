@@ -1640,3 +1640,13 @@ html[data-skin="Maid_Atelier"] .modal-btn--primary:hover {
   --vl-skin-toast-bg: #14264f;
   --vl-skin-toast-border: #2c4a97;
 }
+
+@layer skins {
+  /* 区块头：只设接口变量，不写任何页面类名 —— 所有页面共用 .vl-section-head 的地方自动生效 */
+  html[data-skin="Maid_Atelier"] .vl-section-head {
+    --vl-sh-bg: linear-gradient(180deg, rgba(197, 164, 104, 0.16), rgba(197, 164, 104, 0.04));
+    --vl-sh-color: var(--vl-skin-maid-gold, #c5a468);
+    --vl-sh-border: rgba(197, 164, 104, 0.38);
+    --vl-sh-radius: 4px;
+  }
+}

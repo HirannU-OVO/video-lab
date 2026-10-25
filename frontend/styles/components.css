@@ -189,3 +189,39 @@
    .ds-input        → .vl-input
    .ds-tag          → .vl-tag（语义变体用 --brand / --accent / --danger / --ok / --outline）
    ═══════════════════════════════════════════════════════ */
+
+/* ─────────────────────────────────────────────────────────────
+   区块头 / 标题行（K-01）
+
+   全站「标题行」有 20 种不同类名，皮肤要为每种各写一遍 → 必然漏。
+   本组件把外观收敛为 6 个可覆盖变量，皮肤只需设变量即可覆盖所有页面。
+   变量兜底到 alias 层：未设变量时外观与原有标题行一致。
+   ───────────────────────────────────────────────────────────── */
+@layer components {
+  .vl-section-head {
+    --vl-sh-bg: var(--vl-alias-bg-overlay-l1);
+    --vl-sh-color: var(--vl-alias-text-default);
+    --vl-sh-border: var(--vl-alias-border-neutral-l2);
+    --vl-sh-pad-y: 8px;
+    --vl-sh-pad-x: 10px;
+    --vl-sh-radius: 0;
+    --vl-sh-weight: var(--vl-font-font-weight-strong);
+    display: block;
+    padding: var(--vl-sh-pad-y) var(--vl-sh-pad-x);
+    background: var(--vl-sh-bg);
+    color: var(--vl-sh-color);
+    border-bottom: 1px solid var(--vl-sh-border);
+    border-radius: var(--vl-sh-radius);
+    font-size: var(--vl-type-body-sm-size);
+    font-weight: var(--vl-sh-weight);
+  }
+  /* 可折叠标题行（点击展开/收起） */
+  .vl-section-head--interactive {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+    --vl-sh-pad-y: 7px;
+  }
+}
