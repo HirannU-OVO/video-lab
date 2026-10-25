@@ -2347,12 +2347,14 @@ class Api {
     const c = this._videoCache;
     if (!c) return 0;
     let plan;
-    try { plan = store ? store.gcPlan(knownPaths, { now: Date.now(), limit: limit || 0 }) : this._videoCacheGcPlan(knownPaths); }
+    try { plan = store ? store.gcPlan(knownPaths, { now: Date.now(), limit: limit || 0, missingRecheckMs: (opts && opts.missingRecheckMs) }) : this._videoCacheGcPlan(knownPaths); }
     catch (e) { if (store) return 0; plan = this._videoCacheGcPlan(knownPaths); }
     const all = plan.verify || [];
     const list = (limit > 0 && all.length > limit) ? all.slice(0, limit) : all;
-    // 批次在入队时算死，跑到这里待核验项可能已被前面的批次清空 —— 无事可做就直接退出
-    if (!list.length) return 0;
+    const expiredEarly = plan.expired || new Set();
+    // 批次在入队时算死，跑到这里待核验项可能已被前面的批次清空 —— 无事可做就直接退出。
+    // ⚠ 但「到期回收」不依赖核验，没有待核验条目时仍可能有到期条目要删，不能在这里退出。
+    if (!list.length && !expiredEarly.size) return 0;
     const _t = Date.now();
     const gone = [], back = [];
     // ⚠ 让路粒度 24（不要再放大）：冷态下一次让路前最多 24 次随机 IO，再多会把机械盘队列打满、连带冻住主线程。
@@ -2378,7 +2380,8 @@ class Api {
     }
     // 记录「这批刚核验过」→ 有效期内（默认 7 天）不重复访问磁盘：冷启动 IO 总量与过期条数成正比，而非库大小。
     if (store && store.markVerified && list.length) { try { store.markVerified(list, Date.now()); } catch (e) {} }
-    if (this._lg && (limit > 0 || (opts && opts.idle))) {
+    // 空闲增量不写每批日志（一批 4 条、毫秒级，会刷爆日志）；由调用方在整轮结束时汇总一行
+    if (this._lg && !(opts && opts.idle)) {
       this._lg('SYS', 'cache.gc',
         '数据缓存失效清理（空闲' + (limit > 0 ? '增量' : '全量') + '） · 核验 ' + list.length + ' / ' + all.length + ' 条 · 失效 ' + gone.length
         + ' · ' + (Date.now() - _t) + 'ms · 让路 ' + yields + ' 次'
@@ -2394,7 +2397,7 @@ class Api {
       await this._saveVideoCache();
       return gone.length;
     }
-    const expired = plan.expired || new Set();
+    const expired = expiredEarly;
     const stillMissing = gone.filter((p) => !expired.has(p));
     // 到期回收**不依赖本次核验**：missing_since 已把「文件不在了」记在库里，到期与否纯看时间，无需再 stat。
     // 不可写成 `gone ∩ expired`：那建立在「每次都会重验所有 missing 条目」的前提上，
@@ -2829,14 +2832,16 @@ class Api {
       const last = i === jobs - 1;
       if (this._verifyEnqueue('cachegc', i, async (ctx) => {
         await this._gcVideoCache(null, { limit: N, idle: true, shouldYield: ctx.shouldYield });
-        if (last) { try { await this.gcVideoCacheIdle(); } catch (e) {} }
+        if (!last) return;
+        // 只在本轮**确有进展**时排下一轮：待核验数没降说明剩下的核验不掉，继续排只会空转刷日志
+        let left = 0;
+        try { left = store.gcPendingCount(Date.now()); } catch (e) { left = 0; }
+        if (left > 0 && left < pending) { try { await this.gcVideoCacheIdle(); } catch (e) {} return; }
+        try {
+          if (this._lg) this._lg('SYS', 'cache.gc.idle', '失效清理一轮结束（待核验 ' + left + ' 条 · 本轮处理 ' + pending + ' 条）', { left, start: pending });
+        } catch (e) {}
       })) queued++;
     }
-    try {
-      if (this._lg) this._lg('SYS', 'cache.gc.queue',
-        '失效清理已排入空闲队列（待核验 ' + pending + ' 条 · 本轮 ' + queued + ' 个批次 × ' + N + ' 条）',
-        { pending, queued, perJob: N });
-    } catch (e) {}
     return { queued, pending };
   }
 
@@ -4332,7 +4337,7 @@ class Api {
     };
   }
 
-  // 把队列跑空（回归/手动排查用；正常使用不需要），注意要同时等 `_idleRunning` 结束：job 是**出队后才执行**的，只看队列长度会提前返回。
+  // 把队列跑空，注意要同时等 `_idleRunning` 结束：job 是**出队后才执行**的，只看队列长度会提前返回。
   async drainIdleQueue(timeoutMs) {
     const deadline = Date.now() + (Number(timeoutMs) || 30000);
     while (((this._idleJobs && this._idleJobs.length) || this._idleRunning) && Date.now() < deadline) {
@@ -7440,7 +7445,7 @@ class Api {
   // 批量任务续跑的配置重定位。
   // 背景：配置正本在首次运行时被移入成片目录归档（引擎与 PS1 同语义），续跑沿用旧路径必然失效。
   // 关键约束：成片名里含「配置所在目录名」，若直接改用归档路径，续跑产物名会多出一段目录名；
-  //   故必须先复制回原路径再以原路径运行（复制幂等，引擎读到后会再次移回归档位置）。
+  //   故必须先复制回原路径再以原路径运行（复制幂等，引擎读到后会再次移回原位置）。
   _batchMissingIndices(t, src) {
     try {
       const total = Number((t.env || {}).BATCH_COUNT) || 0;

@@ -3,44 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <title>卸载 Video Lab</title>
-<style>
-  * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; }
-  body { font-family: "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif; background: #fff; color: #1f2328; font-size: 13px; overflow: hidden; display: flex; flex-direction: column; }
-  .titlebar { height: 34px; display: flex; align-items: center; -webkit-app-region: drag; padding: 0 6px 0 14px; border-bottom: 1px solid #eceef1; flex: 0 0 auto; }
-  .titlebar .t { font-size: 12px; color: #57606a; }
-  .titlebar .sp { flex: 1; }
-  .titlebar button { -webkit-app-region: no-drag; width: 30px; height: 24px; border: 0; background: transparent; color: #57606a; font-size: 13px; cursor: pointer; border-radius: 4px; }
-  .titlebar button:hover { background: #f0f1f3; }
-  .body { padding: 16px 22px 0; flex: 1; overflow: auto; }
-  h1 { font-size: 15px; margin: 0 0 12px; font-weight: 600; }
-  .sub { color: #57606a; margin: 0 0 14px; line-height: 1.7; }
-  .card { border: 1px solid #e6e8eb; border-radius: 8px; padding: 11px 13px; background: #fafbfc; margin-bottom: 12px; }
-  .row { font-size: 12px; color: #57606a; }
-  .row b { color: #1f2328; font-weight: 600; }
-  .path { word-break: break-all; font-family: Consolas, monospace; font-size: 11.5px; color: #3d444d; margin-top: 4px; }
-  label.check { display: flex; gap: 9px; align-items: flex-start; cursor: pointer; padding: 10px 12px; border: 1px solid #e6e8eb; border-radius: 8px; margin-bottom: 8px; }
-  label.check input { margin-top: 2px; width: 15px; height: 15px; accent-color: #2f6feb; }
-  .hint { color: #6b7280; font-size: 12px; line-height: 1.7; margin: 0; }
-  .hint.block { display: block; margin-top: 3px; }
-  .warn { color: #b42318; font-size: 12px; margin: 4px 0 0; display: none; }
-  .warn.show { display: block; }
-  .err { color: #b42318; font-size: 12px; margin: 0 auto 0 0; display: none; align-self: center; }
-  .err.show { display: block; }
-  .foot { flex: 0 0 auto; padding: 12px 22px 16px; display: flex; gap: 10px; justify-content: flex-end; border-top: 1px solid #eceef1; }
-  button.btn { min-width: 92px; height: 32px; border-radius: 6px; border: 1px solid #d0d7de; background: #fff; color: #1f2328; font-size: 13px; cursor: pointer; }
-  button.btn:hover { background: #f6f7f9; }
-  button.btn.primary { background: #2f6feb; border-color: #2f6feb; color: #fff; }
-  button.btn.primary:hover { background: #2560d4; }
-  button.btn.danger { background: #d93025; border-color: #d93025; color: #fff; }
-  button.btn:disabled { opacity: .6; cursor: default; }
-  .modal { position: fixed; inset: 0; background: rgba(15, 23, 42, .35); display: none; align-items: center; justify-content: center; }
-  .modal.show { display: flex; }
-  .modal .box { width: 380px; background: #fff; border-radius: 10px; padding: 18px 20px 16px; box-shadow: 0 12px 32px rgba(0, 0, 0, .18); }
-  .modal h2 { font-size: 14px; margin: 0 0 8px; }
-  .modal p { font-size: 12.5px; color: #57606a; line-height: 1.8; margin: 0 0 14px; }
-  .modal .acts { display: flex; gap: 10px; justify-content: flex-end; }
-</style>
+
+  <link rel="stylesheet" href="styles/tokens.css">
+  <link rel="stylesheet" href="styles/components.css">
+  <link rel="stylesheet" href="styles/pages/uninstall.css">
 </head>
 <body>
   <div class="titlebar">

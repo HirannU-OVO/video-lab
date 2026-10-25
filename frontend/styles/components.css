@@ -1,0 +1,191 @@
+@layer reset, tokens, base, layout, components, pages, skins, utilities;
+
+/* ─────────────────────────────────────────────────────────────
+   基础组件层（B-07 / C-01 / C-02）
+   
+   四个基础组件类：.vl-btn / .vl-input / .vl-check / .vl-tag
+   差异用两个维度表达：
+     variant（语义）—— 默认 / --primary / --ghost / --danger / --subtle
+     size（尺寸）   —— 默认 md / --sm / --lg
+   状态用属性表达（不新增状态类名，C-03）：
+     [disabled] / [aria-pressed="true"] / [data-loading="1"] / [aria-invalid="true"]
+   
+   ⚠ 兼容策略（方案 B-07）：旧类名（.ds-btn / .tl-btn / .btn / .mode-toggle /
+   .preview-toggle / .sort-toggle / .opt-check / .ds-input / .ds-tag …）**保留为兼容别名**，
+   本轮只在各自定义处标 @deprecated 并给出对应新类，不批量改 HTML —— 每批迁移各跑一次视觉回归。
+   本文件只新增未被引用的类，因此**不改变任何现有渲染**。
+   ───────────────────────────────────────────────────────────── */
+
+@layer components {
+  /* ═══ 按钮 ═══════════════════════════════════════════════ */
+  .vl-btn {
+    /* 尺寸档：xs 20px / sm 24px / 默认 28px / lg 32px */
+    --vl-btn-h: 28px;
+    --vl-btn-px: 12px;
+    --vl-btn-fs: 13px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-width: 0;
+    height: var(--vl-btn-h);
+    padding: 0 var(--vl-btn-px);
+    border: 1px solid var(--vl-alias-border-neutral-l2);
+    border-radius: var(--vl-static-radius-6);
+    background: var(--vl-alias-bg-base-default);
+    color: var(--vl-alias-text-default);
+    font-family: inherit;
+    font-size: var(--vl-btn-fs);
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color .16s ease, border-color .16s ease, color .16s ease, opacity .16s ease;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .vl-btn:hover:not([disabled]):not([aria-disabled="true"]) { background: var(--vl-alias-bg-base-secondary); }
+  .vl-btn:active:not([disabled]):not([aria-disabled="true"]) { background: var(--vl-alias-bg-base-tertiary); }
+  .vl-btn:focus-visible { outline: 2px solid var(--vl-alias-accent-blue); outline-offset: 1px; }
+
+  /* variant */
+  .vl-btn--primary {
+    background: var(--vl-alias-bg-brand);
+    border-color: var(--vl-alias-bg-brand);
+    color: var(--vl-alias-text-white);
+  }
+  .vl-btn--primary:hover:not([disabled]):not([aria-disabled="true"]) { background: var(--vl-alias-bg-brand-hover); border-color: var(--vl-alias-bg-brand-hover); }
+  .vl-btn--primary:active:not([disabled]):not([aria-disabled="true"]) { background: var(--vl-alias-bg-brand-active); border-color: var(--vl-alias-bg-brand-active); }
+
+  .vl-btn--danger {
+    background: var(--vl-alias-status-error-default);
+    border-color: var(--vl-alias-status-error-default);
+    color: var(--vl-alias-text-white);
+  }
+  .vl-btn--danger:hover:not([disabled]):not([aria-disabled="true"]) { background: var(--vl-alias-status-error-hover); border-color: var(--vl-alias-status-error-hover); }
+  .vl-btn--danger:active:not([disabled]):not([aria-disabled="true"]) { background: var(--vl-alias-status-error-active); border-color: var(--vl-alias-status-error-active); }
+
+  .vl-btn--ghost { background: transparent; border-color: transparent; }
+  .vl-btn--ghost:hover:not([disabled]):not([aria-disabled="true"]) { background: var(--vl-alias-bg-overlay-l1); }
+
+  .vl-btn--subtle { background: var(--vl-alias-bg-base-secondary); border-color: transparent; color: var(--vl-alias-text-secondary); }
+  .vl-btn--subtle:hover:not([disabled]):not([aria-disabled="true"]) { color: var(--vl-alias-text-default); background: var(--vl-alias-bg-base-tertiary); }
+
+  /* size */
+  .vl-btn--xs { --vl-btn-h: 20px; --vl-btn-px: 6px; --vl-btn-fs: 11px; border-radius: var(--vl-static-radius-4); }
+  .vl-btn--sm { --vl-btn-h: 24px; --vl-btn-px: 8px; --vl-btn-fs: 12px; border-radius: var(--vl-static-radius-4); }
+  .vl-btn--lg { --vl-btn-h: 32px; --vl-btn-px: 14px; --vl-btn-fs: 13px; }
+
+  /* state（属性表达，不新增状态类） */
+  .vl-btn[disabled],
+  .vl-btn[aria-disabled="true"] {
+    background: var(--vl-alias-bg-base-tertiary);
+    border-color: var(--vl-alias-border-neutral-l1);
+    color: var(--vl-alias-text-disabled);
+    cursor: default;
+    opacity: .9;
+  }
+  .vl-btn[aria-pressed="true"] {
+    background: var(--vl-alias-bg-base-secondary);
+    border-color: var(--vl-alias-accent-blue);
+    color: var(--vl-alias-accent-blue);
+  }
+  .vl-btn[data-loading="1"] { cursor: progress; opacity: .8; }
+  .vl-btn[data-loading="1"]::before {
+    content: "";
+    width: 10px; height: 10px;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: vl-btn-spin .7s linear infinite;
+  }
+  @keyframes vl-btn-spin { to { transform: rotate(360deg); } }
+
+  /* ═══ 输入框 ═════════════════════════════════════════════ */
+  .vl-input {
+    --vl-input-h: 32px;
+    height: var(--vl-input-h);
+    padding: 0 10px;
+    border: 1px solid var(--vl-alias-border-neutral-l2);
+    border-radius: var(--vl-static-radius-6);
+    background: var(--vl-alias-bg-base-default);
+    color: var(--vl-alias-text-default);
+    font-family: inherit;
+    font-size: 13px;
+    line-height: 1.4;
+    transition: border-color .16s ease, background-color .16s ease;
+  }
+  .vl-input::placeholder { color: var(--vl-alias-text-tertiary); }
+  .vl-input:hover:not([disabled]) { border-color: var(--vl-alias-border-neutral-l3); }
+  .vl-input:focus { outline: none; border-color: var(--vl-alias-accent-blue); }
+  .vl-input[disabled], .vl-input[readonly] { background: var(--vl-alias-bg-base-tertiary); color: var(--vl-alias-text-disabled); cursor: default; }
+  .vl-input[aria-invalid="true"] { border-color: var(--vl-alias-status-error-default); }
+  .vl-input--sm { --vl-input-h: 26px; font-size: 12px; }
+  .vl-input--lg { --vl-input-h: 38px; font-size: 14px; }
+
+  /* 多行输入沿用同一套 */
+  textarea.vl-input { height: auto; min-height: 72px; padding: 8px 10px; line-height: 1.6; resize: vertical; }
+
+  /* ═══ 复选框 ═════════════════════════════════════════════ */
+  .vl-check {
+    display: inline-flex;
+    align-items: flex-start;
+    gap: 8px;
+    cursor: pointer;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .vl-check input[type="checkbox"],
+  .vl-check input[type="radio"] {
+    width: 15px;
+    height: 15px;
+    margin-top: 2px;
+    flex: 0 0 auto;
+    accent-color: var(--vl-alias-accent-blue);
+    cursor: pointer;
+  }
+  .vl-check[data-disabled="1"], .vl-check:has(input[disabled]) { cursor: default; opacity: .6; }
+  .vl-check__text { color: var(--vl-alias-text-secondary); font-size: 13px; line-height: 1.6; }
+  .vl-check__hint { display: block; color: var(--vl-alias-text-tertiary); font-size: 12px; line-height: 1.6; }
+
+  /* ═══ 标签 / 徽章 ════════════════════════════════════════ */
+  .vl-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 7px;
+    border: 1px solid transparent;
+    border-radius: var(--vl-static-radius-6);
+    background: var(--vl-alias-bg-base-secondary);
+    color: var(--vl-alias-text-secondary);
+    font-size: 12px;
+    line-height: 1.6;
+    white-space: nowrap;
+  }
+  .vl-tag--brand { background: var(--vl-alias-bg-brand-popup); color: var(--vl-alias-bg-brand); }
+  .vl-tag--accent { background: var(--vl-alias-status-warning-surface-l1); color: var(--vl-alias-status-warning-default); }
+  .vl-tag--danger { background: var(--vl-alias-status-error-surface-l1); color: var(--vl-alias-status-error-default); }
+  .vl-tag--ok { background: var(--vl-alias-status-success-surface-l1); color: var(--vl-alias-status-success-default); }
+  .vl-tag--outline { background: transparent; border-color: var(--vl-alias-border-neutral-l2); }
+  .vl-tag--sm { padding: 0 5px; font-size: 11px; }
+
+  /* ═══ 布局小工具（页面私有样式迁走后复用）═══════════════ */
+  .vl-row { display: flex; align-items: center; gap: 8px; }
+  .vl-row--between { justify-content: space-between; }
+  .vl-col { display: flex; flex-direction: column; gap: 8px; }
+  .vl-spacer { flex: 1 1 auto; }
+  .vl-hint { color: var(--vl-alias-text-tertiary); font-size: 12px; line-height: 1.6; }
+  .vl-path { font-family: "JetBrains Mono", Consolas, monospace; font-size: 11.5px; color: var(--vl-alias-text-secondary); word-break: break-all; }
+}
+
+/* ═══ @deprecated 映射表（旧类名 → 新类，供迁移时对照）═══════
+   .ds-btn          → .vl-btn（+ --primary / --ghost / --danger）
+   .tl-btn          → .vl-btn（默认 28px，与 .ds-btn 同档）
+   .btn（settings） → .vl-btn--lg（32px 档）
+   .mode-toggle     → .vl-btn--sm .vl-btn--ghost（24px 档；选中态用 [aria-pressed="true"]）
+   .preview-toggle  → .vl-btn--xs .vl-btn--ghost（20px 档）
+   .sort-toggle     → .vl-btn--xs .vl-btn--ghost（20px 档）
+   .sidebar-menu__item → .vl-btn--ghost（整宽：本文件不定义整宽，由页面层负责）
+   .opt-check       → .vl-check
+   .ds-input        → .vl-input
+   .ds-tag          → .vl-tag（语义变体用 --brand / --accent / --danger / --ok / --outline）
+   ═══════════════════════════════════════════════════════ */

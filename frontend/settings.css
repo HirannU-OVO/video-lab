@@ -1,3 +1,6 @@
+@layer reset, tokens, base, layout, components, pages, skins, utilities;
+
+@layer components {
 /* -*- coding: utf-8 -*-
    Video Lab — 设置窗口样式（复用各皮肤的 CSS 变量） */
 html, body {
@@ -341,16 +344,17 @@ body {
   flex: 1 1 auto !important;
   min-width: 110px;
 }
+/* @deprecated 请改用 .vl-btn；本类只保留与基础组件不同的差异 */
 .btn {
-  appearance: none;
-  border: 1px solid var(--vl-alias-border-neutral-l2);
-  background: var(--vl-alias-bg-base-secondary);
-  color: var(--vl-alias-text-default);
+  /* 差异：设置页按钮由 padding 撑高、字号 14px */
+  height: auto;
   padding: 7px 14px;
-  border-radius: 6px;
   font-size: 14px;
-  cursor: pointer;
-  white-space: nowrap;
+  line-height: inherit;   /* ⚠ .vl-btn 默认 line-height:1，本按钮需继承行高 */
+  gap: 0;
+  justify-content: normal;
+  align-items: normal;
+  min-width: auto;
 }
 .btn:hover { background: var(--vl-alias-bg-overlay-l1); }
 .btn-ghost { flex: 0 0 auto; }
@@ -653,3 +657,4 @@ body {
 }
 .about-info__v a:hover { color: var(--vl-alias-text-brand, var(--vl-alias-brand-500)); text-decoration-color: currentColor; }
 .about-info__sep { color: var(--vl-alias-text-tertiary); }
+}

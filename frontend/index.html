@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Video Lab</title>
+  <link rel="stylesheet" href="styles/tokens.css">
+  <link rel="stylesheet" href="styles/components.css">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="skins/white_blue.css">
   <link rel="stylesheet" href="skins/Black_Orange.css">
@@ -80,8 +82,8 @@ var m = new URL(location.href).searchParams.get('token');
               <i data-icon="plus" data-size="12"></i>
             </button>
             <div class="sidebar__sort">
-              <button class="sort-toggle sort-toggle--active" id="btnSortName" title="按名称排序">名称</button>
-              <button class="sort-toggle" id="btnSortTime" title="按时间排序">时间</button>
+              <button class="sort-toggle sort-toggle--active vl-btn vl-btn--xs vl-btn--ghost" id="btnSortName" title="按名称排序">名称</button>
+              <button class="sort-toggle vl-btn vl-btn--xs vl-btn--ghost" id="btnSortTime" title="按时间排序">时间</button>
             </div>
           </div>
           <div class="sidebar__search">
@@ -148,10 +150,10 @@ var m = new URL(location.href).searchParams.get('token');
               <div class="center-top__header">
                 <span class="center-top__title">日期分支</span>
                 <div class="center-top__toggles">
-                  <button class="mode-toggle mode-toggle--active" data-mode="filelist" id="modeFilelist">
+                  <button class="mode-toggle mode-toggle--active vl-btn vl-btn--sm vl-btn--ghost" data-mode="filelist" id="modeFilelist">
                     <i data-icon="list" data-size="12"></i>配置列表
                   </button>
-                  <button class="mode-toggle" data-mode="log" id="modeLog">
+                  <button class="mode-toggle vl-btn vl-btn--sm vl-btn--ghost" data-mode="log" id="modeLog">
                     <i data-icon="scroll-text" data-size="12"></i>日志
                   </button>
                 </div>
@@ -171,16 +173,16 @@ var m = new URL(location.href).searchParams.get('token');
           <div class="right-panel" id="rightPanel">
             <div class="right-panel__header">
               <div class="right-panel__toggle">
-                <button class="preview-toggle preview-toggle--active" id="btnPreviewModified" title="显示修改后的 TXT 预览">
+                <button class="preview-toggle preview-toggle--active vl-btn vl-btn--xs vl-btn--ghost" id="btnPreviewModified" title="显示修改后的 TXT 预览">
                   <i data-icon="save" data-size="12"></i>实时
                 </button>
-                <button class="preview-toggle" id="btnPreviewRaw" title="显示原始 TXT 内容">
+                <button class="preview-toggle vl-btn vl-btn--xs vl-btn--ghost" id="btnPreviewRaw" title="显示原始 TXT 内容">
                   <i data-icon="file-text" data-size="12"></i>原始
                 </button>
-                <button class="preview-toggle preview-toggle--active" id="btnLogSimple" title="简化显示日志片段路径（默认）" style="display:none">
+                <button class="preview-toggle preview-toggle--active vl-btn vl-btn--xs vl-btn--ghost" id="btnLogSimple" title="简化显示日志片段路径（默认）" style="display:none">
                   <i data-icon="list" data-size="12"></i>简化
                 </button>
-                <button class="preview-toggle" id="btnLogRaw" title="显示日志完整原始内容" style="display:none">
+                <button class="preview-toggle vl-btn vl-btn--xs vl-btn--ghost" id="btnLogRaw" title="显示日志完整原始内容" style="display:none">
                   <i data-icon="file-text" data-size="12"></i>原始
                 </button>
               </div>

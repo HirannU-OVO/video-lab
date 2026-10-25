@@ -1,3 +1,6 @@
+@layer reset, tokens, base, layout, components, pages, skins, utilities;
+
+@layer tokens {
 /* 设计令牌 —— 唯一事实源（A-03a）
    产品令牌分四层：--vl-static-*（原始值与固定尺度） / --vl-alias-*（语义别名，皮肤唯一可覆盖层）
    / --vl-font-*（排版） / --vl-comp-*（组件）。皮肤私有令牌用 --vl-skin-* 前缀，定义在各自的皮肤包里。
@@ -669,4 +672,5 @@
   --vl-static-bg-overlay: rgba(0, 0, 0, 0.35);
   --vl-static-text-muted: #999;
   --vl-static-success-500: #16a34a;
+}
 }

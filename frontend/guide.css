@@ -1,3 +1,6 @@
+@layer reset, tokens, base, layout, components, pages, skins, utilities;
+
+@layer pages {
 /* -*- coding: utf-8 -*- */
 /* 首次设置引导页（内嵌为主窗口的 #guideFrame，独立窗口形态亦复用）
    设计口径：① 不再自绘第二条标题（iframe 外层已有窗口标题）；② 内容只有"标题 + 一个路径选择 + 操作行"，
@@ -104,3 +107,4 @@ body.is-embedded .win-titlebar { display: none; }
 /* ⚠ 同一原因：styles.css 里给 .guide-shell 留了 padding-top:34px 为"fixed 标题栏"让位
    （那是它还作为独立窗口时的需要）。iframe 形态下标题栏已隐藏，这 34px 会变成卡片顶部的一条纯留白，必须一起取消。 */
 body.is-embedded .guide-shell { padding-top: 0; }
+}

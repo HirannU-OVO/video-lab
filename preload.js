@@ -19,7 +19,7 @@ const IS_PREVIEW_BUILD = (() => {
   } catch (e) { return false; }
 })();
 
-// 开发者工具能力（A-09）：只有以 --dev-tools 启动时才存在。
+// 开发者工具能力：只有以 --dev-tools 启动时才存在。
 // 无该参数时**连键都不挂**（不是挂一个 null）—— 普通用户的运行环境里不留任何痕迹。
 // ⚠ 渲染进程的 process.argv **读不到主进程的自定义参数**（Electron 只给渲染进程它自己的启动参数），
 // 所以不能在这里判断 --dev-tools —— 改为向主进程同步询问一次。
@@ -253,6 +253,9 @@ if (DEV_TOOLS) {
 }
 
 contextBridge.exposeInMainWorld('txapi', api);
+// 宿主标志：⚠ 不能用 window.txapi 是否存在判断（浏览器端有同名替身），
+// 也不能用 location.protocol（两端页面都可能是 http）。
+contextBridge.exposeInMainWorld('__VL_ELECTRON__', true);
 
 // 构建标识（预览版）供界面读取
 contextBridge.exposeInMainWorld('vlBuild', { preview: IS_PREVIEW_BUILD });

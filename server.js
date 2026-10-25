@@ -135,7 +135,7 @@ function startHttpServer(opts) {
   const httpToken = (typeof opts.httpToken === 'string' && opts.httpToken) || crypto.randomBytes(16).toString('hex');
   // 运行日志：main.js 注入；浏览器端的写操作也要留痕（IPC 包装只覆盖 Electron 侧）
   const runLog = opts.runLog || null;
-  // 开发者工具（A-09）：只有以 --dev-tools 启动时才注册该路由 —— 无参数时这个地址直接 404，
+  // 开发者工具：只有以 --dev-tools 启动时才注册该路由 —— 无参数时这个地址直接 404，
   // 面板既进不去、也不在任何界面留入口（与上游「默认关闭的独立件」一致）。
   const devToolsEnabled = opts.devTools === true;
   // 开发者工具相关的文件（面板页与其样式、脚本）

@@ -1,3 +1,7 @@
+@layer reset, tokens, base, layout, components, pages, skins, utilities;
+
+/* 面板是工具界面：放 utilities 层（在 skins 之后）→ 不被皮肤压，也不受层外规则影响 */
+@layer utilities {
 /* 开发者工具面板样式：刻意独立成文件（不混进产品样式表），
    但刻意复用产品令牌（--vl-alias-*），顺带证明令牌体系可用。 */
 .dt-body {
@@ -122,3 +126,4 @@
 }
 .dt-layer { color: var(--vl-alias-text-tertiary); white-space: nowrap; }
 .dt-refs { color: var(--vl-alias-text-tertiary); text-align: right; width: 64px; min-width: 64px; white-space: nowrap; }
+}

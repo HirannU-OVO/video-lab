@@ -10,7 +10,11 @@
   // 运行环境能力表：协议与来源判断的唯一实现处，其余代码一律读这里
   root.VL = root.VL || {};
   root.VL.host = {
+    // isHttp：仅表示页面通过 http 协议加载。
+    // ⚠ 不要用它判断「是否浏览器端」—— 软件端页面也可能是 http。
     isHttp: location.protocol.indexOf('http') === 0,
+    // isElectron：是否存在 preload（有原生能力）。
+    isElectron: (typeof window !== 'undefined') && window.__VL_ELECTRON__ === true,
     origin: location.origin
   };
 
@@ -353,6 +357,86 @@
     },
     _registered: function () {
       return { toast: !!_toastRender, status: !!_statusRender, statusDone: !!_statusDoneRender };
+    },
+
+    /* 基础组件工厂：产出 .vl-btn / .vl-input / .vl-check / .vl-tag 的 DOM。
+       opts.variant / opts.size 映射到修饰类；状态用属性表达。 */
+    btn: function (opts) {
+      var o = opts || {};
+      var el = document.createElement(o.href ? 'a' : 'button');
+      var cls = ['vl-btn'];
+      if (o.variant) cls.push('vl-btn--' + o.variant);
+      if (o.size) cls.push('vl-btn--' + o.size);
+      if (o.cls) cls.push(o.cls);
+      el.className = cls.join(' ');
+      if (o.href) { el.href = o.href; el.setAttribute('role', 'button'); }
+      else { el.type = o.type || 'button'; }
+      if (o.text != null) el.textContent = String(o.text);
+      if (o.html != null) el.innerHTML = o.html;
+      if (o.title) el.title = o.title;
+      if (o.disabled) { el.disabled = true; el.setAttribute('aria-disabled', 'true'); }
+      if (o.pressed) el.setAttribute('aria-pressed', 'true');
+      if (o.loading) el.setAttribute('data-loading', '1');
+      if (o.onClick) el.addEventListener('click', o.onClick);
+      return el;
+    },
+    input: function (opts) {
+      var o = opts || {};
+      var el = document.createElement(o.multiline ? 'textarea' : 'input');
+      var cls = ['vl-input'];
+      if (o.size) cls.push('vl-input--' + o.size);
+      if (o.cls) cls.push(o.cls);
+      el.className = cls.join(' ');
+      if (!o.multiline) el.type = o.type || 'text';
+      if (o.value != null) el.value = String(o.value);
+      if (o.placeholder) el.placeholder = o.placeholder;
+      if (o.name) el.name = o.name;
+      if (o.readonly) el.readOnly = true;
+      if (o.disabled) el.disabled = true;
+      if (o.invalid) el.setAttribute('aria-invalid', 'true');
+      if (o.title) el.title = o.title;
+      if (o.onInput) el.addEventListener('input', o.onInput);
+      if (o.onChange) el.addEventListener('change', o.onChange);
+      return el;
+    },
+    check: function (opts) {
+      var o = opts || {};
+      var label = document.createElement('label');
+      var cls = ['vl-check'];
+      if (o.cls) cls.push(o.cls);
+      label.className = cls.join(' ');
+      var box = document.createElement('input');
+      box.type = o.radio ? 'radio' : 'checkbox';
+      if (o.name) box.name = o.name;
+      if (o.value != null) box.value = String(o.value);
+      if (o.checked) box.checked = true;
+      if (o.disabled) box.disabled = true;
+      label.appendChild(box);
+      var text = document.createElement('span');
+      text.className = 'vl-check__text';
+      text.textContent = o.text != null ? String(o.text) : '';
+      if (o.hint) {
+        var hint = document.createElement('span');
+        hint.className = 'vl-check__hint';
+        hint.textContent = String(o.hint);
+        text.appendChild(hint);
+      }
+      label.appendChild(text);
+      if (o.onChange) box.addEventListener('change', o.onChange);
+      label._input = box;   // 方便调用方直接取到 input
+      return label;
+    },
+    tag: function (opts) {
+      var o = opts || {};
+      var el = document.createElement('span');
+      var cls = ['vl-tag'];
+      if (o.variant) cls.push('vl-tag--' + o.variant);
+      if (o.size) cls.push('vl-tag--' + o.size);
+      if (o.cls) cls.push(o.cls);
+      el.className = cls.join(' ');
+      el.textContent = o.text != null ? String(o.text) : '';
+      if (o.title) el.title = o.title;
+      return el;
     },
   };
 

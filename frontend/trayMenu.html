@@ -5,45 +5,11 @@
 <title>托盘菜单</title>
 <!-- 兜底浅色样式在前，皮肤变量注入位（style#skinVars）置后：同级 :root 后出现者胜，
      确保主进程注入的皮肤变量能覆盖兜底值 -->
-<style>
-  :root {
-    --vl-alias-bg-base-default: #FFFFFF;
-    --vl-alias-text-default: #222222;
-    --vl-alias-text-secondary: #555555;
-    --vl-alias-border-neutral-l1: #E5E5E5;
-    --vl-alias-bg-overlay-l2: rgba(106, 111, 255, 0.10);
-    --vl-static-radius-6: 6px;
-    --vl-static-radius-8: 8px;
-    --vl-type-body-base-size: 13px;
-    --vl-type-body-sm-size: 12px;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { overflow: hidden; background: transparent; -webkit-font-smoothing: antialiased; }
-  .tray-menu { padding: 4px; border: 1px solid var(--vl-alias-border-neutral-l1); border-radius: var(--vl-static-radius-8); background: var(--vl-alias-bg-base-default); }
-  .tray-menu button {
-    display: block; width: 100%; text-align: left;
-    padding: 7px 12px; border: none; border-radius: var(--vl-static-radius-6);
-    background: transparent; color: var(--vl-alias-text-default);
-    font-size: 12px; font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
-    cursor: pointer; white-space: nowrap;
-  }
-  .tray-menu button:hover { background: var(--vl-alias-bg-overlay-l2); }
-  .tray-menu .sep { display: block; height: 1px; margin: 4px 6px; background: var(--vl-alias-border-neutral-l1); }
-  /* 预览版标识行（脚本按 window.vlBuild 决定是否显示） */
-  .tray-menu__head {
-    display: flex; align-items: center; gap: 6px;
-    padding: 5px 12px 6px; margin-bottom: 2px;
-    color: #f97316; font-size: 11px; font-weight: 600;
-    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
-    letter-spacing: .3px; white-space: nowrap;
-    border-bottom: 1px solid var(--vl-alias-border-neutral-l1);
-  }
-  .tray-menu__head::before {
-    content: ''; flex: 0 0 auto;
-    width: 6px; height: 6px; border-radius: 50%; background: #f97316;
-  }
-</style>
+
 <style id="skinVars"></style>
+  <link rel="stylesheet" href="styles/tokens.css">
+  <link rel="stylesheet" href="styles/components.css">
+  <link rel="stylesheet" href="styles/pages/trayMenu.css">
 </head>
 <body>
 <div class="tray-menu" id="trayMenu">

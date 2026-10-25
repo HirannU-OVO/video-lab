@@ -631,7 +631,7 @@
       api.open_folder_select($('outBackupDir').value.trim() || state.defaultBackupDir).then(function (r) {
         if (r && r.ok === false) { toast('打开备份文件夹失败：' + (r.error || '未知错误'), 'error'); return; }
         // 浏览器端由本体代开：explorer 可能被 Windows 前台锁压到后台，只在任务栏出现 —— 明确告知去哪看
-        if (VL.host.isHttp) toast('资源管理器已在后台打开，可从任务栏查看', 'info');
+        if (!VL.host.isElectron) toast('资源管理器已在后台打开，可从任务栏查看', 'info');
       }).catch(function (e) { toast('打开备份文件夹失败：' + e.message, 'error'); });
     });
     $('logHead').addEventListener('click', function () { $('logBox').classList.toggle('tl-log--open'); });
@@ -1362,7 +1362,7 @@
       });
     }
     // 成片画布尺寸（输出分辨率）：与「转分辨率」同一套交互（常用比例 + 宽高联动 + 锁链解绑）。
-    // 这套交互原是为「内容非等比拉伸」做的 —— 内容拉伸已按原方案移除（回归等比缩放），
+    // 这套交互原是为「内容非等比拉伸」做的 —— 内容拉伸已移除（改为等比缩放），
     // 交互整体迁移到输出尺寸上：比例与宽高同行、不单独占行。
     (function () {
       var ratioEl = $('cvRatio'), wEl = $('cvTW'), hEl = $('cvTH'), linkEl = $('cvLink');

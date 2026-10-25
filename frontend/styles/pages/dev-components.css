@@ -1,0 +1,44 @@
+@layer reset, tokens, base, layout, components, pages, skins, utilities;
+
+/* 组件展示页（dev-components.html）—— 只放页面级排版，颜色一律走语义令牌。
+   页面自身的组件一律用基础组件类，这里不重复定义按钮/输入框样式。 */
+@layer pages {
+  .vl-dc {
+    margin: 0;
+    padding: 20px 24px 40px;
+    background: var(--vl-alias-bg-base-default);
+    color: var(--vl-alias-text-default);
+    font-family: inherit;
+    font-size: 13px;
+    overflow: auto;
+  }
+  .vl-dc__head { margin-bottom: 18px; }
+  .vl-dc__title {
+    margin: 0 0 6px;
+    font-size: 17px;
+    font-weight: 600;
+    line-height: 1.5;
+  }
+  .vl-dc__sec {
+    margin-bottom: 18px;
+    padding: 14px 16px;
+    border: 1px solid var(--vl-alias-border-neutral-l1);
+    border-radius: var(--vl-static-radius-8);
+    background: var(--vl-alias-bg-base-secondary);
+  }
+  .vl-dc__h2 {
+    margin: 0 0 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--vl-alias-text-secondary);
+    line-height: 1.5;
+  }
+  .vl-dc__sec .vl-row { flex-wrap: wrap; }
+  .vl-dc code {
+    padding: 1px 4px;
+    border-radius: 3px;
+    background: var(--vl-alias-bg-base-tertiary);
+    font-family: "JetBrains Mono", Consolas, monospace;
+    font-size: 12px;
+  }
+}

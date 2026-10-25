@@ -1,6 +1,10 @@
+@layer reset, tokens, base, layout, components, pages, skins, utilities;
+
+@layer skins {
 /* 浅色 —— 默认皮肤（基于 styles.css 的基础变量，无需覆盖） */
 html[data-skin="white_blue"] {}html[data-skin="white_blue"] {
   /* toast 固定实色（白底浅灰卡片 + 浅灰边框） */
   --vl-skin-toast-bg: #ffffff;
   --vl-skin-toast-border: #d8d8dc;
+}
 }

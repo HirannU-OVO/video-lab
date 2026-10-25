@@ -1,3 +1,6 @@
+@layer reset, tokens, base, layout, components, pages, skins, utilities;
+
+@layer skins {
 /* ═══════════════════════════════════════════════════════════════
    深海女仆 —— 移植自 dsh-deep-whale/maid-atelier 皮肤
    深海蓝底 + 柔金品牌 + 长春花蓝强调，搭配宫殿背景虚化与蕾丝装饰
@@ -1442,7 +1445,7 @@ html[data-skin="Maid_Atelier"] .config-editor.config-editor--static {
    centerBottom 内「请选择一个日期分支查看内容」），装饰层接管该区域视觉 */
 html[data-skin="Maid_Atelier"] body:not([data-maid-chat-active]) .center-top__dates .center-empty,
 html[data-skin="Maid_Atelier"] body:not([data-maid-chat-active]) .center-bottom .center-empty {
-  display: none !important;
+  display: none;
 }
 
 /* ── 中间底部配置栏：仅在选中配置后从下往上浮现 ──
@@ -1636,3 +1639,4 @@ html[data-skin="Maid_Atelier"] .modal-btn--primary:hover {
 }  /* toast 固定实色（深海蓝浮层：深蓝卡片 + 海蓝边框） */
   --vl-skin-toast-bg: #14264f;
   --vl-skin-toast-border: #2c4a97;
+}
