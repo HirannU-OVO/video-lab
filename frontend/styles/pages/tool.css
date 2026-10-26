@@ -13,14 +13,10 @@
     .tl-input:disabled, .tl-input[readonly] { background: var(--vl-alias-bg-base-tertiary); color: var(--vl-alias-text-disabled); cursor: default; }
     .tl-input[aria-invalid="true"] { border-bottom-color: var(--vl-alias-status-error-default); }
     .tl-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    /* 差异：行内输入框撑满剩余宽度（属布局差异，留在页面层；用直接子选择器，
+       避免匹配到 .vl-check 内部的 checkbox） */
+    .tl-line > .vl-input { flex: 1; min-width: 180px; }
     .tl-label { flex-shrink: 0; font-size: var(--vl-type-body-sm-size); color: var(--vl-alias-text-secondary); }
-    .tl-text {
-      flex: 1; min-width: 180px; height: 28px; padding: 0 8px; border-radius: var(--vl-static-radius-6);
-      border: 1px solid var(--vl-alias-border-neutral-l2); background: var(--vl-alias-bg-input-default); color: var(--vl-alias-text-default);
-      font-family: var(--vl-font-family-base); font-size: var(--vl-type-body-sm-size);
-    }
-    .tl-text::placeholder { color: var(--vl-alias-text-tertiary); }
-    /* @deprecated 用 .vl-btn .vl-btn--ghost；本类只保留与基础组件不同的差异，公共属性由 .vl-btn 提供 */
     .tl-btn {
       /* 差异：仅保留「实色可点边框」与「不参与压缩」两项 ——
          边框从基线的 transparent 变为可见灰线，回归会让按钮轮廓消失（差异巨大，故保留）；
@@ -94,8 +90,6 @@
       font-family: var(--vl-font-family-base); font-size: var(--vl-type-body-sm-size);
     }
     .tl-num { width: 84px; }
-    .tl-sel { min-width: 104px; }
-    .tl-path { min-width: 180px; max-width: 320px; }
     /* 转分辨率的锁链按钮：锁定=主题色竖链，解绑=灰链 */
     .tl-link {
       display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;

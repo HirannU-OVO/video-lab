@@ -129,27 +129,71 @@
   textarea.vl-input { height: auto; min-height: 72px; padding: 8px 10px; line-height: 1.6; resize: vertical; }
 
   /* ═══ 复选框 ═════════════════════════════════════════════ */
-  .vl-check {
+  /* ── 复选框 / 单选框（自绘）────────────────────────────────
+     自绘而非原生 input：原生控件只能靠 accent-color 染色，无法做皮肤级定制
+     （选中勾形与描边需要用 ::after 绘制）。做法参考成熟体系的 ds-check / ds-radio。
+     ⚠ 占用提示：本组件的 ::after 被选中勾形占用，状态层（state layer）不可接入。 */
+  .vl-check,
+  .vl-radio {
     display: inline-flex;
-    align-items: flex-start;
+    align-items: center;
     gap: 8px;
     cursor: pointer;
     -webkit-user-select: none;
     user-select: none;
   }
   .vl-check input[type="checkbox"],
-  .vl-check input[type="radio"] {
-    width: 15px;
-    height: 15px;
-    margin-top: 2px;
-    flex: 0 0 auto;
-    accent-color: var(--vl-alias-accent-blue);
-    cursor: pointer;
+  .vl-radio input[type="radio"] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
   }
-  .vl-check[data-disabled="1"], .vl-check:has(input[disabled]) { cursor: default; opacity: .6; }
-  .vl-check__text { color: var(--vl-alias-text-secondary); font-size: 13px; line-height: 1.6; }
-  .vl-check__hint { display: block; color: var(--vl-alias-text-tertiary); font-size: 12px; line-height: 1.6; }
-
+  .vl-check__box,
+  .vl-radio__dot {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border: 1px solid var(--vl-alias-border-neutral-l2);
+    background: var(--vl-alias-bg-base-default);
+  }
+  .vl-check__box { border-radius: var(--vl-static-radius-4); }
+  .vl-radio__dot { border-radius: 50%; }
+  .vl-check input:checked + .vl-check__box {
+    background: var(--vl-alias-bg-brand);
+    border-color: var(--vl-alias-bg-brand);
+  }
+  .vl-check input:checked + .vl-check__box::after {
+    content: "";
+    width: 8px;
+    height: 4px;
+    border-left: 2px solid var(--vl-alias-text-white);
+    border-bottom: 2px solid var(--vl-alias-text-white);
+    transform: rotate(-45deg) translate(1px, -1px);
+  }
+  .vl-radio input:checked + .vl-radio__dot { border-color: var(--vl-alias-bg-brand); }
+  .vl-radio input:checked + .vl-radio__dot::after {
+    content: "";
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--vl-alias-bg-brand);
+  }
+  .vl-check input:disabled + .vl-check__box,
+  .vl-radio input:disabled + .vl-radio__dot { opacity: .5; cursor: not-allowed; }
+  .vl-check:has(input:disabled),
+  .vl-radio:has(input:disabled) { cursor: not-allowed; color: var(--vl-alias-text-disabled); }
+  .vl-check[data-disabled="1"],
+  .vl-radio[data-disabled="1"] { cursor: default; opacity: .6; }
+  .vl-check__text {
+    color: var(--vl-alias-text-secondary);
+    font-size: 13px;
+    line-height: 1.6;
+  }
   /* ═══ 标签 / 徽章 ════════════════════════════════════════ */
   .vl-tag {
     display: inline-flex;
@@ -339,6 +383,143 @@
     background: var(--vl-tab-underline-on);
     border-radius: var(--vl-tab-underline-radius);
     box-shadow: var(--vl-tab-underline-glow);
+    pointer-events: none;
+  }
+
+  /* ── 下拉框 ───────────────────────────────────────────────
+     参考成熟体系的 ds-select + ds-select-wrap：本体负责外观与状态，
+     wrap 负责定位下拉箭头图标（原生 select 的箭头无法用 appearance:none 之外的可靠方式替换）。 */
+  .vl-select {
+    width: auto;
+    height: var(--vl-input-h, 32px);
+    padding: 0 var(--vl-static-spacer-32) 0 var(--vl-static-spacer-12);
+    border: 1px solid var(--vl-alias-border-neutral-l2);
+    border-radius: var(--vl-static-radius-6);
+    background: var(--vl-alias-bg-base-default);
+    color: var(--vl-alias-text-default);
+    font-family: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+  }
+  .vl-select:hover:not([disabled]) { border-color: var(--vl-alias-border-neutral-l3); }
+  .vl-select:focus { outline: none; border-color: var(--vl-alias-accent-blue); }
+  .vl-select[disabled] {
+    background: var(--vl-alias-bg-base-tertiary);
+    color: var(--vl-alias-text-disabled);
+    cursor: default;
+  }
+  .vl-select-wrap { position: relative; width: 100%; display: inline-block; }
+  /* 需要占满一行的表单字段用此变体（默认按内容宽度，便于放在 flex 行内） */
+  .vl-select--block { width: 100%; }
+  .vl-select-wrap .vl-select { padding-right: var(--vl-static-spacer-32); }
+  .vl-select__icon {
+    position: absolute;
+    right: var(--vl-static-spacer-12);
+    top: 50%;
+    transform: translateY(-50%);
+    width: 16px;
+    height: 16px;
+    pointer-events: none;
+  }
+
+  /* ── 变体补全（取自成熟体系的同类变体，语义相同时不重复添加）──
+     vl-btn 原有：primary / ghost / danger / subtle；补：secondary / brand / link / danger-subtle / danger-strong
+     ⚠ primary 语义保持「品牌色主按钮」（成熟体系用反色主按钮，语义不同，此处按本页现状保留） */
+  .vl-btn--secondary {
+    background: var(--vl-alias-bg-overlay-l1);
+    color: var(--vl-alias-text-default);
+    border-color: var(--vl-alias-border-neutral-l2);
+  }
+  .vl-btn--secondary:hover:where(:not([disabled]):not([aria-disabled="true"])) {
+    background: var(--vl-alias-bg-overlay-l2);
+    border-color: var(--vl-alias-border-neutral-l3);
+  }
+  .vl-btn--secondary:active:where(:not([disabled]):not([aria-disabled="true"])) {
+    background: var(--vl-alias-bg-overlay-l3);
+  }
+  .vl-btn--brand {
+    background: var(--vl-alias-bg-brand);
+    border-color: var(--vl-alias-bg-brand);
+    color: var(--vl-alias-text-white);
+  }
+  .vl-btn--brand:hover:where(:not([disabled]):not([aria-disabled="true"])) {
+    background: var(--vl-alias-bg-brand-hover);
+    border-color: var(--vl-alias-bg-brand-hover);
+  }
+  .vl-btn--brand:active:where(:not([disabled]):not([aria-disabled="true"])) {
+    background: var(--vl-alias-bg-brand-active);
+    border-color: var(--vl-alias-bg-brand-active);
+  }
+  .vl-btn--link {
+    background: transparent;
+    border-color: transparent;
+    color: var(--vl-alias-accent-blue);
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .vl-btn--link:hover:where(:not([disabled]):not([aria-disabled="true"])) {
+    color: var(--vl-alias-accent-blue);
+    text-decoration: underline;
+  }
+  .vl-btn--danger-subtle {
+    background: var(--vl-alias-status-error-surface-l2);
+    border-color: transparent;
+    color: var(--vl-alias-status-error-default);
+  }
+  .vl-btn--danger-subtle:hover:where(:not([disabled]):not([aria-disabled="true"])) {
+    background: var(--vl-alias-status-error-surface-l3);
+  }
+  .vl-btn--danger-strong {
+    background: var(--vl-alias-status-error-default);
+    border-color: var(--vl-alias-status-error-default);
+    color: var(--vl-alias-text-white);
+  }
+  .vl-btn--danger-strong:hover:where(:not([disabled]):not([aria-disabled="true"])) {
+    background: var(--vl-alias-status-error-hover);
+    border-color: var(--vl-alias-status-error-hover);
+  }
+  .vl-btn--danger-strong:active:where(:not([disabled]):not([aria-disabled="true"])) {
+    background: var(--vl-alias-status-error-active);
+    border-color: var(--vl-alias-status-error-active);
+  }
+  .vl-btn .icon {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+  }
+  .vl-btn .icon--12 { width: 12px; height: 12px; }
+  .vl-btn .icon--14 { width: 14px; height: 14px; }
+  .vl-btn .icon--20 { width: 20px; height: 20px; }
+  .vl-btn .icon--24 { width: 24px; height: 24px; }
+
+  /* vl-tag 补状态色变体（原缺 warning） */
+  .vl-tag--warning {
+    background: var(--vl-alias-status-warning-surface-l1);
+    color: var(--vl-alias-status-warning-default);
+  }
+
+  /* 小号复选/单选（间距与字号小一档，方框尺寸不变） */
+  .vl-check--sm,
+  .vl-radio--sm { gap: 5px; font-size: var(--vl-type-body-sm-size); }
+  /* 悬浮时方框描边转品牌色（取自成熟体系同类实现） */
+  .vl-check:hover .vl-check__box,
+  .vl-radio:hover .vl-radio__dot { border-color: var(--vl-alias-brand-500); }
+
+  /* 下拉箭头：用 wrap 容器的 ::after 画，页面只需包一层 wrap，不必额外插图标元素 */
+  .vl-select-wrap::after {
+    content: "";
+    position: absolute;
+    right: var(--vl-static-spacer-12);
+    top: 50%;
+    width: 6px;
+    height: 6px;
+    margin-top: -4px;
+    border-right: 1.5px solid var(--vl-alias-text-secondary);
+    border-bottom: 1.5px solid var(--vl-alias-text-secondary);
+    transform: rotate(45deg);
     pointer-events: none;
   }
 }
