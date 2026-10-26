@@ -35,14 +35,14 @@ var m = new URL(location.href).searchParams.get('token');
       </button>
     </div>
     <div class="win-titlebar__controls">
-      <button class="win-titlebar__btn" data-wctl="min" title="最小化">
+      <button class="win-titlebar__btn vl-btn vl-btn--ghost" data-wctl="min" title="最小化">
         <svg viewBox="0 0 12 12"><line x1="2" y1="6" x2="10" y2="6" stroke="currentColor" stroke-width="1"/></svg>
       </button>
-      <button class="win-titlebar__btn" data-wctl="max" title="最大化">
+      <button class="win-titlebar__btn vl-btn vl-btn--ghost" data-wctl="max" title="最大化">
         <svg class="win-titlebar__svg-max" viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1"/></svg>
         <svg class="win-titlebar__svg-restore" viewBox="0 0 12 12" style="display:none"><rect x="2.5" y="3.5" width="6" height="6" fill="none" stroke="currentColor" stroke-width="1"/><path d="M4 3.5V2H9v6H8.5" fill="none" stroke="currentColor" stroke-width="1"/></svg>
       </button>
-      <button class="win-titlebar__btn win-titlebar__btn--close" data-wctl="close" title="关闭">
+      <button class="win-titlebar__btn vl-btn vl-btn--ghost win-titlebar__btn--close" data-wctl="close" title="关闭">
         <svg viewBox="0 0 12 12"><path d="M3 3l6 6M9 3L3 9" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>
       </button>
     </div>
@@ -87,7 +87,7 @@ var m = new URL(location.href).searchParams.get('token');
             </div>
           </div>
           <div class="sidebar__search">
-            <div class="ds-input">
+            <div class="vl-input-group">
               <i data-icon="search" data-size="14"></i>
               <input type="text" placeholder="搜索配置名..." id="searchInput">
             </div>
@@ -141,7 +141,7 @@ var m = new URL(location.href).searchParams.get('token');
           <!-- Center Panel -->
           <div class="center-panel" id="centerPanel">
             <div class="center-global-search" id="centerGlobalSearch">
-              <div class="ds-input">
+              <div class="vl-input-group">
                 <i data-icon="search" data-size="14"></i>
                 <input type="text" placeholder="搜索成片名..." id="logSearchInput">
               </div>
@@ -251,8 +251,8 @@ var m = new URL(location.href).searchParams.get('token');
         </div>
       </div>
       <div class="update-banner__actions">
-        <button class="update-banner__btn update-banner__btn--ghost" id="updateLaterBtn">忽略</button>
-        <button class="update-banner__btn update-banner__btn--primary" id="updateNowBtn">立即更新</button>
+        <button class="vl-btn vl-btn--ghost" id="updateLaterBtn">忽略</button>
+        <button class="vl-btn vl-btn--primary" id="updateNowBtn">立即更新</button>
       </div>
     </div>
 
@@ -267,8 +267,8 @@ var m = new URL(location.href).searchParams.get('token');
           <div class="update-result__desc" id="updateResultDesc"></div>
         </div>
         <div class="update-result__actions">
-          <button class="update-banner__btn update-banner__btn--ghost" id="updateResultClose">知道了</button>
-          <button class="update-banner__btn update-banner__btn--primary" id="updateResultGo" style="display:none">立即更新</button>
+          <button class="vl-btn vl-btn--ghost" id="updateResultClose">知道了</button>
+          <button class="vl-btn vl-btn--primary" id="updateResultGo" style="display:none">立即更新</button>
         </div>
       </div>
     </div>

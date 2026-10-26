@@ -818,20 +818,20 @@ html[data-skin="Maid_Atelier"] .workspace::before {
 }
 
 /* ── 输入框玻璃效果 ── */
-html[data-skin="Maid_Atelier"] .ds-input {
+html[data-skin="Maid_Atelier"] .vl-input-group {
   background: rgba(10, 24, 56, 0.5);
   border-color: var(--vl-skin-maid-glass-border);
   backdrop-filter: blur(4px);
 }
-html[data-skin="Maid_Atelier"] .ds-input:focus-within {
+html[data-skin="Maid_Atelier"] .vl-input-group:focus-within {
   border-color: var(--vl-skin-maid-gold);
   background: rgba(10, 24, 56, 0.7);
   box-shadow: 0 0 0 2px rgba(197, 164, 104, 0.12);
 }
-html[data-skin="Maid_Atelier"] .sidebar__search .ds-input {
+html[data-skin="Maid_Atelier"] .sidebar__search .vl-input-group {
   background: rgba(10, 24, 56, 0.4);
 }
-html[data-skin="Maid_Atelier"] .sidebar__search .ds-input:focus-within {
+html[data-skin="Maid_Atelier"] .sidebar__search .vl-input-group:focus-within {
   border-color: var(--vl-skin-maid-gold);
   background: rgba(10, 24, 56, 0.6);
 }
