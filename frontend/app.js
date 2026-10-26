@@ -174,7 +174,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       if (opts.message) html += '<div class="modal__message">' + escapeHtml(opts.message) + '</div>';
       html += '<div class="modal__actions">';
       (opts.buttons || []).forEach(function (b) {
-        var cls = 'modal-btn' + (b.danger ? ' modal-btn--danger' : '') + (b.primary ? ' modal-btn--primary' : '') + (b.cls ? ' ' + b.cls : '') + (b.disabled ? ' modal-btn--disabled' : '');
+        var cls = 'modal-btn vl-btn vl-btn--lift' + (b.danger ? ' modal-btn--danger' : '') + (b.primary ? ' modal-btn--primary' : '') + (b.cls ? ' ' + b.cls : '') + (b.disabled ? ' modal-btn--disabled' : '');
         var ics = b.icon ? icon(b.icon, 14) : '';
         html += '<button type="button" class="' + cls + '"' + (b.disabled ? ' disabled' : '') + (b.hint ? ' title="' + escapeHtml(b.hint) + '"' : '') + '>' + ics + escapeHtml(b.label) + '</button>';
       });
@@ -236,9 +236,9 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
               + '<div class="rp-form__hint">留空则使用设置里的默认值</div>'
               + '</div>'
               + '<div class="modal__actions">'
-              + '<button type="button" class="modal-btn" data-b="cancel">取消</button>'
-              + '<button type="button" class="modal-btn modal-btn--primary" data-b="full">完全复刻</button>'
-              + '<button type="button" class="modal-btn modal-btn--primary" data-b="dedup">去重复刻</button>'
+              + '<button type="button" class="modal-btn vl-btn vl-btn--lift" data-b="cancel">取消</button>'
+              + '<button type="button" class="modal-btn vl-btn vl-btn--lift modal-btn--primary" data-b="full">完全复刻</button>'
+              + '<button type="button" class="modal-btn vl-btn vl-btn--lift modal-btn--primary" data-b="dedup">去重复刻</button>'
               + '</div>';
             overlay.appendChild(card);
             document.body.appendChild(overlay);
@@ -275,7 +275,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       html += '<div class="modal__dest-list">';
       (opts.rows || []).forEach(function (r) {
         html += '<div class="modal__dest-row"><span class="modal__dest-hint">' + escapeHtml(r.hint) + '</span>';
-        html += '<button type="button" class="modal-btn modal__dest-save">' + escapeHtml(opts.btnLabel || '保存') + '</button></div>';
+        html += '<button type="button" class="modal-btn vl-btn vl-btn--lift modal__dest-save">' + escapeHtml(opts.btnLabel || '保存') + '</button></div>';
       });
       html += '</div>';
       card.innerHTML = html;
@@ -341,8 +341,8 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
         '<div class="wm-row"><span class="wm-row__label">主流水印</span><div class="wm-row__ops"><div class="config-watermark__row config-watermark__row--inline" id="wmMainRow"></div></div></div>' +
         '</div>' +
         '<div class="modal__actions">' +
-        '<button type="button" class="modal-btn" data-wm-act="cancel">取消</button>' +
-        '<button type="button" class="modal-btn modal-btn--primary" data-wm-act="save">保存</button>' +
+        '<button type="button" class="modal-btn vl-btn vl-btn--lift" data-wm-act="cancel">取消</button>' +
+        '<button type="button" class="modal-btn vl-btn vl-btn--lift modal-btn--primary" data-wm-act="save">保存</button>' +
         '</div>';
       overlay.appendChild(card);
       document.body.appendChild(overlay);
@@ -3473,8 +3473,8 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       '<div class="modal__close-foot">' +
       '<label class="vl-check"><input type="checkbox" id="closeRemindChk"><span class="vl-check__box"></span><span>不再询问</span></label>' +
       '<div class="modal__actions">' +
-      '<button type="button" class="modal-btn" id="cbCloseTray">最小化至系统托盘</button>' +
-      '<button type="button" class="modal-btn modal-btn--danger" id="cbCloseExit">退出软件</button>' +
+      '<button type="button" class="modal-btn vl-btn vl-btn--lift" id="cbCloseTray">最小化至系统托盘</button>' +
+      '<button type="button" class="modal-btn vl-btn vl-btn--lift modal-btn--danger" id="cbCloseExit">退出软件</button>' +
       '</div>' +
       '</div>';
     overlay.appendChild(card);
@@ -3842,7 +3842,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     card.innerHTML =
       '<button type="button" class="modal-close" title="关闭">✕</button>' +
       '<div class="changelog-card__body"></div>' +
-      '<div class="changelog-card__actions"><button type="button" class="modal-btn modal-btn--primary">知道了</button></div>';
+      '<div class="changelog-card__actions"><button type="button" class="modal-btn vl-btn vl-btn--lift modal-btn--primary">知道了</button></div>';
     var body = card.querySelector('.changelog-card__body');
     body.innerHTML = renderMdMd(content);
     var done = function () {
@@ -4561,12 +4561,12 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
         '<div class="wm-section-title">默认输出文件夹</div>' +
         '<div class="wm-row"><span class="wm-row__label">输出路径</span><div class="wm-row__ops">' +
         '<input type="text" class="wm-row__input" id="maskDefaultOutInput" style="flex:1; min-width:0" placeholder="' + escapeHtml(projPath) + '" value="' + escapeHtml(curDir) + '" spellcheck="false">' +
-        '<button type="button" class="modal-btn" id="maskDefaultOutPick">选择文件夹</button>' +
+        '<button type="button" class="modal-btn vl-btn vl-btn--lift" id="maskDefaultOutPick">选择文件夹</button>' +
         '</div></div>' +
         '</div>' +
         '<div class="modal__actions">' +
-        '<button type="button" class="modal-btn" data-mp2-act="cancel">取消</button>' +
-        '<button type="button" class="modal-btn modal-btn--primary" data-mp2-act="save">保存</button>' +
+        '<button type="button" class="modal-btn vl-btn vl-btn--lift" data-mp2-act="cancel">取消</button>' +
+        '<button type="button" class="modal-btn vl-btn vl-btn--lift modal-btn--primary" data-mp2-act="save">保存</button>' +
         '</div>';
       overlay.appendChild(card);
       document.body.appendChild(overlay);

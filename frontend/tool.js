@@ -65,7 +65,7 @@
       }
       html += '<div class="modal__actions">';
       (opts.buttons || []).forEach(function (b) {
-        var cls = 'modal-btn' + (b.danger ? ' modal-btn--danger' : '') + (b.primary ? ' modal-btn--primary' : '');
+        var cls = 'modal-btn vl-btn vl-btn--lift' + (b.danger ? ' modal-btn--danger' : '') + (b.primary ? ' modal-btn--primary' : '');
         html += '<button type="button" class="' + cls + '">' + (b.icon ? icon(b.icon, 14) : '') + esc(b.label) + '</button>';
       });
       html += '</div>';

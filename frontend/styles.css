@@ -281,6 +281,7 @@ body {
   height: 100%;
   padding: 0;
   border: none;
+  border-radius: 0;
   background: transparent;
   color: var(--vl-alias-text-default);
   display: inline-flex;
@@ -290,7 +291,6 @@ body {
   transition: background 0.12s ease, color 0.12s ease;
   border-radius: 0;   /* 标题栏按钮为通高矩形，不吃基线的 6px 圆角 */
 }
-.win-titlebar__btn:hover { background: var(--vl-alias-bg-overlay-l1); color: var(--vl-alias-text-default-hover); }
 .win-titlebar__btn--close:hover { background: var(--vl-alias-status-error-default); color: var(--vl-alias-text-onaccent); }
 .win-titlebar svg { width: 13px; height: 13px; display: block; }
 /* 标题栏模式切换按钮（主窗口）：图标品牌色 + 当前模式名，随皮肤变量适配 */
@@ -1999,32 +1999,49 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
 }
 /* 配置栏按钮 hover：统一向上轻抬（与状态色变亮叠加） */
 /* .config-btn:hover 的上浮反馈已由基线 .vl-btn--lift 提供（上移 1px + 投影） */
+/* 红（覆盖配置）：只声明变量，外观与三态一律由基线 .vl-btn 消费 */
 .config-btn--save {
-  background: var(--vl-alias-status-error-default);
-  color: var(--vl-alias-text-onaccent);
-  border: 1px solid var(--vl-alias-status-error-default);
+  --vl-btn-bg: var(--vl-alias-status-error-default);
+  --vl-btn-border: var(--vl-alias-status-error-default);
+  --vl-btn-color: var(--vl-alias-text-onaccent);
+  --vl-btn-bg-hover: var(--vl-alias-status-error-hover);
+  --vl-btn-border-hover: var(--vl-alias-status-error-hover);
+  --vl-btn-bg-active: var(--vl-alias-status-error-active);
+  --vl-btn-border-active: var(--vl-alias-status-error-active);
+  --vl-btn-bg-disabled: var(--vl-alias-status-error-default);
+  --vl-btn-border-disabled: var(--vl-alias-status-error-default);
+  --vl-btn-color-disabled: var(--vl-alias-text-onaccent);
 }
-.config-btn--save:hover {
-  background: var(--vl-alias-status-error-hover);
-  border-color: var(--vl-alias-status-error-hover);
-}
+/* ⚠ 语义色必须与 task 页三个悬浮按钮同源：
+   红（覆盖配置 / 清除）= status-error，橙（保存为当日 / 全部暂停）= status-warning，
+   绿（开始制作 / 全部继续）= status-success。
+   原先这里用「品牌色 brand-500」→ 主窗口呈现为「主题色 + 绿色」，而 task 是「绿 + 橙 + 红」，
+   同一套悬浮按钮族出现了两套取色口径。改为语义橙后两边完全对应。 */
+/* 橙（保存为当日）：只声明变量，外观与三态一律由基线 .vl-btn 消费 */
 .config-btn--save-today {
-  background: var(--vl-alias-brand-500);
-  border-color: var(--vl-alias-brand-500);
-  color: var(--vl-alias-text-onbrand);
+  --vl-btn-bg: var(--vl-alias-status-warning-default);
+  --vl-btn-border: var(--vl-alias-status-warning-default);
+  --vl-btn-color: var(--vl-alias-text-onaccent);
+  --vl-btn-bg-hover: var(--vl-alias-status-warning-hover);
+  --vl-btn-border-hover: var(--vl-alias-status-warning-hover);
+  --vl-btn-bg-active: var(--vl-alias-status-warning-active);
+  --vl-btn-border-active: var(--vl-alias-status-warning-active);
+  --vl-btn-bg-disabled: var(--vl-alias-status-warning-default);
+  --vl-btn-border-disabled: var(--vl-alias-status-warning-default);
+  --vl-btn-color-disabled: var(--vl-alias-text-onaccent);
 }
-.config-btn--save-today:hover {
-  background: var(--vl-alias-brand-400);
-  border-color: var(--vl-alias-brand-400);
-}
+/* 绿（开始制作）：只声明变量，外观与三态一律由基线 .vl-btn 消费 */
 .config-btn--run {
-  background: var(--vl-alias-status-success-default);
-  border-color: var(--vl-alias-status-success-default);
-  color: var(--vl-alias-text-onaccent);
-}
-.config-btn--run:hover {
-  background: var(--vl-alias-status-success-hover);
-  border-color: var(--vl-alias-status-success-hover);
+  --vl-btn-bg: var(--vl-alias-status-success-default);
+  --vl-btn-border: var(--vl-alias-status-success-default);
+  --vl-btn-color: var(--vl-alias-text-onaccent);
+  --vl-btn-bg-hover: var(--vl-alias-status-success-hover);
+  --vl-btn-border-hover: var(--vl-alias-status-success-hover);
+  --vl-btn-bg-active: var(--vl-alias-status-success-active);
+  --vl-btn-border-active: var(--vl-alias-status-success-active);
+  --vl-btn-bg-disabled: var(--vl-alias-status-success-default);
+  --vl-btn-border-disabled: var(--vl-alias-status-success-default);
+  --vl-btn-color-disabled: var(--vl-alias-text-onaccent);
 }
 /* .config-btn:disabled 已由基线 .vl-btn[disabled] 提供（灰底 + 灰字 + 半透明 + 禁用光标） */
 .config-bottombar__warn,
@@ -2095,23 +2112,31 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   color: var(--vl-alias-text-secondary);
   white-space: nowrap;
 }
+/* 绿（完全复刻）：只声明变量，外观与三态一律由基线 .vl-btn 消费 */
 .config-btn--replica-full {
-  background: var(--vl-alias-status-success-default);
-  border-color: var(--vl-alias-status-success-default);
-  color: var(--vl-alias-text-onaccent);
+  --vl-btn-bg: var(--vl-alias-status-success-default);
+  --vl-btn-border: var(--vl-alias-status-success-default);
+  --vl-btn-color: var(--vl-alias-text-onaccent);
+  --vl-btn-bg-hover: var(--vl-alias-status-success-hover);
+  --vl-btn-border-hover: var(--vl-alias-status-success-hover);
+  --vl-btn-bg-active: var(--vl-alias-status-success-active);
+  --vl-btn-border-active: var(--vl-alias-status-success-active);
+  --vl-btn-bg-disabled: var(--vl-alias-status-success-default);
+  --vl-btn-border-disabled: var(--vl-alias-status-success-default);
+  --vl-btn-color-disabled: var(--vl-alias-text-onaccent);
 }
-.config-btn--replica-full:hover {
-  background: var(--vl-alias-status-success-hover);
-  border-color: var(--vl-alias-status-success-hover);
-}
+/* 橙（去重复刻）：只声明变量，外观与三态一律由基线 .vl-btn 消费 */
 .config-btn--replica-dedup {
-  background: var(--vl-alias-status-warning-default);
-  border-color: var(--vl-alias-status-warning-default);
-  color: var(--vl-alias-text-onaccent);
-}
-.config-btn--replica-dedup:hover {
-  background: var(--vl-alias-status-warning-hover);
-  border-color: var(--vl-alias-status-warning-hover);
+  --vl-btn-bg: var(--vl-alias-status-warning-default);
+  --vl-btn-border: var(--vl-alias-status-warning-default);
+  --vl-btn-color: var(--vl-alias-text-onaccent);
+  --vl-btn-bg-hover: var(--vl-alias-status-warning-hover);
+  --vl-btn-border-hover: var(--vl-alias-status-warning-hover);
+  --vl-btn-bg-active: var(--vl-alias-status-warning-active);
+  --vl-btn-border-active: var(--vl-alias-status-warning-active);
+  --vl-btn-bg-disabled: var(--vl-alias-status-warning-default);
+  --vl-btn-border-disabled: var(--vl-alias-status-warning-default);
+  --vl-btn-color-disabled: var(--vl-alias-text-onaccent);
 }
 /* 日志模式：全选/已选/选择按钮区 */
 .log-configbar__selall {
@@ -2933,46 +2958,52 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   justify-content: flex-end;
   gap: var(--vl-static-spacer-8);
 }
+/* 差异：弹窗按钮 32px 高 / 内距 16px / 圆角 8px，底色取次级（与卡片底色区分）。
+   外观与全部交互状态由基线 .vl-btn 消费变量 —— 本类不再写 background / border / color / :hover。 */
 .modal-btn {
-  height: 32px;
-  padding: 0 var(--vl-static-spacer-16);
-  border: 1px solid var(--vl-alias-border-neutral-l1);
+  --vl-btn-h: 32px;
+  --vl-btn-px: var(--vl-static-spacer-16);
+  --vl-btn-fs: var(--vl-type-body-base-size);
+  --vl-btn-bg: var(--vl-alias-bg-base-secondary);
+  --vl-btn-border: var(--vl-alias-border-neutral-l1);
+  --vl-btn-bg-hover: var(--vl-alias-bg-overlay-l2);
+  --vl-btn-border-hover: var(--vl-alias-border-neutral-l2);
   border-radius: var(--vl-static-radius-8);
-  background: var(--vl-alias-bg-base-secondary);   /* 与卡片底色(surface)区分，取消类按钮统一有可辨识底色 */
-  color: var(--vl-alias-text-default);
-  font-size: var(--vl-type-body-base-size);
-  cursor: pointer;
-  transition: all 0.1s ease;
 }
-.modal-btn:hover {
-  background: var(--vl-alias-bg-overlay-l2);
-  border-color: var(--vl-alias-border-neutral-l2);
-}
+/* 品牌色主按钮：与基线 .vl-btn--primary 同源（品牌语义档） */
 .modal-btn--primary {
-  background: var(--vl-alias-brand-600);
-  border-color: var(--vl-alias-brand-600);
-  color: var(--vl-alias-text-onaccent);
+  --vl-btn-bg: var(--vl-alias-bg-brand);
+  --vl-btn-border: var(--vl-alias-bg-brand);
+  --vl-btn-color: var(--vl-alias-text-white);
+  --vl-btn-bg-hover: var(--vl-alias-bg-brand-hover);
+  --vl-btn-border-hover: var(--vl-alias-bg-brand-hover);
+  --vl-btn-bg-active: var(--vl-alias-bg-brand-active);
+  --vl-btn-border-active: var(--vl-alias-bg-brand-active);
+  --vl-btn-bg-disabled: var(--vl-alias-bg-brand);
+  --vl-btn-border-disabled: var(--vl-alias-bg-brand);
+  --vl-btn-color-disabled: var(--vl-alias-text-white);
 }
-.modal-btn--primary:hover {
-  background: var(--vl-alias-brand-700);
-  border-color: var(--vl-alias-brand-700);
-}
+/* 危险色按钮：与配置栏的「覆盖配置」同源（status-error） */
 .modal-btn--danger {
-  background: var(--vl-alias-status-error-default);
-  border-color: var(--vl-alias-status-error-default);
-  color: var(--vl-alias-text-onaccent);
-}
-.modal-btn--danger:hover {
-  background: var(--vl-alias-status-error-hover);
-  border-color: var(--vl-alias-status-error-hover);
+  --vl-btn-bg: var(--vl-alias-status-error-default);
+  --vl-btn-border: var(--vl-alias-status-error-default);
+  --vl-btn-color: var(--vl-alias-text-onaccent);
+  --vl-btn-bg-hover: var(--vl-alias-status-error-hover);
+  --vl-btn-border-hover: var(--vl-alias-status-error-hover);
+  --vl-btn-bg-active: var(--vl-alias-status-error-active);
+  --vl-btn-border-active: var(--vl-alias-status-error-active);
+  --vl-btn-bg-disabled: var(--vl-alias-status-error-default);
+  --vl-btn-border-disabled: var(--vl-alias-status-error-default);
+  --vl-btn-color-disabled: var(--vl-alias-text-onaccent);
 }
 /* 弹窗禁用按钮（如分支移除中无对应模式 TXT）：灰显不可点，hover 不再变色 */
 .modal-btn--disabled,
+/* 页面用类名表达禁用（不是 disabled 属性）：消费基线的禁用变量，避免与基线分叉 */
 .modal-btn--disabled:hover {
-  opacity: 0.45;
-  color: var(--vl-alias-text-disabled);
-  background: var(--vl-alias-bg-base-tertiary);
-  border-color: var(--vl-alias-border-neutral-l1);
+  background: var(--vl-btn-bg-disabled);
+  border-color: var(--vl-btn-border-disabled);
+  color: var(--vl-btn-color-disabled);
+  opacity: var(--vl-btn-opacity-disabled);
   cursor: not-allowed;
 }
 /* 项目设置弹窗：窄宽两行布局——说明文字左对齐、复选框/分组数输入/水印按钮组右对齐 */
@@ -3128,12 +3159,43 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
 .modal-input:focus { border-color: var(--vl-alias-brand-500); }
 .modal-input[type="number"] { appearance: textfield; -moz-appearance: textfield; }
 /* 配置未保存确认弹窗：按钮仿配置栏同名按钮（覆盖=红、当日=品牌色、不保存=中性带图标） */
-.modal-btn--cfg-save { background: var(--vl-alias-status-error-default); border-color: var(--vl-alias-status-error-default); color: var(--vl-alias-text-onaccent); }
-.modal-btn--cfg-save:hover { background: var(--vl-alias-status-error-hover); border-color: var(--vl-alias-status-error-hover); }
-.modal-btn--cfg-save-today { background: var(--vl-alias-brand-500); border-color: var(--vl-alias-brand-500); color: var(--vl-alias-text-onbrand); }
-.modal-btn--cfg-save-today:hover { background: var(--vl-alias-brand-400); border-color: var(--vl-alias-brand-400); }
-.modal-btn--cfg-discard { background: var(--vl-alias-bg-overlay-l1); border-color: var(--vl-alias-border-neutral-l1); color: var(--vl-alias-text-default); }
-.modal-btn--cfg-discard:hover { background: var(--vl-alias-bg-overlay-l2); border-color: var(--vl-alias-border-neutral-l2); }
+/* 红（覆盖配置）：与配置栏同名按钮同源（status-error） */
+.modal-btn--cfg-save {
+  --vl-btn-bg: var(--vl-alias-status-error-default);
+  --vl-btn-border: var(--vl-alias-status-error-default);
+  --vl-btn-color: var(--vl-alias-text-onaccent);
+  --vl-btn-bg-hover: var(--vl-alias-status-error-hover);
+  --vl-btn-border-hover: var(--vl-alias-status-error-hover);
+  --vl-btn-bg-active: var(--vl-alias-status-error-active);
+  --vl-btn-border-active: var(--vl-alias-status-error-active);
+  --vl-btn-bg-disabled: var(--vl-alias-status-error-default);
+  --vl-btn-border-disabled: var(--vl-alias-status-error-default);
+  --vl-btn-color-disabled: var(--vl-alias-text-onaccent);
+}
+/* 与配置栏的「保存为当日配置」同源：都用 status-warning（橙），不用品牌色 */
+/* 橙（保存为当日）：与配置栏同名按钮同源（status-warning） */
+.modal-btn--cfg-save-today {
+  --vl-btn-bg: var(--vl-alias-status-warning-default);
+  --vl-btn-border: var(--vl-alias-status-warning-default);
+  --vl-btn-color: var(--vl-alias-text-onaccent);
+  --vl-btn-bg-hover: var(--vl-alias-status-warning-hover);
+  --vl-btn-border-hover: var(--vl-alias-status-warning-hover);
+  --vl-btn-bg-active: var(--vl-alias-status-warning-active);
+  --vl-btn-border-active: var(--vl-alias-status-warning-active);
+  --vl-btn-bg-disabled: var(--vl-alias-status-warning-default);
+  --vl-btn-border-disabled: var(--vl-alias-status-warning-default);
+  --vl-btn-color-disabled: var(--vl-alias-text-onaccent);
+}
+/* 次要按钮：只声明变量（常态/悬浮取叠加层次，按下用基线三级底） */
+.modal-btn--cfg-discard {
+  --vl-btn-bg: var(--vl-alias-bg-overlay-l1);
+  --vl-btn-border: var(--vl-alias-border-neutral-l1);
+  --vl-btn-color: var(--vl-alias-text-default);
+  --vl-btn-bg-hover: var(--vl-alias-bg-overlay-l2);
+  --vl-btn-border-hover: var(--vl-alias-border-neutral-l2);
+  --vl-btn-bg-active: var(--vl-alias-bg-base-tertiary);
+  --vl-btn-border-active: var(--vl-alias-border-neutral-l2);
+}
 
 /* ── 更新日志弹窗 ── */
 .changelog-card {

@@ -1604,19 +1604,16 @@ html[data-skin="Maid_Atelier"] .win-titlebar__btn--close:hover {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   金色按钮提亮：主按钮（保存为当日配置）与弹窗强调按钮
-   改用更亮的金色阶（brand-300/400），深色文字保持对比；
-   仅影响按钮，不影响其他金色装饰元素
+   ⚠ 已移除「把保存为当日配置改成金色」的覆盖。
+   原因：主窗口三个彩色按钮与 task 三个悬浮按钮是同一族，取色必须同源 ——
+      · 覆盖配置 = status-error（红）
+      · 保存为当日 = status-warning（橙）
+      · 开始制作 = status-success（绿）
+   若皮肤把其中某个按钮改成品牌金，它在三个按钮里就成了异色，
+   与 task 页的「绿 / 橙 / 红」也对不上（实测女仆皮肤下该按钮为金色，
+   而同族的 task 橙是 status-warning 的橙金，两者肉眼可辨）。
+   需要金色主按钮时请用 .vl-btn--primary（语义就是品牌色主操作）。
    ═══════════════════════════════════════════════════════════════ */
-html[data-skin="Maid_Atelier"] .config-btn--save-today {
-  background: var(--vl-alias-brand-300);
-  border-color: var(--vl-alias-brand-300);
-  color: var(--vl-alias-text-onbrand);
-}
-html[data-skin="Maid_Atelier"] .config-btn--save-today:hover {
-  background: var(--vl-alias-brand-200);
-  border-color: var(--vl-alias-brand-200);
-}
 html[data-skin="Maid_Atelier"] .modal-btn--primary {
   background: var(--vl-alias-brand-400);
   border-color: var(--vl-alias-brand-400);

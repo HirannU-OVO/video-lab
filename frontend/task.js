@@ -132,7 +132,7 @@
       if (opts.message) html += '<div class="modal__message">' + escapeHtml(opts.message) + '</div>';
       html += '<div class="modal__actions">';
       (opts.buttons || []).forEach(function (b) {
-        var cls = 'modal-btn' + (b.danger ? ' modal-btn--danger' : '') + (b.primary ? ' modal-btn--primary' : '');
+        var cls = 'modal-btn vl-btn vl-btn--lift' + (b.danger ? ' modal-btn--danger' : '') + (b.primary ? ' modal-btn--primary' : '');
         html += '<button type="button" class="' + cls + '">' + escapeHtml(b.label) + '</button>';
       });
       html += '</div>';
@@ -802,7 +802,7 @@
       '<div class="modal__title">重分组</div>' +
       '<div class="modal__message">为任务「' + escapeHtml(t.title || '') + '」的成片重新分组（已有分组字母会被替换）。请输入分组数：</div>' +
       '<div class="modal__input-row"><input type="number" class="modal-input" id="rgInput" min="1" max="99" value="1"></div>' +
-      '<div class="modal__actions"><button type="button" class="modal-btn" data-v="cancel">取消</button><button type="button" class="modal-btn modal-btn--primary" data-v="go">开始分组</button></div>';
+      '<div class="modal__actions"><button type="button" class="modal-btn vl-btn vl-btn--lift" data-v="cancel">取消</button><button type="button" class="modal-btn vl-btn vl-btn--lift modal-btn--primary" data-v="go">开始分组</button></div>';
     overlay.appendChild(card);
     document.body.appendChild(overlay);
     var close = function () { overlay.remove(); };

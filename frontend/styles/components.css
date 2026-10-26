@@ -29,6 +29,29 @@
     --vl-btn-lift-hover: 0;
     --vl-btn-lift-active: 0;
     --vl-btn-shadow-hover: none;
+    /* ── 全部视觉状态的唯一出口 ────────────────────────────────
+       ⚠ 按钮本体的 background / border-color / color **只消费下面这些变量**，
+         任何变体、页面类、皮肤都**不允许再写 background / border / color 本身**。
+       原因：同一个按钮族曾出现「每个变体各自写 background + :hover + :active」，
+         结果按下态漏写、悬浮边框不同步、皮肤覆盖后颜色对不上，改一处漏一处。
+       约定：变体只声明变量值 ——
+         · 常态     --vl-btn-bg / --vl-btn-border / --vl-btn-color
+         · 悬浮     --vl-btn-bg-hover / --vl-btn-border-hover（缺省跟随常态边框）
+         · 按下     --vl-btn-bg-active / --vl-btn-border-active
+         · 禁用     --vl-btn-bg-disabled / --vl-btn-border-disabled / --vl-btn-color-disabled
+       ⚠ 悬浮、按下的「方向」全站统一：悬浮变亮一档、按下变暗一档，
+         深浅由皮肤令牌决定（反色系天然幅度小，属色系限制，不是规则不一致）。 */
+    --vl-btn-bg: var(--vl-alias-bg-base-default);
+    --vl-btn-border: var(--vl-alias-border-neutral-l2);
+    --vl-btn-color: var(--vl-alias-text-default);
+    --vl-btn-bg-hover: var(--vl-alias-bg-base-secondary);
+    --vl-btn-border-hover: var(--vl-btn-border);
+    --vl-btn-bg-active: var(--vl-alias-bg-base-tertiary);
+    --vl-btn-border-active: var(--vl-btn-border-hover);
+    --vl-btn-bg-disabled: var(--vl-alias-bg-base-tertiary);
+    --vl-btn-border-disabled: var(--vl-alias-border-neutral-l1);
+    --vl-btn-color-disabled: var(--vl-alias-text-disabled);
+    --vl-btn-opacity-disabled: .5;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -36,10 +59,10 @@
     min-width: 0;
     height: var(--vl-btn-h);
     padding: 0 var(--vl-btn-px);
-    border: 1px solid var(--vl-alias-border-neutral-l2);
+    border: 1px solid var(--vl-btn-border);
     border-radius: var(--vl-static-radius-6);
-    background: var(--vl-alias-bg-base-default);
-    color: var(--vl-alias-text-default);
+    background: var(--vl-btn-bg);
+    color: var(--vl-btn-color);
     font-family: inherit;
     font-size: var(--vl-btn-fs);
     line-height: 1;
@@ -50,12 +73,14 @@
     user-select: none;
   }
   .vl-btn:hover:where(:not([disabled]):not([aria-disabled="true"])) {
-    background: var(--vl-alias-bg-base-secondary);
+    background: var(--vl-btn-bg-hover);
+    border-color: var(--vl-btn-border-hover);
     transform: translateY(var(--vl-btn-lift-hover));
     box-shadow: var(--vl-btn-shadow-hover);
   }
   .vl-btn:active:where(:not([disabled]):not([aria-disabled="true"])) {
-    background: var(--vl-alias-bg-base-tertiary);
+    background: var(--vl-btn-bg-active);
+    border-color: var(--vl-btn-border-active);
     transform: translateY(var(--vl-btn-lift-active));
   }
   /* 悬浮浮起变体：主窗口配置栏那类「彩色实色 + 悬浮上浮 + 投影」的按钮用它。
@@ -72,6 +97,12 @@
     background: var(--vl-alias-bg-brand);
     border-color: var(--vl-alias-bg-brand);
     color: var(--vl-alias-text-white);
+    /* 悬浮 / 按下 / 禁用都保留自己的实色（实色按钮掉色会认不出是同一操作） */
+    --vl-btn-bg-hover: var(--vl-alias-bg-brand-hover);
+    --vl-btn-bg-active: var(--vl-alias-bg-brand-active);
+    --vl-btn-bg-disabled: var(--vl-alias-bg-brand);
+    --vl-btn-border-disabled: var(--vl-alias-bg-brand);
+    --vl-btn-color-disabled: var(--vl-alias-text-white);
   }
   .vl-btn--primary:hover:where(:not([disabled]):not([aria-disabled="true"])) { background: var(--vl-alias-bg-brand-hover); border-color: var(--vl-alias-bg-brand-hover); }
   .vl-btn--primary:active:where(:not([disabled]):not([aria-disabled="true"])) { background: var(--vl-alias-bg-brand-active); border-color: var(--vl-alias-bg-brand-active); }
@@ -80,6 +111,12 @@
     background: var(--vl-alias-status-error-default);
     border-color: var(--vl-alias-status-error-default);
     color: var(--vl-alias-text-white);
+    /* 悬浮 / 按下 / 禁用都保留自己的实色（实色按钮掉色会认不出是同一操作） */
+    --vl-btn-bg-hover: var(--vl-alias-status-error-hover);
+    --vl-btn-bg-active: var(--vl-alias-status-error-active);
+    --vl-btn-bg-disabled: var(--vl-alias-status-error-default);
+    --vl-btn-border-disabled: var(--vl-alias-status-error-default);
+    --vl-btn-color-disabled: var(--vl-alias-text-white);
   }
   .vl-btn--danger:hover:where(:not([disabled]):not([aria-disabled="true"])) { background: var(--vl-alias-status-error-hover); border-color: var(--vl-alias-status-error-hover); }
   .vl-btn--danger:active:where(:not([disabled]):not([aria-disabled="true"])) { background: var(--vl-alias-status-error-active); border-color: var(--vl-alias-status-error-active); }
@@ -102,6 +139,12 @@
     background: var(--vl-alias-bg-invert);
     border-color: var(--vl-alias-bg-invert);
     color: var(--vl-alias-text-white);
+    /* 悬浮 / 按下 / 禁用都保留自己的实色（实色按钮掉色会认不出是同一操作） */
+    --vl-btn-bg-hover: var(--vl-alias-bg-invert-hover);
+    --vl-btn-bg-active: var(--vl-alias-bg-invert-active);
+    --vl-btn-bg-disabled: var(--vl-alias-bg-invert);
+    --vl-btn-border-disabled: var(--vl-alias-bg-invert);
+    --vl-btn-color-disabled: var(--vl-alias-text-white);
   }
   .vl-btn--invert:hover:where(:not([disabled]):not([aria-disabled="true"])) {
     background: var(--vl-alias-bg-invert-hover);
@@ -131,6 +174,12 @@
     background: var(--vl-alias-status-warning-default);
     border-color: var(--vl-alias-status-warning-default);
     color: var(--vl-alias-text-white);
+    /* 悬浮 / 按下 / 禁用都保留自己的实色（实色按钮掉色会认不出是同一操作） */
+    --vl-btn-bg-hover: var(--vl-alias-status-warning-hover);
+    --vl-btn-bg-active: var(--vl-alias-status-warning-active);
+    --vl-btn-bg-disabled: var(--vl-alias-status-warning-default);
+    --vl-btn-border-disabled: var(--vl-alias-status-warning-default);
+    --vl-btn-color-disabled: var(--vl-alias-text-white);
   }
   .vl-btn--warning:hover:where(:not([disabled]):not([aria-disabled="true"])) {
     background: var(--vl-alias-status-warning-surface-l3);
@@ -151,11 +200,11 @@
      是基线缺陷（页面私有类各自补写反而形成了不一致）。 */
   .vl-btn[disabled],
   .vl-btn[aria-disabled="true"] {
-    background: var(--vl-alias-bg-base-tertiary);
-    border-color: var(--vl-alias-border-neutral-l1);
-    color: var(--vl-alias-text-disabled);
+    background: var(--vl-btn-bg-disabled);
+    border-color: var(--vl-btn-border-disabled);
+    color: var(--vl-btn-color-disabled);
     cursor: not-allowed;
-    opacity: .5;
+    opacity: var(--vl-btn-opacity-disabled);
   }
   .vl-btn[aria-pressed="true"] {
     background: var(--vl-alias-bg-base-secondary);
