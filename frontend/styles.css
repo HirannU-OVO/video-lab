@@ -1990,24 +1990,15 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   align-items: center;
   gap: var(--vl-static-spacer-8);
 }
+/* 差异：字号取 body-md、字重 medium（基线是 13px / 常规）；
+   控件本体 —— 尺寸档、内距、圆角、边框、全部交互状态、悬浮上浮与投影
+   一律由基线 .vl-btn + .vl-btn--lift 提供，这里不再重复定义。 */
 .config-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--vl-static-spacer-6);
-  height: 28px;
-  padding: 0 var(--vl-static-spacer-12);
-  border: none;
-  border-radius: var(--vl-static-radius-6);
-  font-size: var(--vl-type-body-md-size);
+  --vl-btn-fs: var(--vl-type-body-md-size);
   font-weight: var(--vl-font-font-weight-medium);
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.1s ease;
 }
 /* 配置栏按钮 hover：统一向上轻抬（与状态色变亮叠加） */
-.config-btn:hover {
-  transform: translateY(-1px);
-}
+/* .config-btn:hover 的上浮反馈已由基线 .vl-btn--lift 提供（上移 1px + 投影） */
 .config-btn--save {
   background: var(--vl-alias-status-error-default);
   color: var(--vl-alias-text-onaccent);
@@ -2019,25 +2010,23 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
 }
 .config-btn--save-today {
   background: var(--vl-alias-brand-500);
+  border-color: var(--vl-alias-brand-500);
   color: var(--vl-alias-text-onbrand);
 }
 .config-btn--save-today:hover {
   background: var(--vl-alias-brand-400);
+  border-color: var(--vl-alias-brand-400);
 }
 .config-btn--run {
   background: var(--vl-alias-status-success-default);
+  border-color: var(--vl-alias-status-success-default);
   color: var(--vl-alias-text-onaccent);
 }
 .config-btn--run:hover {
   background: var(--vl-alias-status-success-hover);
+  border-color: var(--vl-alias-status-success-hover);
 }
-.config-btn:disabled {
-  opacity: 0.45;
-  color: var(--vl-alias-text-disabled);
-  border-color: var(--vl-alias-border-neutral-l1);
-  background: var(--vl-alias-bg-base-tertiary);
-  cursor: not-allowed;
-}
+/* .config-btn:disabled 已由基线 .vl-btn[disabled] 提供（灰底 + 灰字 + 半透明 + 禁用光标） */
 .config-bottombar__warn,
 .config-bottombar__modified {
   color: var(--vl-alias-status-error-default);
@@ -2108,17 +2097,21 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
 }
 .config-btn--replica-full {
   background: var(--vl-alias-status-success-default);
+  border-color: var(--vl-alias-status-success-default);
   color: var(--vl-alias-text-onaccent);
 }
 .config-btn--replica-full:hover {
   background: var(--vl-alias-status-success-hover);
+  border-color: var(--vl-alias-status-success-hover);
 }
 .config-btn--replica-dedup {
   background: var(--vl-alias-status-warning-default);
+  border-color: var(--vl-alias-status-warning-default);
   color: var(--vl-alias-text-onaccent);
 }
 .config-btn--replica-dedup:hover {
   background: var(--vl-alias-status-warning-hover);
+  border-color: var(--vl-alias-status-warning-hover);
 }
 /* 日志模式：全选/已选/选择按钮区 */
 .log-configbar__selall {

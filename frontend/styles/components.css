@@ -23,6 +23,12 @@
     --vl-btn-h: 28px;
     --vl-btn-px: 12px;
     --vl-btn-fs: 13px;
+    /* 悬浮 / 按下的**位移与投影**反馈：默认无（普通按钮不该跳），
+       需要「悬浮浮起」观感的用 --lift 变体，或由页面/皮肤给变量。
+       ⚠ 与尺寸、颜色分开：这样「悬浮反馈」是全站一致的能力，各按钮只调数值。 */
+    --vl-btn-lift-hover: 0;
+    --vl-btn-lift-active: 0;
+    --vl-btn-shadow-hover: none;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -39,12 +45,26 @@
     line-height: 1;
     white-space: nowrap;
     cursor: pointer;
-    transition: background-color .16s ease, border-color .16s ease, color .16s ease, opacity .16s ease;
+    transition: background-color .16s ease, border-color .16s ease, color .16s ease, opacity .16s ease, transform .16s ease, box-shadow .16s ease;
     -webkit-user-select: none;
     user-select: none;
   }
-  .vl-btn:hover:where(:not([disabled]):not([aria-disabled="true"])) { background: var(--vl-alias-bg-base-secondary); }
-  .vl-btn:active:where(:not([disabled]):not([aria-disabled="true"])) { background: var(--vl-alias-bg-base-tertiary); }
+  .vl-btn:hover:where(:not([disabled]):not([aria-disabled="true"])) {
+    background: var(--vl-alias-bg-base-secondary);
+    transform: translateY(var(--vl-btn-lift-hover));
+    box-shadow: var(--vl-btn-shadow-hover);
+  }
+  .vl-btn:active:where(:not([disabled]):not([aria-disabled="true"])) {
+    background: var(--vl-alias-bg-base-tertiary);
+    transform: translateY(var(--vl-btn-lift-active));
+  }
+  /* 悬浮浮起变体：主窗口配置栏那类「彩色实色 + 悬浮上浮 + 投影」的按钮用它。
+     ⚠ 颜色由各自的语义变体（--primary / 页面自定义色）给，这里只管「浮起」这一件事。 */
+  .vl-btn--lift {
+    --vl-btn-lift-hover: -1px;
+    --vl-btn-lift-active: 0;
+    --vl-btn-shadow-hover: 0 2px 8px color-mix(in srgb, var(--vl-alias-text-default) 18%, transparent);
+  }
   .vl-btn:focus-visible { outline: 2px solid var(--vl-alias-accent-blue); outline-offset: 1px; }
 
   /* variant */

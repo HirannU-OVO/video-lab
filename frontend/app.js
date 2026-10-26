@@ -1022,9 +1022,9 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     html += '<span class="config-bottombar__warn" id="configWarnMark" style="display:none">有不合格路径</span>';
     html += '<span class="config-bottombar__modified" id="configModifiedHint" style="display:none">配置发生改变</span>';
     html += '<span class="config-bottombar__error config-bottombar__error--inline" id="watermarkFlagError" style="display:none">水印错误</span>';
-    html += '<button class="config-btn config-btn--save" id="btnSaveConfig">' + icon('save', 14) + '覆盖当前配置</button>';
-    html += '<button class="config-btn config-btn--save-today" id="btnSaveToday">' + icon('calendar-plus', 14) + '保存为当日配置</button>';
-    html += '<button class="config-btn config-btn--run" id="btnRunScript">' + icon('play', 14) + '开始制作</button></div>';
+    html += '<button class="config-btn vl-btn vl-btn--lift config-btn--save" id="btnSaveConfig">' + icon('save', 14) + '覆盖当前配置</button>';
+    html += '<button class="config-btn vl-btn vl-btn--lift config-btn--save-today" id="btnSaveToday">' + icon('calendar-plus', 14) + '保存为当日配置</button>';
+    html += '<button class="config-btn vl-btn vl-btn--lift config-btn--run" id="btnRunScript">' + icon('play', 14) + '开始制作</button></div>';
     bar.innerHTML = html;
     // 注意：不可直接传 saveConfig —— 它首参是 noConfirm，直接绑定会让 MouseEvent 顶替该参数（恒真）而跳过确认气泡
     $('btnSaveConfig').addEventListener('click', function () { saveConfig(); });
@@ -1185,8 +1185,8 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     html += '<label class="log-configbar__switch" title="切换选择模式，选择成片进行批量复刻"><input type="checkbox" class="log-configbar__switch-input" id="btnLogSelect"' + (sel ? ' checked' : '') + '><span class="log-configbar__switch-track"><span class="log-configbar__switch-thumb"></span></span><span class="log-configbar__switch-text">选择</span></label>';
     html += '</div>';
     html += '<div class="config-bar__replica" id="logReplicaBtns">';
-    html += '<button class="config-btn config-btn--replica-full" id="btnBatchReplica1" title="对所选成片执行完全复刻">' + icon('repeat', 14) + '完全复刻</button>';
-    html += '<button class="config-btn config-btn--replica-dedup" id="btnBatchReplica2" title="对所选成片执行去重复刻">' + icon('copy', 14) + '去重复刻</button>';
+    html += '<button class="config-btn vl-btn vl-btn--lift config-btn--replica-full" id="btnBatchReplica1" title="对所选成片执行完全复刻">' + icon('repeat', 14) + '完全复刻</button>';
+    html += '<button class="config-btn vl-btn vl-btn--lift config-btn--replica-dedup" id="btnBatchReplica2" title="对所选成片执行去重复刻">' + icon('copy', 14) + '去重复刻</button>';
     html += '</div>';
     bar.innerHTML = html;
     $('btnLogSelect').addEventListener('change', toggleLogSelectMode);
@@ -5610,7 +5610,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       '<option value="1"' + (maskState.mode === 1 ? ' selected' : '') + '>遮罩+水印</option>' +
       '<option value="2"' + (maskState.mode === 2 ? ' selected' : '') + '>仅水印</option>' +
       '<option value="3"' + (maskState.mode === 3 ? ' selected' : '') + '>仅遮罩</option></select>' +
-      '<button type="button" class="config-btn config-btn--run" id="btnMaskStart">' + icon('play', 14) + '开始制作</button></div>';
+      '<button type="button" class="config-btn vl-btn vl-btn--lift config-btn--run" id="btnMaskStart">' + icon('play', 14) + '开始制作</button></div>';
     bar.innerHTML = html;
     $('maskModeSel').addEventListener('change', function () {
       maskState.mode = parseInt(this.value, 10) || 1;
