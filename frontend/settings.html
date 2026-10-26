@@ -96,12 +96,12 @@ var m = new URL(location.href).searchParams.get('token');
             <span class="vl-radio__dot"></span>
             <span class="opt-radio__label">自动删除</span>
           </label>
-          <select class="form-input opt-time-select" id="cacheKeepDays" title="缓存保留天数">
+          <span class="vl-select-wrap"><select class="vl-select opt-time-select" id="cacheKeepDays" title="缓存保留天数">
             <option value="3">3 天</option>
             <option value="7">7 天</option>
             <option value="15">15 天</option>
             <option value="30">30 天</option>
-          </select>
+          </select></span>
           <span class="form-group__desc opt-inline-note">前的缓存文件</span>
         </div>
         <div class="opt-row">
@@ -175,11 +175,11 @@ var m = new URL(location.href).searchParams.get('token');
         <div class="form-group__ops">
         <div class="dir-row">
           <span class="form-label-inline">端口</span>
-          <input class="form-input form-input--port" id="httpPort" type="number" min="1" max="65535" placeholder="9527" title="浏览器访问端口（1-65535，默认 9527）">
+          <input class="vl-input form-input form-input--port" id="httpPort" type="number" min="1" max="65535" placeholder="9527" title="浏览器访问端口（1-65535，默认 9527）">
         </div>
         <div class="dir-row">
           <span class="form-label-inline">令牌</span>
-          <input class="form-input" id="httpToken" type="text" maxlength="64" placeholder="访问令牌 Token（8–64 位）" title="浏览器访问令牌：8–64 位（短于 8 位会被忽略，页面会提示）">
+          <input class="vl-input form-input" id="httpToken" type="text" maxlength="64" placeholder="访问令牌 Token（8–64 位）" title="浏览器访问令牌：8–64 位（短于 8 位会被忽略，页面会提示）">
           <button class="btn vl-btn" id="btnGenToken" title="随机生成新的访问令牌">随机生成</button>
         </div>
         <div class="producer-preview">
@@ -200,7 +200,7 @@ var m = new URL(location.href).searchParams.get('token');
         </div>
         <div class="form-group__ops">
         <div class="dir-row">
-          <input class="form-input" id="cfgRoot" type="text" placeholder="">
+          <input class="vl-input form-input" id="cfgRoot" type="text" placeholder="">
           <button class="btn btn-ghost vl-btn" data-dir="cfgRoot">选择文件夹</button>
         </div>
         </div>
@@ -211,7 +211,7 @@ var m = new URL(location.href).searchParams.get('token');
           <label class="form-group__label">创作者名<small>成片名中的创作者标识</small></label>
         </div>
         <div class="form-group__ops">
-          <input class="form-input opt-text-input" id="batchProducer" type="text" placeholder="">
+          <input class="vl-input form-input opt-text-input" id="batchProducer" type="text" placeholder="">
         </div>
       </div>
 
@@ -220,7 +220,7 @@ var m = new URL(location.href).searchParams.get('token');
           <label class="form-group__label">提取前缀<small>从配置名或素材路径提取，可添加多个</small></label>
         </div>
         <div class="field-row">
-          <input class="form-input" id="batchTxtPrefix" type="text" placeholder="输入后回车添加，可添加多个" autocomplete="off">
+          <input class="vl-input form-input" id="batchTxtPrefix" type="text" placeholder="输入后回车添加，可添加多个" autocomplete="off">
           <button type="button" class="multi-tags__caret" id="batchTxtPrefixCaret" title="展开 / 折叠已添加项" aria-expanded="false" aria-controls="batchTxtPrefixTags">&#9662;</button>
         </div>
         <div class="multi-tags" id="batchTxtPrefixTags" hidden></div>
@@ -231,7 +231,7 @@ var m = new URL(location.href).searchParams.get('token');
           <label class="form-group__label">后缀<small>成片名末尾的序号标识，可留空</small></label>
         </div>
         <div class="form-group__ops">
-          <input class="form-input opt-num-input" id="batchSuffixMark" type="text" placeholder="">
+          <input class="vl-input form-input opt-num-input" id="batchSuffixMark" type="text" placeholder="">
         </div>
       </div>
 
@@ -252,7 +252,7 @@ var m = new URL(location.href).searchParams.get('token');
           <label class="form-group__label">最大成片时长 (秒)<small>单个成片的时长上限，留空则不限制</small></label>
         </div>
         <div class="form-group__ops">
-          <input class="form-input opt-num-input" id="batchMaxDuration" type="number" min="1" step="1" placeholder="">
+          <input class="vl-input form-input opt-num-input" id="batchMaxDuration" type="number" min="1" step="1" placeholder="">
         </div>
       </div>
 
@@ -261,7 +261,7 @@ var m = new URL(location.href).searchParams.get('token');
           <label class="form-group__label">倍速阈值<small>时长超标时的加速倍率上限</small></label>
         </div>
         <div class="form-group__ops">
-          <input class="form-input opt-num-input" id="batchSpeedLimit" type="number" min="1" step="0.1" placeholder="">
+          <input class="vl-input form-input opt-num-input" id="batchSpeedLimit" type="number" min="1" step="0.1" placeholder="">
         </div>
       </div>
 
@@ -270,7 +270,7 @@ var m = new URL(location.href).searchParams.get('token');
           <label class="form-group__label">重试次数<small>任务失败后自动重试的次数，填 0 表示不重试</small></label>
         </div>
         <div class="form-group__ops">
-          <input class="form-input opt-num-input" id="batchMaxRetry" type="number" min="1" step="1" placeholder="">
+          <input class="vl-input form-input opt-num-input" id="batchMaxRetry" type="number" min="1" step="1" placeholder="">
         </div>
       </div>
 
@@ -285,7 +285,7 @@ var m = new URL(location.href).searchParams.get('token');
             <span class="vl-check__box"></span>
             <span>默认启用</span>
           </label>
-          <input class="form-input opt-num-input" id="replicaDedupRatio" type="number" min="0" max="1" step="0.05" placeholder="">
+          <input class="vl-input form-input opt-num-input" id="replicaDedupRatio" type="number" min="0" max="1" step="0.05" placeholder="">
         </div>
         </div>
       </div>
@@ -301,7 +301,7 @@ var m = new URL(location.href).searchParams.get('token');
             <span class="vl-check__box"></span>
             <span>默认启用</span>
           </label>
-          <input class="form-input opt-num-input" id="replicaDedupMax" type="number" min="0" max="1" step="0.05" placeholder="">
+          <input class="vl-input form-input opt-num-input" id="replicaDedupMax" type="number" min="0" max="1" step="0.05" placeholder="">
         </div>
         </div>
       </div>
@@ -318,7 +318,7 @@ var m = new URL(location.href).searchParams.get('token');
         </div>
         <div class="form-group__ops">
         <div class="dir-row">
-          <input class="form-input" id="maskRoot" type="text" placeholder="必填，选择遮罩叠加工作路径">
+          <input class="vl-input form-input" id="maskRoot" type="text" placeholder="必填，选择遮罩叠加工作路径">
           <button class="btn btn-ghost vl-btn" data-dir="maskRoot">选择文件夹</button>
         </div>
         </div>
@@ -330,7 +330,7 @@ var m = new URL(location.href).searchParams.get('token');
         </div>
         <div class="form-group__ops">
         <div class="dir-row">
-          <input class="form-input" id="maskWatermark" type="text" placeholder="选择水印 mov 文件">
+          <input class="vl-input form-input" id="maskWatermark" type="text" placeholder="选择水印 mov 文件">
           <button class="btn btn-ghost vl-btn" id="btnMaskWatermark">选择文件</button>
         </div>
         </div>
@@ -342,7 +342,7 @@ var m = new URL(location.href).searchParams.get('token');
         </div>
         <div class="form-group__ops">
         <div class="dir-row">
-          <input class="form-input opt-num-input" id="maskAlpha" type="number" min="0.05" max="1" step="0.05" placeholder="0.3" title="水印透明度（0.05-1），留空使用默认值 0.3">
+          <input class="vl-input form-input opt-num-input" id="maskAlpha" type="number" min="0.05" max="1" step="0.05" placeholder="0.3" title="水印透明度（0.05-1），留空使用默认值 0.3">
         </div>
         </div>
       </div>
@@ -360,7 +360,7 @@ var m = new URL(location.href).searchParams.get('token');
         </div>
         <div class="form-group__ops">
         <div class="dir-row">
-          <input class="form-input" id="backupDir" type="text" readonly title="" placeholder="">
+          <input class="vl-input form-input" id="backupDir" type="text" readonly title="" placeholder="">
           <button class="btn btn-ghost vl-btn" id="btnPickBackupDir">选择文件夹</button>
           <span class="opt-path" id="backupDirPath" hidden></span>
         </div>
@@ -381,12 +381,12 @@ var m = new URL(location.href).searchParams.get('token');
             <span class="vl-check__box"></span>
             <span>任务完成后自动清理</span>
           </label>
-          <select class="form-input opt-time-select" id="backupKeepDays" title="备份保留时间">
+          <span class="vl-select-wrap"><select class="vl-select opt-time-select" id="backupKeepDays" title="备份保留时间">
             <option value="3">保留 3 天</option>
             <option value="7">保留 7 天</option>
             <option value="15">保留 15 天</option>
             <option value="30">保留 30 天</option>
-          </select>
+          </select></span>
         </div>
         </div>
       </div>
@@ -426,12 +426,12 @@ var m = new URL(location.href).searchParams.get('token');
         </div>
         <div class="form-group__ops">
         <div class="opt-row" data-nosave>
-          <select class="form-input opt-time-select" id="diagRange" title="反馈包包含的日志范围">
+          <span class="vl-select-wrap"><select class="vl-select opt-time-select" id="diagRange" title="反馈包包含的日志范围">
             <option value="today">今天</option>
             <option value="3d">近 3 天</option>
             <option value="7d">近 7 天</option>
             <option value="all">全部</option>
-          </select>
+          </select></span>
           <button type="button" class="btn btn-ghost vl-btn" id="btnExportDiag">导出压缩包</button>
         </div>
         </div>
@@ -507,7 +507,7 @@ var m = new URL(location.href).searchParams.get('token');
             <span class="vl-check__box"></span>
             <span>每日定期检查更新</span>
           </label>
-          <select class="form-input opt-time-select" id="checkUpdateHour" title="每日定时检查更新时间（24小时制整点，默认 9:00）"></select>
+          <span class="vl-select-wrap"><select class="vl-select opt-time-select" id="checkUpdateHour" title="每日定时检查更新时间（24小时制整点，默认 9:00）"></select></span>
         </div>
         <div class="opt-row opt-row--spaced" title="更新方式：发现新版本后自动检查并下载 / 仅提醒（对启动时检查、手动检查、定时检查均生效）">
           <label class="vl-radio">

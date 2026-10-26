@@ -226,18 +226,10 @@ body {
   color: var(--vl-alias-text-tertiary);
   margin-bottom: 6px;
 }
-.form-input {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 7px 10px;
-  font-size: 14px;
-  border: 1px solid var(--vl-alias-border-neutral-l2);
-  border-radius: 6px;
-  background: var(--vl-alias-bg-base-secondary);
-  color: var(--vl-alias-text-default);
-  outline: none;
-}
-.form-input:focus { border-color: var(--vl-alias-border-brand); }
+/* 差异：设置页输入框占满所在容器。
+   控件本体（外观、悬浮 / 聚焦 / 禁用 / 只读 / 非法态）已由基线 .vl-input 提供，
+   本类现在只承载布局差异，不再重复定义外观与状态。 */
+.form-input { width: 100%; }
 
 /* 多值输入（提取前缀/后缀）：回车添加的 tags 列表，可拖拽排序、点击删除 */
 .multi-tags {
@@ -446,7 +438,8 @@ body {
 /* 并排单选组（更新方式 / 仓库选择）：加大行内间距与行距，避免拥挤 */
 .opt-row--spaced { padding: 8px 0; gap: 24px; }
 /* 每日定时检查更新下拉框：紧凑宽度，与左侧勾选间隔 8px */
-.opt-time-select { width: 100px; flex-shrink: 0; height: 30px; padding: 0 6px; cursor: pointer; }
+/* 差异：时间下拉固定 100px 宽；外观与全部交互状态由基线 .vl-select 提供 */
+.opt-time-select { width: 100px; flex-shrink: 0; }
   flex-shrink: 0;
   width: 16px;
   height: 16px;

@@ -106,6 +106,10 @@
   /* ═══ 输入框 ═════════════════════════════════════════════ */
   .vl-input {
     --vl-input-h: 32px;
+    /* ⚠ 必须显式声明：全站没有 box-sizing 的全局 reset，
+       而页面私有类（.form-input）原本自带 border-box。
+       缺这一条会让迁移后的输入框按 content-box 计算宽度与固定高度（32px → 34px）。 */
+    box-sizing: border-box;
     height: var(--vl-input-h);
     padding: 0 10px;
     border: 1px solid var(--vl-alias-border-neutral-l2);
@@ -426,7 +430,11 @@
     color: var(--vl-alias-text-disabled);
     cursor: default;
   }
-  .vl-select-wrap { position: relative; width: 100%; display: inline-block; }
+  /* ⚠ 默认按内容宽度（width: auto）：wrap 若占满 100%，作为 flex 项会抢占整行空间，
+     把同行的其它控件压窄换行（实测设置页 radio 被压到 44px 宽、行高 38→88px）。
+     需要占满一行的表单字段用 --block 变体。 */
+  .vl-select-wrap { position: relative; width: auto; display: inline-block; }
+  .vl-select-wrap--block { width: 100%; }
   /* 需要占满一行的表单字段用此变体（默认按内容宽度，便于放在 flex 行内） */
   .vl-select--block { width: 100%; }
   .vl-select-wrap .vl-select { padding-right: var(--vl-static-spacer-32); }
