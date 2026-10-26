@@ -15,16 +15,8 @@
     /* 顶部模式切换：正在运行 / 已完成 / 已停止 */
     .task-main { flex: 1; position: relative; display: flex; flex-direction: column; min-height: 0; }
     .task-tabs { display: flex; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--vl-alias-border-neutral-l1); background: var(--vl-alias-bg-base-secondary); flex-shrink: 0; }
-    .task-tab {
-      flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-      height: 34px; border: 1px solid var(--vl-alias-border-neutral-l2); border-radius: 6px;
-      background: transparent; color: var(--vl-alias-text-secondary); cursor: pointer;
-      font-family: var(--vl-font-family-base); font-size: 16px;
-      transition: background .15s ease, color .15s ease, border-color .15s ease;
-    }
-    .task-tab:hover { background: var(--vl-alias-bg-overlay-l1); color: var(--vl-alias-text-default-hover); }
-    .task-tab[aria-selected="true"] { background: var(--vl-alias-brand-500); border-color: var(--vl-alias-brand-500); color: var(--vl-alias-text-onaccent); }
-    .task-tab[aria-selected="true"]:hover { background: var(--vl-alias-brand-600); border-color: var(--vl-alias-brand-600); color: var(--vl-alias-text-onaccent); }
+    /* 差异：任务页 tab 平分整栏宽度；外观与全部交互状态由基线 .vl-tab 提供 */
+    .task-tab { flex: 1; }
     .task-tab__icon { display: inline-flex; }
     .task-tab__count {
       min-width: 18px; height: 18px; padding: 0 5px; line-height: 18px; border-radius: 9px;
@@ -32,9 +24,6 @@
       background: var(--vl-alias-bg-overlay-l2); color: var(--vl-alias-text-secondary);
     }
     /* 补齐交互状态（基于原样式改造） */
-    .task-tab:active { background: var(--vl-alias-bg-base-tertiary); }
-    .task-tab[aria-selected="true"]:active { background: var(--vl-alias-bg-brand-active); border-color: var(--vl-alias-bg-brand-active); }
-    .task-tab:focus-visible { outline: 2px solid var(--vl-alias-accent-blue); outline-offset: 1px; }
     .task-tab--alert:active { background: var(--vl-alias-status-error-surface-l2, var(--vl-alias-status-error-surface-l1)); }
     .task-tab[aria-selected="true"] .task-tab__count { background: color-mix(in srgb, var(--vl-alias-text-onaccent) 24%, transparent); color: var(--vl-alias-text-onaccent); }
     /* 已停止 tab：新增报错任务时浅红底提醒，点击查看后消除 */

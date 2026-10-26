@@ -641,42 +641,31 @@ html[data-skin="Maid_Atelier"] .mode-toggle:disabled:hover {
   border-color: transparent;
 }
 /* 任务窗口 tab（正在运行/已完成/已停止）：与主界面模式切换同款风格 —— 透明底 + 激活态金色下划线 */
-html[data-skin="Maid_Atelier"] .task-tab {
-  position: relative;
-  background: transparent;
-  border-color: transparent;
-  color: #d7def0;
+/* 切换按钮（tab）：只设组件变量，不写任何页面类名 ——
+   一条规则即对任务页与工具页的全部切换按钮生效（此前只覆盖任务页，工具页一直漏着）。
+   下划线由组件层绘制（.vl-tab[aria-selected="true"]::after），此处只给颜色与尺寸。 */
+html[data-skin="Maid_Atelier"] .vl-tab {
+  --vl-tab-bg: transparent;
+  --vl-tab-color: #d7def0;
+  --vl-tab-border: transparent;
+  --vl-tab-bg-hover: rgba(255, 252, 243, 0.08);
+  --vl-tab-color-hover: var(--vl-skin-maid-gold-soft);
+  --vl-tab-bg-active: rgba(255, 252, 243, 0.12);
+  --vl-tab-bg-on: transparent;
+  --vl-tab-color-on: #fff7e6;
+  --vl-tab-border-on: transparent;
+  --vl-tab-bg-on-hover: rgba(255, 252, 243, 0.08);
+  --vl-tab-border-on-hover: transparent;
+  --vl-tab-bg-on-active: rgba(255, 252, 243, 0.12);
+  --vl-tab-underline-on: var(--vl-skin-maid-gold);
+  --vl-tab-underline-h: 2px;
+  --vl-tab-underline-w: 60%;
+  --vl-tab-underline-radius: 1px;
+  --vl-tab-underline-glow: 0 0 8px rgba(235, 204, 143, 0.45);
   text-shadow: 0 1px 3px rgba(4, 11, 35, 0.55);
   transition: color 0.15s ease, background 0.15s ease;
 }
-html[data-skin="Maid_Atelier"] .task-tab:hover {
-  background: rgba(255, 252, 243, 0.08);
-  color: var(--vl-skin-maid-gold-soft);
-  border-color: transparent;
-}
-html[data-skin="Maid_Atelier"] .task-tab[aria-selected="true"] {
-  background: transparent;
-  border-color: transparent;
-  color: #fff7e6;
-}
-html[data-skin="Maid_Atelier"] .task-tab[aria-selected="true"]:hover {
-  background: rgba(255, 252, 243, 0.08);
-  color: #fff7e6;
-  border-color: transparent;
-}
-html[data-skin="Maid_Atelier"] .task-tab[aria-selected="true"]::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  bottom: 0;
-  transform: translateX(-50%);
-  width: 60%;
-  height: 2px;
-  background: var(--vl-skin-maid-gold);
-  box-shadow: 0 0 8px rgba(235, 204, 143, 0.45);
-  border-radius: 1px;
-  pointer-events: none;
-}
+/* 选中态下划线由组件层 .vl-tab 绘制，颜色见上方 --vl-tab-underline-on */
 html[data-skin="Maid_Atelier"] .task-tab[aria-selected="true"] .task-tab__count {
   background: rgba(255, 247, 230, 0.16);
   color: #fff7e6;

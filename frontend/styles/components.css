@@ -264,3 +264,79 @@
     opacity: var(--vl-static-state-pressed);
   }
 }
+
+@layer components {
+  /* ── 切换按钮（tab）────────────────────────────────────────────
+     状态与装饰全部走变量：皮肤设一次即对所有页面的 tab 生效，无需逐类名覆盖。
+     页面私有类只写与基线不同的差异（尺寸、圆角、徽章等），状态一律由本组件提供。
+     变量族：
+       常态/悬浮/按下  → --vl-tab-bg / -color / -border 及其 -hover / -active 变体
+       选中态        → --vl-tab-bg-on / -color-on / -border-on 及其 -hover / -active 变体
+       装饰          → --vl-tab-underline-on（选中态下划线）、--vl-tab-underline-h、--vl-tab-underline-w
+     下划线由本组件绘制（::after），皮肤只需设颜色 —— 避免每个皮肤各写一份伪元素规则。 */
+  .vl-tab {
+    --vl-tab-bg: transparent;
+    --vl-tab-color: var(--vl-alias-text-secondary);
+    --vl-tab-border: var(--vl-alias-border-neutral-l2);
+    --vl-tab-bg-hover: var(--vl-alias-bg-overlay-l1);
+    --vl-tab-color-hover: var(--vl-alias-text-default-hover);
+    --vl-tab-bg-active: var(--vl-alias-bg-base-tertiary);
+    --vl-tab-bg-on: var(--vl-alias-brand-500);
+    --vl-tab-color-on: var(--vl-alias-text-onaccent);
+    --vl-tab-border-on: var(--vl-alias-brand-500);
+    --vl-tab-bg-on-hover: var(--vl-alias-brand-600);
+    --vl-tab-border-on-hover: var(--vl-alias-brand-600);
+    --vl-tab-bg-on-active: var(--vl-alias-bg-brand-active);
+    --vl-tab-underline-on: transparent;
+    --vl-tab-underline-h: 2px;
+    --vl-tab-underline-w: 60%;
+    --vl-tab-underline-radius: 0;
+    --vl-tab-underline-glow: none;
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 34px;
+    padding: 0 12px;
+    border: 1px solid var(--vl-tab-border);
+    border-radius: var(--vl-static-radius-6);
+    background: var(--vl-tab-bg);
+    color: var(--vl-tab-color);
+    font-family: var(--vl-font-family-base);
+    font-size: 16px;
+    cursor: pointer;
+    transition: background .15s ease, color .15s ease, border-color .15s ease;
+  }
+  .vl-tab:hover { background: var(--vl-tab-bg-hover); color: var(--vl-tab-color-hover); }
+  .vl-tab:active { background: var(--vl-tab-bg-active); }
+  .vl-tab[aria-selected="true"] {
+    background: var(--vl-tab-bg-on);
+    color: var(--vl-tab-color-on);
+    border-color: var(--vl-tab-border-on);
+  }
+  .vl-tab[aria-selected="true"]:hover {
+    background: var(--vl-tab-bg-on-hover);
+    border-color: var(--vl-tab-border-on-hover);
+  }
+  .vl-tab[aria-selected="true"]:active {
+    background: var(--vl-tab-bg-on-active);
+    border-color: var(--vl-tab-bg-on-active);
+  }
+  .vl-tab:focus-visible { outline: 2px solid var(--vl-alias-accent-blue); outline-offset: 1px; }
+  /* 选中态下划线：皮肤设 --vl-tab-underline-on 即可，全站 tab 统一生效 */
+  .vl-tab[aria-selected="true"]::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    transform: translateX(-50%);
+    width: var(--vl-tab-underline-w);
+    height: var(--vl-tab-underline-h);
+    background: var(--vl-tab-underline-on);
+    border-radius: var(--vl-tab-underline-radius);
+    box-shadow: var(--vl-tab-underline-glow);
+    pointer-events: none;
+  }
+}
+
