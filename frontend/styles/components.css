@@ -1024,5 +1024,18 @@
     .vl-table__member-email { color: var(--vl-alias-text-tertiary); font-size: var(--vl-type-body-md-size); line-height: var(--vl-type-body-md-line-height); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
     .vl-table td.vl-table__actions { width: 1%; text-align: right; }
+
+  /* ── 标签页组（从蓝本并入 2026-10-26）────────────────────────
+     只并入「容器」与「计数徽章」两项：
+       · vl-tabset —— 标签页容器（flex + 底部分隔线），我们原本没有
+       · vl-tab__count —— 标签上的计数徽章
+     ⚠ 蓝本的 .ds-tab（单个标签项）**不并入**：我们的 vl-tab 已是下划线式切换按钮，
+       语义完全覆盖，且 task / tool 两页已验收定型（形态为 padding 0 12px + 圆角），
+       把蓝本的 padding 12px 0 + 无圆角搬进来会破坏已验收的观感。
+       属「同一语义已有更贴合本项目的实现」，不是漏做。 */
+    .vl-tabset { display: flex; gap: var(--vl-static-spacer-24); border-bottom: 1px solid var(--vl-alias-border-neutral-l1); }
+
+    .vl-tab__count,
+    .vl-tab .vl-tag.num { margin-left: var(--vl-static-spacer-6); min-width: 18px; height: 18px; padding: 0 var(--vl-static-spacer-6); display: inline-grid; place-items: center; vertical-align: middle; border: none; border-radius: var(--vl-static-radius-full); background: var(--vl-alias-bg-overlay-l2); color: var(--vl-alias-text-tertiary); font-family: var(--vl-font-font-family-metric); font-size: var(--vl-type-body-xs-size); line-height: var(--vl-type-body-xs-line-height); font-weight: var(--vl-type-body-xs-weight); font-variant-numeric: tabular-nums; }
 }
 
