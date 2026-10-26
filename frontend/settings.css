@@ -1,6 +1,6 @@
 @layer reset, tokens, base, layout, components, pages, skins, utilities;
 
-@layer components {
+@layer pages {
 /* -*- coding: utf-8 -*-
    Video Lab — 设置窗口样式（复用各皮肤的 CSS 变量） */
 html, body {
