@@ -47,28 +47,20 @@ body {
   color: var(--vl-alias-text-brand, var(--vl-alias-brand-500));
   padding: 4px 10px 14px;
 }
+/* 差异：导航项形态 —— 无边框填充块、内距 9px 12px、圆角 6px、字号 14px；
+   状态色（悬浮 / 选中 / 按下 / 聚焦）一律由基线 .vl-option 提供，
+   这里只覆盖「选中态用品牌色填充 + 再按下更深一档」这两处与默认不同的地方。 */
 .settings-nav__item {
-  appearance: none;
-  border: none;
-  background: transparent;
-  color: var(--vl-alias-text-secondary);
+  --vl-option-bg-selected: var(--vl-alias-bg-brand);
+  --vl-option-color-selected: var(--vl-alias-text-onaccent);
+  --vl-option-bg-selected-active: var(--vl-alias-bg-brand-active);
   font-size: 14px;
   text-align: left;
   padding: 9px 12px;
   border-radius: 6px;
-  cursor: pointer;
   margin-bottom: 2px;
 }
-.settings-nav__item:hover { background: var(--vl-alias-bg-overlay-l1); color: var(--vl-alias-text-default); }
-.settings-nav__item.is-active {
-  background: var(--vl-alias-bg-brand);
-  color: var(--vl-alias-text-onaccent);
-  font-weight: 600;
-}
-    /* 补齐交互状态（基于原样式改造；选中态用品牌色 active 档，与基线 .vl-btn--primary:active 同源） */
-    .settings-nav__item:active { background: var(--vl-alias-bg-base-tertiary); }
-    .settings-nav__item.is-active:active { background: var(--vl-alias-bg-brand-active); }
-    .settings-nav__item:focus-visible { outline: 2px solid var(--vl-alias-accent-blue); outline-offset: 1px; }
+.settings-nav__item[aria-selected="true"] { font-weight: 600; }
 
 /* ─── 右侧内容 ─── */
 .settings-body {
@@ -368,21 +360,31 @@ body {
    页面不再重复定义；页面只保留与基线不同的差异。 */
 /* ─── 主题选择 ─── */
 .theme-row { display: flex; gap: 10px; }
+/* 差异：主题项形态 —— 带边框的卡片、内距 7px 12px、圆角 8px、字号 13px、内部含预览色块；
+   状态色由基线 .vl-option 提供，这里只覆盖与默认不同的部分：
+   常态有底色与边框、悬浮只亮边框、选中为品牌色描边 + 外发光（底色保持不变）。 */
 .theme-item {
-  appearance: none;
+  --vl-option-bg: var(--vl-alias-bg-base-secondary);
+  --vl-option-color: var(--vl-alias-text-default);
+  --vl-option-border-color: var(--vl-alias-border-neutral-l2);
+  --vl-option-border-hover: var(--vl-alias-border-neutral-l3);
+  --vl-option-bg-hover: var(--vl-alias-bg-base-secondary);
+  --vl-option-bg-selected: var(--vl-alias-bg-base-secondary);
+  --vl-option-color-selected: var(--vl-alias-text-default);
+  --vl-option-border-selected: var(--vl-alias-brand-500);
+  --vl-option-shadow-selected: 0 0 0 1px var(--vl-alias-brand-500);
   display: flex;
   align-items: center;
   gap: 8px;
-  border: 1px solid var(--vl-alias-border-neutral-l2);
-  background: var(--vl-alias-bg-base-secondary);
-  color: var(--vl-alias-text-default);
+  /* ⚠ 只给宽度与线型，**不给颜色**：border 简写含 border-color，而页面层（pages）
+     的层序高于组件层（components），简写会把基线的选中态描边压掉。
+     颜色统一由基线 .vl-option 的 border-color 消费变量给出。 */
+  border-width: 1px;
+  border-style: solid;
   padding: 7px 12px;
   border-radius: 8px;
-  cursor: pointer;
   font-size: 13px;
 }
-.theme-item:hover { border-color: var(--vl-alias-border-neutral-l3); }
-.theme-item.is-active { border-color: var(--vl-alias-brand-500); box-shadow: 0 0 0 1px var(--vl-alias-brand-500); }
 .theme-item__swatch { display: inline-flex; align-items: center; flex-shrink: 0; }
 .theme-item__bg,
 .theme-item__theme {

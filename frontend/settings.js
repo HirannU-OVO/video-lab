@@ -131,7 +131,7 @@
     document.documentElement.setAttribute('data-skin', real);
     try { localStorage.setItem('vl_skin', real); } catch (e) {}   // 与主窗口共享，供内嵌页首屏注入
     var items = document.querySelectorAll('#themeRow .theme-item');
-    items.forEach(function (it) { it.classList.toggle('is-active', it.dataset.theme === id); });
+    items.forEach(function (it) { it.setAttribute('aria-checked', it.dataset.theme === id ? 'true' : 'false'); });
   }
 
   function buildThemeRow() {
@@ -139,7 +139,9 @@
     THEMES.forEach(function (t) {
       var b = document.createElement('button');
       b.type = 'button';
-      b.className = 'theme-item';
+      b.className = 'theme-item vl-option';
+      b.setAttribute('role', 'radio');
+      b.setAttribute('aria-checked', 'false');
       b.dataset.theme = t.id;
       b.innerHTML = '<span class="theme-item__swatch"><i class="theme-item__bg" style="background:' + t.bg + '"></i><i class="theme-item__theme" style="background:' + t.theme + '"></i></span>' + t.label;
       b.addEventListener('click', function () { setSkin(t.id); recomputeDirty(); });
@@ -526,9 +528,9 @@
     }
     document.querySelectorAll('.settings-nav__item').forEach(function (btn) {
       btn.addEventListener('click', function () {
-        document.querySelectorAll('.settings-nav__item').forEach(function (x) { x.classList.remove('is-active'); });
+        document.querySelectorAll('.settings-nav__item').forEach(function (x) { x.setAttribute('aria-selected', 'false'); });
         document.querySelectorAll('.settings-view').forEach(function (v) { v.classList.remove('is-active'); });
-        btn.classList.add('is-active');
+        btn.setAttribute('aria-selected', 'true');
         var view = $('view-' + btn.dataset.view);
         if (view) view.classList.add('is-active');
         if (btn.dataset.view === 'changelog') loadChangelog();

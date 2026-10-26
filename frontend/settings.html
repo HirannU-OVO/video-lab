@@ -37,16 +37,16 @@ var m = new URL(location.href).searchParams.get('token');
 </div>
 <div class="settings-shell">
 
-  <aside class="settings-nav">
+  <aside class="settings-nav" role="tablist">
     <div class="settings-nav__brand">Video Lab</div>
-    <button class="settings-nav__item is-active" data-view="general">通用设置</button>
-    <button class="settings-nav__item" data-view="batch">批量拼接</button>
-    <button class="settings-nav__item" data-view="mask">遮罩叠加</button>
-    <button class="settings-nav__item" data-view="tool">视频处理</button>
+    <button class="settings-nav__item vl-option" role="tab" aria-selected="true" data-view="general">通用设置</button>
+    <button class="settings-nav__item vl-option" role="tab" aria-selected="false" data-view="batch">批量拼接</button>
+    <button class="settings-nav__item vl-option" role="tab" aria-selected="false" data-view="mask">遮罩叠加</button>
+    <button class="settings-nav__item vl-option" role="tab" aria-selected="false" data-view="tool">视频处理</button>
 
-    <button class="settings-nav__item" data-view="maintenance">维护</button>
-    <button class="settings-nav__item" data-view="changelog">更新日志</button>
-    <button class="settings-nav__item" data-view="about">关于</button>
+    <button class="settings-nav__item vl-option" role="tab" aria-selected="false" data-view="maintenance">维护</button>
+    <button class="settings-nav__item vl-option" role="tab" aria-selected="false" data-view="changelog">更新日志</button>
+    <button class="settings-nav__item vl-option" role="tab" aria-selected="false" data-view="about">关于</button>
   </aside>
 
   <div class="settings-body">
@@ -60,7 +60,7 @@ var m = new URL(location.href).searchParams.get('token');
           <label class="form-group__label">主题<small>界面的配色方案，立即生效</small></label>
         </div>
         <div class="form-group__ops">
-          <div class="theme-row" id="themeRow"></div>
+          <div class="theme-row" id="themeRow" role="radiogroup"></div>
         </div>
       </div>
 

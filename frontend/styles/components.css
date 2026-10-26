@@ -522,5 +522,68 @@
     transform: rotate(45deg);
     pointer-events: none;
   }
+
+  /* ── 可选列表项（vl-option）────────────────────────────────
+     定位：设置页导航项、主题项等「可点选的列表项」的共同基线。
+     形态（内距 / 边框 / 圆角 / 字号 / 内部结构）由页面私有类给；
+     状态色与装饰由本组件给，且全部走变量 → 皮肤将来只需设一条 .vl-option
+     即可覆盖全站同类项，不必逐个页面类名。
+     两种典型形态共用同一套状态：
+       · 填充型（导航项）：选中 = 品牌色底 + 反色文字
+       · 描边型（主题项）：选中 = 品牌色描边 + 外发光（底色保持不变）
+     选中态支持属性写法（aria-selected / aria-checked）与状态类（is-active）；
+     属性优先（状态属性化规范），状态类仅作兼容。
+     变量：常态 3 / 悬浮 3 / 选中 4 / 按下 1 / 聚焦 1 */
+  .vl-option {
+    --vl-option-bg: transparent;
+    --vl-option-color: var(--vl-alias-text-secondary);
+    --vl-option-border-color: transparent;
+    --vl-option-bg-hover: var(--vl-alias-bg-overlay-l1);
+    --vl-option-color-hover: var(--vl-alias-text-default);
+    --vl-option-border-hover: transparent;
+    --vl-option-bg-active: var(--vl-alias-bg-base-tertiary);
+    --vl-option-color-active: var(--vl-alias-text-default);
+    --vl-option-bg-selected: var(--vl-alias-bg-brand);
+    --vl-option-color-selected: var(--vl-alias-text-onaccent);
+    --vl-option-border-selected: var(--vl-option-bg-selected);
+    --vl-option-bg-selected-active: var(--vl-option-bg-selected);
+    --vl-option-shadow-selected: none;
+    --vl-option-focus-ring: 2px solid var(--vl-alias-accent-blue);
+    appearance: none;
+    cursor: pointer;
+    text-align: left;
+    font-family: inherit;
+    background: var(--vl-option-bg);
+    color: var(--vl-option-color);
+    border-color: var(--vl-option-border-color);
+  }
+  .vl-option:hover {
+    background: var(--vl-option-bg-hover);
+    color: var(--vl-option-color-hover);
+    border-color: var(--vl-option-border-hover);
+  }
+  .vl-option:active {
+    background: var(--vl-option-bg-active);
+    color: var(--vl-option-color-active);
+  }
+  .vl-option[aria-selected="true"],
+  .vl-option[aria-checked="true"],
+  .vl-option.is-active {
+    background: var(--vl-option-bg-selected);
+    color: var(--vl-option-color-selected);
+    border-color: var(--vl-option-border-selected);
+    box-shadow: var(--vl-option-shadow-selected);
+  }
+  /* 选中态再按下：颜色更深一档。默认与选中态同色；需要更深时由页面类覆盖
+     （导航项原本是品牌色 active 档，描边型则保持选中态底色不变）。 */
+  .vl-option[aria-selected="true"]:active,
+  .vl-option[aria-checked="true"]:active,
+  .vl-option.is-active:active {
+    background: var(--vl-option-bg-selected-active);
+  }
+  .vl-option:focus-visible {
+    outline: var(--vl-option-focus-ring);
+    outline-offset: 1px;
+  }
 }
 
