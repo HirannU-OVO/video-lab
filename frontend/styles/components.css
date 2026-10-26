@@ -71,10 +71,36 @@
   .vl-btn--subtle:hover:where(:not([disabled]):not([aria-disabled="true"])) { color: var(--vl-alias-text-default); background: var(--vl-alias-bg-base-tertiary); }
 
   /* size */
+  /* ── 从蓝本整合的变体（2026-10-26）────────────────────────
+     以下变体取自成熟体系 ds-btn，本页暂未使用 —— 保留是为了「要用时直接取用」，
+     而不是等需要时再手写一遍。语义与蓝本一致。 */
+  .vl-btn--tertiary {
+    background: transparent;
+    border-color: transparent;
+    color: var(--vl-alias-text-secondary);
+  }
+  .vl-btn--tertiary:hover:where(:not([disabled]):not([aria-disabled="true"])) {
+    background: var(--vl-alias-bg-overlay-l1);
+    color: var(--vl-alias-text-default);
+  }
+  .vl-btn--warning {
+    background: var(--vl-alias-status-warning-default);
+    border-color: var(--vl-alias-status-warning-default);
+    color: var(--vl-alias-text-white);
+  }
+  .vl-btn--warning:hover:where(:not([disabled]):not([aria-disabled="true"])) {
+    background: var(--vl-alias-status-warning-surface-l3);
+    border-color: var(--vl-alias-status-warning-surface-l3);
+  }
+  /* 纯图标按钮：正方形，宽度随尺寸档位（蓝本 ds-btn--icon 的 sm/lg 宽度 24/32） */
+  .vl-btn--icon { padding: 0; width: var(--vl-btn-h); }
+  .vl-btn--icon.vl-btn--xs { width: 20px; }
+  .vl-btn--icon.vl-btn--sm { width: 24px; }
+  .vl-btn--icon.vl-btn--lg { width: 32px; }
+
   .vl-btn--xs { --vl-btn-h: 20px; --vl-btn-px: 6px; --vl-btn-fs: 11px; border-radius: var(--vl-static-radius-4); }
   .vl-btn--sm { --vl-btn-h: 24px; --vl-btn-px: 8px; --vl-btn-fs: 12px; border-radius: var(--vl-static-radius-4); }
-  .vl-btn--lg { --vl-btn-h: 32px; --vl-btn-px: 14px; --vl-btn-fs: 13px; }
-
+  .vl-btn--lg { --vl-btn-h: 32px; --vl-btn-px: var(--vl-static-spacer-16); --vl-btn-fs: var(--vl-type-body-base-size); }
   /* state（属性表达，不新增状态类） */
   /* 禁用态取全站惯例（ds-btn--secondary / mode-toggle / ds-pagination__item 一致）：
      not-allowed 光标 + .5 透明度。原先的 default 光标 + .9 透明度使禁用态几乎看不出禁用，
@@ -524,6 +550,8 @@
     background: var(--vl-alias-status-warning-surface-l1);
     color: var(--vl-alias-status-warning-default);
   }
+  /* 与 --ok 同义（蓝本命名为 --success，两个都留以便按蓝本取用） */
+  .vl-tag--success { background: var(--vl-alias-status-success-surface-l1); color: var(--vl-alias-status-success-default); }
 
   /* 小号复选/单选（间距与字号小一档，方框尺寸不变） */
   .vl-check--sm,
