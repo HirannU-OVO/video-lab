@@ -76,13 +76,16 @@
   .vl-btn--lg { --vl-btn-h: 32px; --vl-btn-px: 14px; --vl-btn-fs: 13px; }
 
   /* state（属性表达，不新增状态类） */
+  /* 禁用态取全站惯例（ds-btn--secondary / mode-toggle / ds-pagination__item 一致）：
+     not-allowed 光标 + .5 透明度。原先的 default 光标 + .9 透明度使禁用态几乎看不出禁用，
+     是基线缺陷（页面私有类各自补写反而形成了不一致）。 */
   .vl-btn[disabled],
   .vl-btn[aria-disabled="true"] {
     background: var(--vl-alias-bg-base-tertiary);
     border-color: var(--vl-alias-border-neutral-l1);
     color: var(--vl-alias-text-disabled);
-    cursor: default;
-    opacity: .9;
+    cursor: not-allowed;
+    opacity: .5;
   }
   .vl-btn[aria-pressed="true"] {
     background: var(--vl-alias-bg-base-secondary);

@@ -30,8 +30,9 @@
       line-height: inherit;   /* ⚠ .vl-btn 默认 line-height:1，本按钮需继承行高 */   /* 保留工具页原有的可点边框观感（.vl-btn--ghost 自带 transparent） */
       flex-shrink: 0;      /* 文字恒一行、且不参与压缩（压缩交给同行输入框） */
     }
-    .tl-btn:hover { background: var(--vl-alias-bg-overlay-l1); color: var(--vl-alias-text-default-hover); }
-    .tl-btn:disabled { opacity: .5; cursor: not-allowed; }
+    /* hover 底色与 disabled 态一律由基线 .vl-btn / .vl-btn--ghost 提供，
+       此处只保留页面独有的「悬浮时文字变亮」 */
+    .tl-btn:hover { color: var(--vl-alias-text-default-hover); }
     .tl-check { display: inline-flex; align-items: center; gap: 5px; font-size: var(--vl-type-body-sm-size); color: var(--vl-alias-text-secondary); cursor: pointer; }
     .tl-hint { margin-top: 6px; font-size: var(--vl-type-body-xs-size); color: var(--vl-alias-text-tertiary); line-height: 1.5; }
     .tl-hint--warn { color: var(--vl-alias-status-warning-default); }
@@ -52,8 +53,7 @@
     .tl-run {
       font-weight: var(--vl-font-font-weight-strong);
     }
-    /* 差异：选中态加粗（基线 .vl-tab 的选中态样式由组件层提供，此处只写字重差异） */
-    .tl-tab[aria-selected="true"] { font-weight: var(--vl-font-font-weight-strong); }
+    /* 差异：无 —— 选中态样式全部由基线 .vl-tab 提供（含字重，与任务页一致） */
 
     /* ── 滚动区 ── */
     .tl-scroll { flex: 1; overflow-y: auto; padding: 10px 14px 14px; }
