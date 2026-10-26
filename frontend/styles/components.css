@@ -1037,5 +1037,39 @@
 
     .vl-tab__count,
     .vl-tab .vl-tag.num { margin-left: var(--vl-static-spacer-6); min-width: 18px; height: 18px; padding: 0 var(--vl-static-spacer-6); display: inline-grid; place-items: center; vertical-align: middle; border: none; border-radius: var(--vl-static-radius-full); background: var(--vl-alias-bg-overlay-l2); color: var(--vl-alias-text-tertiary); font-family: var(--vl-font-font-family-metric); font-size: var(--vl-type-body-xs-size); line-height: var(--vl-type-body-xs-line-height); font-weight: var(--vl-type-body-xs-weight); font-variant-numeric: tabular-nums; }
+
+  /* ── 删除蓝本前补齐的资产（2026-10-26 逐项对照后发现）──────────
+     逐项对照 ds-* 的 85 个选择器时，发现以下 5 项在 vl-* 里没有等价实现，
+     补齐后才允许删除蓝本：
+       · vl-backdrop     —— 对话框/抽屉的遮罩层
+       · vl-btn-group    —— 按钮组（并排按钮的间距与合并圆角）
+       · vl-card         —— 卡片容器
+       · vl-input-group__icon —— 输入框组内的图标位
+       · vl-tag .icon    —— 标签内图标
+     ⚠ 其余未被「逐项对照」判为缺失的项，均属「实现方式不同但等效」，
+       例如变体三态改为统一三态 + 变量、input 用类型选择器、下拉箭头用 ::after 绘制。 */
+    .vl-btn-group { display: inline-flex; }
+
+    .vl-btn-group > .ds-btn { border-radius: var(--vl-static-radius-0); margin-left: calc(-1 * var(--vl-static-border-width-default)); }
+
+    .vl-btn-group > .ds-btn:first-child { border-top-left-radius: var(--vl-static-radius-8); border-bottom-left-radius: var(--vl-static-radius-8); margin-left: 0; }
+
+    .vl-btn-group > .ds-btn:last-child { border-top-right-radius: var(--vl-static-radius-8); border-bottom-right-radius: var(--vl-static-radius-8); }
+
+    .vl-card {
+      background: var(--vl-alias-bg-base-secondary);
+      border: 1px solid var(--vl-alias-border-neutral-l1);
+      border-radius: var(--vl-static-radius-12);
+      padding: var(--vl-static-spacer-20);
+      color: var(--vl-alias-text-default);
+    }
+
+    .vl-backdrop { position: relative; background: var(--vl-alias-bg-overlay-l4); border: 1px solid var(--vl-alias-border-neutral-l1); padding: var(--vl-static-spacer-32) var(--vl-static-spacer-24); display: flex; align-items: center; justify-content: center; }
+
+    .vl-input-group__icon { color: var(--vl-alias-icon-secondary); display: inline-flex; align-items: center; }
+
+    .vl-tag .icon { width: 12px; height: 12px; }
+
+.vl-tag .icon { width: 12px; height: 12px; }
 }
 
