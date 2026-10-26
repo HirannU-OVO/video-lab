@@ -329,21 +329,8 @@ body {
   min-width: 110px;
 }
 /* @deprecated 请改用 .vl-btn；本类只保留与基础组件不同的差异 */
-.btn {
-  /* 差异：设置页按钮由 padding 撑高、字号 14px（配 height:auto + padding:7px 14px）。
-     ⚠ 字号与行高必须成套保留：实测把字号回归基线（14px→13px、line-height inherit→1）会让
-     按钮高度从 44px 降到 37px，进而引发整页 72 个元素的布局位移（表单组高度 101→94px、
-     各元素纵坐标上移 4px）—— 单按钮看是 1px 的字号差，在撑高布局里会放大成整页位移。 */
-  height: auto;
-  padding: 7px 14px;
-  font-size: 14px;
-  line-height: inherit;
-  gap: 0;
-  justify-content: normal;
-  align-items: normal;
-  min-width: auto;
-}
-.btn-ghost { flex: 0 0 auto; }
+/* 设置页按钮外观全部回归基线 .vl-btn（原为 padding 撑高 + 14px 字号 + 独立对齐覆盖） */
+/* .btn-ghost 只剩 flex 约束，属空壳，一并移除 */
 /* .btn-primary 的三态已由基线 .vl-btn--primary 提供（brand-500 / hover brand-600 / disabled 基线禁用态），
    页面不再重复定义；页面只保留与基线不同的差异。 */
 /* ─── 主题选择 ─── */
@@ -637,4 +624,3 @@ body {
 }
 .about-info__v a:hover { color: var(--vl-alias-text-brand, var(--vl-alias-brand-500)); text-decoration-color: currentColor; }
 .about-info__sep { color: var(--vl-alias-text-tertiary); }
-}

@@ -6,12 +6,15 @@
            background: var(--vl-alias-bg-base-default); color: var(--vl-alias-text-default); font-family: var(--vl-font-family-base); }
 
     /* ── 输入区（两 Tab 之外：目录与递归）── */
-    /* 差异：工具页的分组小标题是「无底色 + 下边框 + 前置分隔线延伸」的紧凑样式，
-       只覆盖与基线 .vl-section-head 不同的部分 —— 底色透明、去掉下边框、字号更小、
-       并用 ::after 画向右延伸的分隔线（⚠ 因为它不加 --interactive，::after 空闲）。 */
+    /* 差异：工具页的分组小标题是「无底色 + 无线 + 文字后接延伸线」的紧凑样式。
+       只覆盖与基线 .vl-section-head 不同的部分 —— 底色透明、字号更小、无内距，
+       并用 ::after 画**文字后面**向右延伸的分隔线（⚠ 因为它不加 --interactive，::after 空闲）。
+       ⚠ 「无下边框」不用变量表达（皮肤层的变量会压过页面层），改用组件变体
+         .vl-section-head--no-line（直接写 border-bottom: 0），已加在 HTML 上。
+       ⚠ 与「区块头」的区别：区块头（如「输出设置」）保留基线那条下边框来分隔内容；
+         这里这种纯分组小标题后面紧跟具体控件、下方还有别的分组，故不要分隔线。 */
     .cv-group {
       --vl-sh-bg: transparent;
-      --vl-sh-border: transparent;
       --vl-sh-pad-y: 0;
       --vl-sh-pad-x: 0;
       margin: 12px 0 4px;
@@ -28,25 +31,17 @@
       height: 1px;
       background: var(--vl-alias-border-neutral-l1);
     }
-    .tl-input { flex-shrink: 0; padding: 10px 14px; border-bottom: 1px solid var(--vl-alias-border-neutral-l1); background: var(--vl-alias-bg-base-default); }
+    /* 差异：区域留白与不收缩（原本还有下边框与底色，已回归基线；
+       原先那几条 :hover / :focus / [disabled] 状态对 div 容器无效，一并删除） */
+    .tl-input { flex-shrink: 0; padding: 10px 14px; }
     /* 补齐交互状态（基于原样式改造；令牌与基线 .vl-input 保持一致，皮肤可覆盖） */
-    .tl-input:hover:not([disabled]) { border-bottom-color: var(--vl-alias-border-neutral-l3); }
-    .tl-input:focus { outline: none; border-bottom-color: var(--vl-alias-accent-blue); }
-    .tl-input:disabled, .tl-input[readonly] { background: var(--vl-alias-bg-base-tertiary); color: var(--vl-alias-text-disabled); cursor: default; }
-    .tl-input[aria-invalid="true"] { border-bottom-color: var(--vl-alias-status-error-default); }
     .tl-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     /* 差异：行内输入框撑满剩余宽度（属布局差异，留在页面层；用直接子选择器，
        避免匹配到 .vl-check 内部的 checkbox） */
     .tl-line > .vl-input { flex: 1; min-width: 180px; }
     .tl-label { flex-shrink: 0; font-size: var(--vl-type-body-sm-size); color: var(--vl-alias-text-secondary); }
-    .tl-btn {
-      /* 差异：仅保留「实色可点边框」与「不参与压缩」两项 ——
-         边框从基线的 transparent 变为可见灰线，回归会让按钮轮廓消失（差异巨大，故保留）；
-         flex-shrink 属布局约束而非外观，同样保留。
-         内距、间隙、文字色、行高、hover 反馈、禁用态一律回归基线。 */
-      border-color: var(--vl-alias-border-neutral-l2);
-      flex-shrink: 0;
-    }
+    /* 外观全部回归基线 .vl-btn--ghost（原为实色灰边框）；仅保留不参与压缩这一布局约束 */
+    .tl-btn { flex-shrink: 0; }
     .tl-check { display: inline-flex; align-items: center; gap: 5px; font-size: var(--vl-type-body-sm-size); color: var(--vl-alias-text-secondary); cursor: pointer; }
     /* 差异：上方 6px（字号/行高/颜色回归基线） */
     .tl-hint { --vl-hint-mt: 6px; }
@@ -108,11 +103,9 @@
     .tl-field__label { font-size: var(--vl-type-body-xs-size); color: var(--vl-alias-text-secondary); white-space: nowrap; }
     .tl-field__hint { font-size: 10px; color: var(--vl-alias-text-tertiary); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .tl-field__row { display: flex; align-items: center; gap: 6px; }
-    .tl-num, .tl-sel, .tl-path {
-      height: 25px; padding: 0 6px; border-radius: var(--vl-static-radius-6);
-      border: 1px solid var(--vl-alias-border-neutral-l2); background: var(--vl-alias-bg-input-default); color: var(--vl-alias-text-default);
-      font-family: var(--vl-font-family-base); font-size: var(--vl-type-body-sm-size);
-    }
+    /* 外观全部回归基线 .vl-input（原本是 25px 高的私有输入框实现） */
+    .tl-num { width: 84px; }
+    .tl-path { min-width: 0; }
     .tl-num { width: 84px; }
     /* 转分辨率的锁链按钮：锁定=主题色竖链，解绑=灰链 */
     .tl-link {

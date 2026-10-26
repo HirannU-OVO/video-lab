@@ -44,9 +44,9 @@ var m = new URL(location.href).searchParams.get('token');
     <div class="tl-line">
       <span class="tl-label">素材文件夹</span>
       <input class="vl-input vl-input--sm" id="inRoot" placeholder="可直接粘贴/输入文件夹路径，或点右侧按钮选择（留空则不处理）">
-      <button class="tl-btn vl-btn vl-btn--ghost" id="btnPickDir"><i data-icon="folder-open" data-size="14"></i>选择文件夹</button>
-      <button class="tl-btn vl-btn vl-btn--ghost" id="btnPickFiles"><i data-icon="video" data-size="14"></i>选择视频</button>
-      <button class="tl-btn vl-btn vl-btn--ghost" id="btnClearInput" title="清空已选输入"><i data-icon="x" data-size="14"></i>清空</button>
+      <button class="tl-btn vl-btn" id="btnPickDir"><i data-icon="folder-open" data-size="14"></i>选择文件夹</button>
+      <button class="tl-btn vl-btn" id="btnPickFiles"><i data-icon="video" data-size="14"></i>选择视频</button>
+      <button class="tl-btn vl-btn" id="btnClearInput" title="清空已选输入"><i data-icon="x" data-size="14"></i>清空</button>
       <label class="vl-check vl-check--sm"><input type="checkbox" id="inRecursive" checked><span class="vl-check__box"></span><span class="vl-check__text">递归子文件夹</span></label>
     </div>
     <div class="vl-hint tl-hint" id="inputHint"></div>
@@ -88,38 +88,38 @@ var m = new URL(location.href).searchParams.get('token');
             <div class="vl-toolbar cv-bar">
               <span class="tl-label">时间点</span>
               <input type="range" id="cvAtRange" min="0" max="1" value="0" step="0.05" title="拖动取帧（松手后渲染）">
-              <input class="tl-num" type="number" id="cvAt" min="0" step="0.1" value="0" title="秒">
-              <button class="tl-btn vl-btn vl-btn--ghost" id="cvAtRandom">随机换帧</button>
+              <input class="vl-input vl-input--sm tl-num" type="number" id="cvAt" min="0" step="0.1" value="0" title="秒">
+              <button class="tl-btn vl-btn" id="cvAtRandom">随机换帧</button>
               <label class="vl-check vl-check--sm" title="勾选 = 每次改动都渲染真实帧（准确，但每次要等一小会儿）；默认为占位示意：即时反馈几何，微调不用等渲染"><input type="checkbox" id="cvLive"><span class="vl-check__box"></span><span>实时预览</span></label>
             </div>
             <!-- 样本 / 背景各一行：两个按钮**并排相邻**，名称紧接在按钮右侧（超长省略，悬浮见全名） -->
             <div class="vl-toolbar vl-toolbar--nowrap cv-bar cv-bar--list" id="cvSampleRow" style="display:none">
               <span class="tl-label">样本</span>
-              <button class="tl-btn vl-btn vl-btn--ghost" id="cvSamplePrev">上一个</button>
-              <button class="tl-btn vl-btn vl-btn--ghost" id="cvSampleNext">下一个</button>
+              <button class="tl-btn vl-btn" id="cvSamplePrev">上一个</button>
+              <button class="tl-btn vl-btn" id="cvSampleNext">下一个</button>
               <span class="cv-info" id="cvSampleInfo">—</span>
             </div>
             <div class="vl-toolbar vl-toolbar--nowrap cv-bar cv-bar--list">
               <span class="tl-label">背景</span>
-              <button class="tl-btn vl-btn vl-btn--ghost" id="cvBgPrev">上一个</button>
-              <button class="tl-btn vl-btn vl-btn--ghost" id="cvBgNext">下一个</button>
+              <button class="tl-btn vl-btn" id="cvBgPrev">上一个</button>
+              <button class="tl-btn vl-btn" id="cvBgNext">下一个</button>
               <span class="cv-info" id="cvBgInfo">—</span>
             </div>
           </div>
           <div class="cv-warn" id="cvWarn"></div>
 
-          <div class="vl-section-head cv-group">水印</div>
+          <div class="vl-section-head vl-section-head--no-line cv-group">水印</div>
           <div class="cv-row">
             <span class="tl-label">水印 PNG</span>
-            <input class="tl-path" type="text" id="cvWm" placeholder="可留空（水印图，整幅叠加）" style="flex:1;min-width:0;max-width:340px">
-            <button class="tl-btn vl-btn vl-btn--ghost" id="cvPickWm">选择</button>
+            <input class="vl-input vl-input--sm tl-path" type="text" id="cvWm" placeholder="可留空（水印图，整幅叠加）" style="flex:1;min-width:0;max-width:340px">
+            <button class="tl-btn vl-btn" id="cvPickWm">选择</button>
           </div>
 
 
         </div>
 
         <div class="cv-params">
-          <div class="vl-section-head cv-group">成片画布尺寸（输出分辨率）</div>
+          <div class="vl-section-head vl-section-head--no-line cv-group">成片画布尺寸（输出分辨率）</div>
           <div class="cv-row">
             <span class="vl-select-wrap"><select class="vl-select" id="cvRatio" style="flex:0 0 84px" title="常用比例：选后改宽/高会按比例联动">
               <option value="9:16">9:16</option>
@@ -129,16 +129,16 @@ var m = new URL(location.href).searchParams.get('token');
               <option value="1:1">1:1</option>
               <option value="自定义">自定义</option>
             </select></span>
-            <input class="tl-num" type="number" id="cvTW" min="16" max="7680" step="2" value="1920" title="画布宽（输出分辨率）">
+            <input class="vl-input vl-input--sm tl-num" type="number" id="cvTW" min="16" max="7680" step="2" value="1920" title="画布宽（输出分辨率）">
             <button type="button" class="tl-link tl-link--on" id="cvLink" title="比例锁：锁定后改宽/高按比例联动；点击解绑可自由填写"><i data-icon="link" data-size="13"></i></button>
-            <input class="tl-num" type="number" id="cvTH" min="16" max="7680" step="2" value="1080" title="画布高（输出分辨率）">
+            <input class="vl-input vl-input--sm tl-num" type="number" id="cvTH" min="16" max="7680" step="2" value="1080" title="画布高（输出分辨率）">
           </div>
 
-          <div class="vl-section-head cv-group">内容（大小 · 位置 · 外观）</div>
+          <div class="vl-section-head vl-section-head--no-line cv-group">内容（大小 · 位置 · 外观）</div>
           <div class="cv-row">
             <span class="tl-label">等比缩放</span>
             <input type="range" id="cvScale" min="0.05" max="2" step="0.01" value="0.74">
-            <input class="tl-num" type="number" id="cvScaleNum" min="0.05" max="3" step="0.01" value="0.74">
+            <input class="vl-input vl-input--sm tl-num" type="number" id="cvScaleNum" min="0.05" max="3" step="0.01" value="0.74">
           </div>
           <div class="vl-hint tl-hint">视频在画布中的大小，非输出尺寸；拖角手柄吸满屏 / 一半（Alt 关闭）</div>
           <div class="cv-row">
@@ -154,8 +154,8 @@ var m = new URL(location.href).searchParams.get('token');
           </div>
           <div class="cv-row">
             <span class="tl-label">偏移 X / Y</span>
-            <input class="tl-num" type="number" id="cvDx" step="1" value="0">
-            <input class="tl-num" type="number" id="cvDy" step="1" value="160">
+            <input class="vl-input vl-input--sm tl-num" type="number" id="cvDx" step="1" value="0">
+            <input class="vl-input vl-input--sm tl-num" type="number" id="cvDy" step="1" value="160">
           </div>
 
           <div class="cv-row">
@@ -169,7 +169,7 @@ var m = new URL(location.href).searchParams.get('token');
             <span class="cv-val" id="cvBorderWVal">0</span>
             <input class="cv-swatch" type="color" id="cvBorderColor" value="#ffffff" title="边框颜色">
           </div>
-          <div class="vl-section-head cv-group">背景</div>
+          <div class="vl-section-head vl-section-head--no-line cv-group">背景</div>
           <div class="cv-row">
             <span class="tl-label">方式</span>
             <span class="vl-select-wrap"><select class="vl-select" id="cvBgMode">
@@ -182,9 +182,9 @@ var m = new URL(location.href).searchParams.get('token');
           </div>
           <div class="cv-row" id="cvBgDirRow">
             <span class="tl-label">背景目录</span>
-            <input class="tl-path" type="text" id="cvBgDir" placeholder="背景图片或视频所在目录" style="flex:1;min-width:0">
-            <button class="tl-btn vl-btn vl-btn--ghost" id="cvPickBgDir">选择</button>
-            <button class="tl-btn vl-btn vl-btn--ghost" id="cvScanBg" title="扫描候选并统计数量">扫描</button>
+            <input class="vl-input vl-input--sm tl-path" type="text" id="cvBgDir" placeholder="背景图片或视频所在目录" style="flex:1;min-width:0">
+            <button class="tl-btn vl-btn" id="cvPickBgDir">选择</button>
+            <button class="tl-btn vl-btn" id="cvScanBg" title="扫描候选并统计数量">扫描</button>
           </div>
           <div class="cv-row" id="cvEachBgRow">
             <label class="vl-check vl-check--sm" title="勾选后每个背景各出一批（成片数 = 内容数 × 背景数）">
@@ -193,8 +193,8 @@ var m = new URL(location.href).searchParams.get('token');
           </div>
           <div class="cv-row" id="cvBgPathRow" hidden>
             <span class="tl-label">背景文件</span>
-            <input class="tl-path" type="text" id="cvBgPath" placeholder="选择背景图片或视频" style="flex:1;min-width:0">
-            <button class="tl-btn vl-btn vl-btn--ghost" id="cvPickBgPath">选择</button>
+            <input class="vl-input vl-input--sm tl-path" type="text" id="cvBgPath" placeholder="选择背景图片或视频" style="flex:1;min-width:0">
+            <button class="tl-btn vl-btn" id="cvPickBgPath">选择</button>
           </div>
           <div class="cv-row">
             <span class="tl-label">适合方式</span>
@@ -210,12 +210,12 @@ var m = new URL(location.href).searchParams.get('token');
             <span class="cv-val" id="cvBgBlurVal">0</span>
           </div>
 
-          <div class="vl-section-head cv-group">参数预设</div>
+          <div class="vl-section-head vl-section-head--no-line cv-group">参数预设</div>
           <div class="cv-row">
             <span class="vl-select-wrap"><select class="vl-select" id="cvPreset" style="flex:1 1 auto;min-width:0;max-width:260px" title="选中即加载"><option value="">（未选择）</option></select></span>
-            <button class="tl-btn vl-btn vl-btn--ghost" id="cvPresetSave" title="把当前参数存成一个新预设">新建</button>
-            <button class="tl-btn vl-btn vl-btn--ghost" id="cvPresetOverwrite" title="用当前参数覆盖选中的预设">覆盖</button>
-            <button class="tl-btn vl-btn vl-btn--ghost" id="cvPresetDelete">删除</button>
+            <button class="tl-btn vl-btn" id="cvPresetSave" title="把当前参数存成一个新预设">新建</button>
+            <button class="tl-btn vl-btn" id="cvPresetOverwrite" title="用当前参数覆盖选中的预设">覆盖</button>
+            <button class="tl-btn vl-btn" id="cvPresetDelete">删除</button>
           </div>
         </div>
       </div>
@@ -237,7 +237,7 @@ var m = new URL(location.href).searchParams.get('token');
         <div class="tl-out__row tl-out__row--hide" id="outDirRow">
           <span class="tl-label">目标文件夹</span>
           <input class="vl-input vl-input--sm" id="outDir" placeholder="选择输出文件夹">
-          <button class="tl-btn vl-btn vl-btn--ghost" id="btnPickOutDir"><i data-icon="folder-open" data-size="14"></i>选择</button>
+          <button class="tl-btn vl-btn" id="btnPickOutDir"><i data-icon="folder-open" data-size="14"></i>选择</button>
         </div>
         <div class="tl-out__row tl-out__row--hide" id="outNameRow">
           <span class="tl-label">文件名</span>
@@ -275,8 +275,8 @@ var m = new URL(location.href).searchParams.get('token');
         <div class="tl-out__row">
           <label class="vl-check vl-check--sm"><input type="checkbox" id="outBackup"><span class="vl-check__box"></span><span>处理前备份原文件</span></label>
           <input class="vl-input vl-input--sm" id="outBackupDir" placeholder="备份文件夹（留空 = 设置里的默认备份文件夹）" style="max-width:320px">
-          <button class="tl-btn vl-btn vl-btn--ghost" id="btnPickBackupDir"><i data-icon="folder-open" data-size="14"></i>选择备份文件夹</button>
-          <button class="tl-btn vl-btn vl-btn--ghost" id="btnOpenBackupDir" title="打开当前设定的备份文件夹（留空则打开默认备份文件夹）"><i data-icon="folder-open" data-size="14"></i>打开备份文件夹</button>
+          <button class="tl-btn vl-btn" id="btnPickBackupDir"><i data-icon="folder-open" data-size="14"></i>选择备份文件夹</button>
+          <button class="tl-btn vl-btn" id="btnOpenBackupDir" title="打开当前设定的备份文件夹（留空则打开默认备份文件夹）"><i data-icon="folder-open" data-size="14"></i>打开备份文件夹</button>
         </div>
         <div class="vl-hint tl-hint" id="outHint"></div>
         <div class="tl-sep"></div>

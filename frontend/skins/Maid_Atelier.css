@@ -1633,9 +1633,11 @@ html[data-skin="Maid_Atelier"] .modal-btn--primary:hover {
 @layer skins {
   /* 区块头：只设接口变量，不写任何页面类名 —— 所有页面共用 .vl-section-head 的地方自动生效 */
   html[data-skin="Maid_Atelier"] .vl-section-head {
-    --vl-sh-bg: linear-gradient(180deg, rgba(197, 164, 104, 0.16), rgba(197, 164, 104, 0.04));
+    /* 背景透明：女仆皮肤的分组头原本就是透明底（渐变卡片是后加的，与页面其它区块不协调）。
+       金色文字保留 —— 比默认的浅色更贴合皮肤气质。
+       金色下边框保留：区块头靠它和下面的内容分隔（纯分组小标题由页面类自行去掉）。 */
+    --vl-sh-bg: transparent;
     --vl-sh-color: var(--vl-skin-maid-gold, #c5a468);
     --vl-sh-border: rgba(197, 164, 104, 0.38);
-    --vl-sh-radius: 4px;
   }
 }

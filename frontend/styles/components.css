@@ -438,6 +438,10 @@
     --vl-sh-pad-x: 10px;
     --vl-sh-radius: 0;
     --vl-sh-weight: var(--vl-font-font-weight-strong);
+    /* 下边框：区块头用它把「标题」和「下面的内容」分隔开 —— 实测这条线本来就是
+       分组头自己承担的（不是由外层框体提供），故保留在基线。
+       ⚠ 纯分组小标题（如工具页的「水印」「背景」这类紧凑小标题）不需要这条线，
+         由各自的页面类把 --vl-sh-border 设为 transparent。 */
     display: block;
     padding: var(--vl-sh-pad-y) var(--vl-sh-pad-x);
     background: var(--vl-sh-bg);
@@ -447,6 +451,13 @@
     font-size: var(--vl-type-body-sm-size);
     font-weight: var(--vl-sh-weight);
   }
+  /* 无分隔线的区块头：用于「分组小标题」这类紧贴控件、下方还有其它分组的场合。
+     ⚠ 必须用 **属性**（border-bottom）而不是把 --vl-sh-border 设为 transparent：
+        变量的层序是 skin > pages > components，皮肤一旦给 --vl-sh-border 设了颜色，
+        页面层再写 transparent 也压不住（实测女仆皮肤下分组小标题仍冒出金线）。
+        直接写 border-bottom 属于组件层属性，皮肤不声明该属性，故一定生效。 */
+  .vl-section-head--no-line { border-bottom: 0; }
+
   /* 可折叠标题行（点击展开/收起） */
   .vl-section-head--interactive {
     display: flex;

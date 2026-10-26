@@ -208,15 +208,15 @@
       return '<option value="' + o + '"' + (o === v.ratio ? ' selected' : '') + '>' + o + '</option>';
     }).join('');
     return '<label class="tl-field"><span class="tl-field__label">画面比例</span>'
-      + '<select class="tl-sel" data-step="resize" data-key="ratio">' + opts + '</select>'
+      + '<span class="vl-select-wrap"><select class="vl-select tl-sel" data-step="resize" data-key="ratio">' + opts + '</select></span>'
       + '<span class="tl-field__hint" title="选常用比例后，改宽/高会按比例自动联动；点锁链解绑可自由设定">'
       + '改宽/高按比例联动</span></label>'
       + '<label class="tl-field"><span class="tl-field__label">宽</span>'
-      + '<input class="tl-num" type="number" data-step="resize" data-key="width" value="' + esc(v.width) + '" min="16" step="2"></label>'
+      + '<input class="vl-input vl-input--sm tl-num" type="number" data-step="resize" data-key="width" value="' + esc(v.width) + '" min="16" step="2"></label>'
       + '<button type="button" class="tl-link" data-link="resize" title="比例锁">'
       + icon('link', 13) + '</button>'
       + '<label class="tl-field"><span class="tl-field__label">高</span>'
-      + '<input class="tl-num" type="number" data-step="resize" data-key="height" value="' + esc(v.height) + '" min="16" step="2"></label>';
+      + '<input class="vl-input vl-input--sm tl-num" type="number" data-step="resize" data-key="height" value="' + esc(v.height) + '" min="16" step="2"></label>';
   }
 
   // 单个字段：标签 + 输入 + 说明**并排一行**（纵向空间优先给内容，不堆成上下两行）
@@ -227,16 +227,16 @@
     var input = '';
     var type = String(sc.type || 'text');
     if (type === 'number') {
-      input = '<input class="tl-num" type="number" data-step="' + stepId + '" data-key="' + sc.key + '" value="' + esc(v) + '"'
+      input = '<input class="vl-input vl-input--sm tl-num" type="number" data-step="' + stepId + '" data-key="' + sc.key + '" value="' + esc(v) + '"'
         + (sc.min != null ? ' min="' + sc.min + '"' : '') + (sc.max != null ? ' max="' + sc.max + '"' : '')
         + (sc.step != null ? ' step="' + sc.step + '"' : '') + '>';
     } else if (type === 'select') {
       var opts = (sc.options || []).map(function (o) {
         return '<option value="' + esc(o) + '"' + (String(o) === String(v) ? ' selected' : '') + '>' + esc(o) + '</option>';
       }).join('');
-      input = '<select class="tl-sel" data-step="' + stepId + '" data-key="' + sc.key + '">' + opts + '</select>';
+      input = '<span class="vl-select-wrap"><select class="vl-select tl-sel" data-step="' + stepId + '" data-key="' + sc.key + '">' + opts + '</select></span>';
     } else if (type === 'bool') {
-      input = '<label class="vl-check vl-check--nolabel"><input type="checkbox" data-step="' + stepId + '" data-key="' + sc.key + '" data-bool="1"' + (v ? ' checked' : '') + '><span class="opt-check__box"></span></label>';
+      input = '<label class="vl-check vl-check--nolabel"><input type="checkbox" data-step="' + stepId + '" data-key="' + sc.key + '" data-bool="1"' + (v ? ' checked' : '') + '><span class="vl-check__box"></span></label>';
     } else if (type === 'color') {
       // 颜色值在引擎侧归一化为 0xRRGGBB，界面用原生取色器 + 文本双通道：
       // 取色器方便挑色，文本框允许直接粘贴色值（两处指向同一个 data-key）
@@ -244,15 +244,15 @@
       var hex = /^0x([0-9a-fA-F]{6})$/.exec(cv) ? '#' + cv.slice(2) : (cv || '#000000');
       input = '<span class="tl-field__row">'
         + '<input class="tl-color" type="color" data-color-for="' + sc.key + '" value="' + esc(hex) + '">'
-        + '<input class="tl-path" type="text" data-step="' + stepId + '" data-key="' + sc.key + '" value="' + esc(cv) + '">'
+        + '<input class="vl-input vl-input--sm tl-path" type="text" data-step="' + stepId + '" data-key="' + sc.key + '" value="' + esc(cv) + '">'
         + '</span>';
     } else if (type === 'file') {
       input = '<span class="tl-field__row">'
-        + '<input class="tl-path" type="text" data-step="' + stepId + '" data-key="' + sc.key + '" value="' + esc(v) + '" placeholder="选择文件…">'
+        + '<input class="vl-input vl-input--sm tl-path" type="text" data-step="' + stepId + '" data-key="' + sc.key + '" value="' + esc(v) + '" placeholder="选择文件…">'
         + '<button type="button" class="tl-mini" data-pick="' + stepId + ':' + sc.key + '">' + iconEl('image', 14) + '选择</button>'
         + '</span>';
     } else {
-      input = '<input class="tl-path" type="text" data-step="' + stepId + '" data-key="' + sc.key + '" value="' + esc(v) + '">';
+      input = '<input class="vl-input vl-input--sm tl-path" type="text" data-step="' + stepId + '" data-key="' + sc.key + '" value="' + esc(v) + '">';
     }
     return '<label class="tl-field">' + label + input + hint + '</label>';
   }
@@ -267,7 +267,7 @@
       : (step.schema || []).filter(function (sc) { return fieldVisible(step.id, sc); })
         .map(function (sc) { return paramField(step.id, sc); }).join('');
     div.innerHTML = '<div class="tl-step__head">'
-      + '<label class="vl-check vl-check--nolabel"><input type="checkbox" data-check="' + step.id + '"' + (on ? ' checked' : '') + '><span class="opt-check__box"></span></label>'
+      + '<label class="vl-check vl-check--nolabel"><input type="checkbox" data-check="' + step.id + '"' + (on ? ' checked' : '') + '><span class="vl-check__box"></span></label>'
       + '<span class="tl-step__arrow" data-fold="' + step.id + '" title="展开/收起参数">' + iconEl('chevron-right', 13) + '</span>'
       + '<span class="tl-step__title">' + esc(step.title || step.id) + '</span>'
       + (step.danger === 'lossy' ? '<span class="tl-step__flag">会丢内容</span>' : '')
@@ -343,7 +343,7 @@
       }
       var head = e.target.closest('.tl-step__head');
       if (head) {
-        // 点标题行（复选框以外的区域）= 切换勾选；点复选框（.opt-check 区域内）由 label 原生联动
+        // 点标题行（复选框以外的区域）= 切换勾选；点复选框（.vl-check 区域内）由 label 原生联动
         // 触发 input 的 change，再经 change 委托走 setStepOn —— 若这里也手动切换会双重触发相互抵消
         var cb = head.querySelector('input[data-check]');
         if (cb && !e.target.closest('.vl-check')) setStepOn(cb.getAttribute('data-check'), !cb.checked);
@@ -452,14 +452,14 @@
   function renderInputHint() {
     var hint = $('inputHint');
     if (state.files.length) {
-      hint.className = 'tl-hint';
+      hint.className = 'vl-hint tl-hint';
       hint.textContent = '已选 ' + state.files.length + ' 个视频文件';
     } else if (state.root) {
-      hint.className = 'tl-hint';
+      hint.className = 'vl-hint tl-hint';
       hint.textContent = '将' + (state.recursive ? '递归' : '仅在本层') + '扫描该文件夹下的视频'
         + '（跳过输出与备份文件夹）';
     } else {
-      hint.className = 'tl-hint';
+      hint.className = 'vl-hint tl-hint';
       hint.textContent = '请选择文件夹，或直接选择若干视频文件';
     }
     // 输入变化 → 刷新预览样本清单并自动预览一帧（folder 扫描是异步的，扫描完成后才渲，天然避免竞态）
