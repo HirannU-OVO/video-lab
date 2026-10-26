@@ -108,7 +108,7 @@ var m = new URL(location.href).searchParams.get('token');
           </div>
           <div class="cv-warn" id="cvWarn"></div>
 
-          <div class="cv-group">水印</div>
+          <div class="vl-section-head cv-group">水印</div>
           <div class="cv-row">
             <span class="tl-label">水印 PNG</span>
             <input class="tl-path" type="text" id="cvWm" placeholder="可留空（水印图，整幅叠加）" style="flex:1;min-width:0;max-width:340px">
@@ -119,7 +119,7 @@ var m = new URL(location.href).searchParams.get('token');
         </div>
 
         <div class="cv-params">
-          <div class="cv-group">成片画布尺寸（输出分辨率）</div>
+          <div class="vl-section-head cv-group">成片画布尺寸（输出分辨率）</div>
           <div class="cv-row">
             <span class="vl-select-wrap"><select class="vl-select" id="cvRatio" style="flex:0 0 84px" title="常用比例：选后改宽/高会按比例联动">
               <option value="9:16">9:16</option>
@@ -134,7 +134,7 @@ var m = new URL(location.href).searchParams.get('token');
             <input class="tl-num" type="number" id="cvTH" min="16" max="7680" step="2" value="1080" title="画布高（输出分辨率）">
           </div>
 
-          <div class="cv-group">内容（大小 · 位置 · 外观）</div>
+          <div class="vl-section-head cv-group">内容（大小 · 位置 · 外观）</div>
           <div class="cv-row">
             <span class="tl-label">等比缩放</span>
             <input type="range" id="cvScale" min="0.05" max="2" step="0.01" value="0.74">
@@ -169,7 +169,7 @@ var m = new URL(location.href).searchParams.get('token');
             <span class="cv-val" id="cvBorderWVal">0</span>
             <input class="cv-swatch" type="color" id="cvBorderColor" value="#ffffff" title="边框颜色">
           </div>
-          <div class="cv-group">背景</div>
+          <div class="vl-section-head cv-group">背景</div>
           <div class="cv-row">
             <span class="tl-label">方式</span>
             <span class="vl-select-wrap"><select class="vl-select" id="cvBgMode">
@@ -210,7 +210,7 @@ var m = new URL(location.href).searchParams.get('token');
             <span class="cv-val" id="cvBgBlurVal">0</span>
           </div>
 
-          <div class="cv-group">参数预设</div>
+          <div class="vl-section-head cv-group">参数预设</div>
           <div class="cv-row">
             <span class="vl-select-wrap"><select class="vl-select" id="cvPreset" style="flex:1 1 auto;min-width:0;max-width:260px" title="选中即加载"><option value="">（未选择）</option></select></span>
             <button class="tl-btn vl-btn vl-btn--ghost" id="cvPresetSave" title="把当前参数存成一个新预设">新建</button>

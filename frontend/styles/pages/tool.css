@@ -6,6 +6,28 @@
            background: var(--vl-alias-bg-base-default); color: var(--vl-alias-text-default); font-family: var(--vl-font-family-base); }
 
     /* ── 输入区（两 Tab 之外：目录与递归）── */
+    /* 差异：工具页的分组小标题是「无底色 + 下边框 + 前置分隔线延伸」的紧凑样式，
+       只覆盖与基线 .vl-section-head 不同的部分 —— 底色透明、去掉下边框、字号更小、
+       并用 ::after 画向右延伸的分隔线（⚠ 因为它不加 --interactive，::after 空闲）。 */
+    .cv-group {
+      --vl-sh-bg: transparent;
+      --vl-sh-border: transparent;
+      --vl-sh-pad-y: 0;
+      --vl-sh-pad-x: 0;
+      margin: 12px 0 4px;
+      font-size: 11px;
+      letter-spacing: 0.02em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .cv-group:first-of-type { margin-top: 2px; }
+    .cv-group::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: var(--vl-alias-border-neutral-l1);
+    }
     .tl-input { flex-shrink: 0; padding: 10px 14px; border-bottom: 1px solid var(--vl-alias-border-neutral-l1); background: var(--vl-alias-bg-base-default); }
     /* 补齐交互状态（基于原样式改造；令牌与基线 .vl-input 保持一致，皮肤可覆盖） */
     .tl-input:hover:not([disabled]) { border-bottom-color: var(--vl-alias-border-neutral-l3); }
@@ -205,10 +227,6 @@
     .cv-bar input[type="range"] { width: 120px; }
     .cv-params { order: 1; flex: 0 0 330px; max-width: 360px; display: flex; flex-direction: column; gap: 5px; }
     /* 参数分组头：小标题 + 右延横线 —— 与主窗口设置页 .settings-group 同一视觉（便于快速定位分组） */
-    .cv-group { display: flex; align-items: center; gap: 8px; margin: 12px 0 4px;
-      font-size: 11px; font-weight: 600; letter-spacing: 0.4px; color: var(--vl-alias-text-tertiary); white-space: nowrap; }
-    .cv-group:first-of-type { margin-top: 2px; }
-    .cv-group::after { content: ''; flex: 1; height: 1px; background: var(--vl-alias-border-neutral-l1); }
     .cv-row { display: flex; align-items: center; gap: 8px; }
     .cv-row > .tl-label { flex: 0 0 72px; }
     .cv-row .tl-num { width: 72px; }
