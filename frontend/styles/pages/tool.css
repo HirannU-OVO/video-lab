@@ -22,17 +22,13 @@
     .tl-text::placeholder { color: var(--vl-alias-text-tertiary); }
     /* @deprecated 用 .vl-btn .vl-btn--ghost；本类只保留与基础组件不同的差异，公共属性由 .vl-btn 提供 */
     .tl-btn {
-      /* 差异：工具页按钮要贴紧输入框、字号更小、次级文字色 */
-      padding: 0 10px;
-      gap: 5px;
-      color: var(--vl-alias-text-secondary);
+      /* 差异：仅保留「实色可点边框」与「不参与压缩」两项 ——
+         边框从基线的 transparent 变为可见灰线，回归会让按钮轮廓消失（差异巨大，故保留）；
+         flex-shrink 属布局约束而非外观，同样保留。
+         内距、间隙、文字色、行高、hover 反馈、禁用态一律回归基线。 */
       border-color: var(--vl-alias-border-neutral-l2);
-      line-height: inherit;   /* ⚠ .vl-btn 默认 line-height:1，本按钮需继承行高 */   /* 保留工具页原有的可点边框观感（.vl-btn--ghost 自带 transparent） */
-      flex-shrink: 0;      /* 文字恒一行、且不参与压缩（压缩交给同行输入框） */
+      flex-shrink: 0;
     }
-    /* hover 底色与 disabled 态一律由基线 .vl-btn / .vl-btn--ghost 提供，
-       此处只保留页面独有的「悬浮时文字变亮」 */
-    .tl-btn:hover { color: var(--vl-alias-text-default-hover); }
     .tl-check { display: inline-flex; align-items: center; gap: 5px; font-size: var(--vl-type-body-sm-size); color: var(--vl-alias-text-secondary); cursor: pointer; }
     .tl-hint { margin-top: 6px; font-size: var(--vl-type-body-xs-size); color: var(--vl-alias-text-tertiary); line-height: 1.5; }
     .tl-hint--warn { color: var(--vl-alias-status-warning-default); }

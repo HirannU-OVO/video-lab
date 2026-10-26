@@ -350,11 +350,14 @@ body {
 }
 /* @deprecated 请改用 .vl-btn；本类只保留与基础组件不同的差异 */
 .btn {
-  /* 差异：设置页按钮由 padding 撑高、字号 14px */
+  /* 差异：设置页按钮由 padding 撑高、字号 14px（配 height:auto + padding:7px 14px）。
+     ⚠ 字号与行高必须成套保留：实测把字号回归基线（14px→13px、line-height inherit→1）会让
+     按钮高度从 44px 降到 37px，进而引发整页 72 个元素的布局位移（表单组高度 101→94px、
+     各元素纵坐标上移 4px）—— 单按钮看是 1px 的字号差，在撑高布局里会放大成整页位移。 */
   height: auto;
   padding: 7px 14px;
   font-size: 14px;
-  line-height: inherit;   /* ⚠ .vl-btn 默认 line-height:1，本按钮需继承行高 */
+  line-height: inherit;
   gap: 0;
   justify-content: normal;
   align-items: normal;
