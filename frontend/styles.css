@@ -4725,54 +4725,9 @@ button.is-vl-disabled {
 .rp-form__hint { font-size: 12px; line-height: 1.5; opacity: .72; }
 
 /* ── 统一复选框/单选框（全局唯一样式：16px + SVG 勾 + 品牌色）── */
-.opt-check,
-.opt-radio {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  color: var(--vl-alias-text-secondary);
-  font-family: var(--vl-font-family-base);
-  font-size: 14px;
-  user-select: none;
-}
   /* @deprecated 用 .vl-check */
-  .opt-check:hover, .opt-radio:hover { color: var(--vl-alias-text-default); }
-  /* 补齐交互状态（基于原样式改造：只加反馈，不改既有外观） */
-  .opt-check:active, .opt-radio:active { color: var(--vl-alias-text-default); }
-  .opt-check:active .opt-check__box, .opt-radio:active .opt-radio__box { border-color: var(--vl-alias-border-neutral-l3); }
-  .opt-check:focus-visible, .opt-radio:focus-visible { outline: 2px solid var(--vl-alias-accent-blue); outline-offset: 1px; }
-.opt-check input, .opt-radio input { position: absolute; opacity: 0; width: 0; height: 0; }
-.opt-check__box {
-  flex-shrink: 0;
-  width: 16px;
-  height: 16px;
-  border: 1px solid var(--vl-alias-border-neutral-l2);
-  border-radius: 4px;
-  background: var(--vl-alias-bg-base-default);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.12s ease, border-color 0.12s ease;
-}
-.opt-check input:checked + .opt-check__box {
-  background: var(--vl-alias-brand-500);
-  border-color: var(--vl-alias-brand-500);
-}
-.opt-check input:checked + .opt-check__box::after {
-  content: '';
-  width: 8px;
-  height: 8px;
-  background: var(--vl-alias-text-onbrand);
-  -webkit-mask: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / contain no-repeat;
-  mask: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / contain no-repeat;
-}
-/* ── 复选框变体（必须定义在 .opt-check 之后才能覆盖全局值）── */
+/* ── 复选框变体（必须定义在 .vl-check 之后才能覆盖全局值）── */
 /* 无文字复选框（文字在左侧栏）：不占额外间距 */
-.opt-check--nolabel { gap: 0; }
-/* 紧凑变体：工具页沿用原 .tl-check 的视觉密度（小字号、窄间距），勾选框样式仍与全局一致 */
-.opt-check--sm { gap: 5px; font-size: var(--vl-type-body-sm-size); }
-.opt-check:hover .opt-check__box { border-color: var(--vl-alias-brand-500); }
 
 /* ═══ 检查更新结果弹窗（设置页 / 主窗口 / 托盘统一入口）═══
    ⚠ z-index 必须高于内嵌设置面板（容器 9999 / 遮罩 9998）与主窗口其它浮层（99999），

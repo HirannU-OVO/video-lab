@@ -137,12 +137,12 @@ body {
 .form-group > .form-group__ops > .dir-row { justify-content: flex-end; }
 /* ⚠ 只有**同组有多行的选项切换行**（含单选/复选）才左对齐：占满整栏宽度后
    内部左对齐，使组内各行左边界对齐、读起来是「一组选项」。
-   判据 = ops 内至少有两行，且该行含 opt-radio / opt-check。
+   判据 = ops 内至少有两行，且该行含 vl-radio / vl-check。
    单行的勾选项（如「开机自启动」）不适用 —— 它没有"组内对齐"的需求，右对齐即可。 */
-.form-group:has(> .form-group__ops > :nth-child(2)) > .form-group__ops > .opt-row:has(.opt-radio),
-.form-group:has(> .form-group__ops > :nth-child(2)) > .form-group__ops > .opt-row:has(.opt-check),
-.form-group:has(> .form-group__ops > :nth-child(2)) > .form-group__ops > .dir-row:has(.opt-radio),
-.form-group:has(> .form-group__ops > :nth-child(2)) > .form-group__ops > .dir-row:has(.opt-check) {
+.form-group:has(> .form-group__ops > :nth-child(2)) > .form-group__ops > .opt-row:has(.vl-radio),
+.form-group:has(> .form-group__ops > :nth-child(2)) > .form-group__ops > .opt-row:has(.vl-check),
+.form-group:has(> .form-group__ops > :nth-child(2)) > .form-group__ops > .dir-row:has(.vl-radio),
+.form-group:has(> .form-group__ops > :nth-child(2)) > .form-group__ops > .dir-row:has(.vl-check) {
   align-self: stretch;
   justify-content: flex-start;
 }
@@ -447,7 +447,6 @@ body {
 .opt-row--spaced { padding: 8px 0; gap: 24px; }
 /* 每日定时检查更新下拉框：紧凑宽度，与左侧勾选间隔 8px */
 .opt-time-select { width: 100px; flex-shrink: 0; height: 30px; padding: 0 6px; cursor: pointer; }
-.opt-radio__dot {
   flex-shrink: 0;
   width: 16px;
   height: 16px;
@@ -459,16 +458,6 @@ body {
   justify-content: center;
   transition: border-color 0.12s ease;
 }
-.opt-radio input:checked + .opt-radio__dot { border-color: var(--vl-alias-brand-500); }
-.opt-radio input:checked + .opt-radio__dot::after {
-  content: '';
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--vl-alias-brand-500);
-}
-.opt-radio:hover .opt-radio__dot { border-color: var(--vl-alias-brand-500); }
-.opt-radio__label { display: flex; flex-direction: column; gap: 2px; }
 /* 分组头（.settings-group / .settings-group__title）已移除 —— 每个设置项自带
    「主标题 + 副标题」，再保留分组标题会出现语义重叠（如分组「日志」下面还有
    「日志级别」这种项）。分隔完全交给 .form-group 的下边框，整列是一条连续的条目列表。 */
@@ -634,7 +623,9 @@ body {
   padding-left: 10px;
   border-left: 1px solid var(--vl-alias-border-neutral-l1);
 }
-.about-hero__pick-opts .opt-radio { margin: 0; }
+.about-hero__pick-opts .vl-radio { margin: 0; }
+/* 差异：单选项的标签内部为纵向排列（多行文字），属布局差异，保留在页面层 */
+.opt-radio__label { display: flex; flex-direction: column; gap: 2px; }
 .about-hero__pick-opts .opt-radio__label { font-size: 13px; }
 .about-hero__act { flex: 0 0 auto; }
 .about-hero__act .btn[disabled] { opacity: .6; cursor: default; }

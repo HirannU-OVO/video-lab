@@ -886,14 +886,14 @@
         var n = it.count || 0;
         if (!it.cleanable && !n) return;                 // 既不可清又没东西：不占版面
         var lb = document.createElement('label');
-        lb.className = 'opt-check';
+        lb.className = 'vl-check';
         var cb = document.createElement('input');
         cb.type = 'checkbox';
         cb.setAttribute('data-dd-key', String(it.key || ''));
         cb.checked = !!(it.cleanable && n);
         cb.disabled = !it.cleanable || !n;
         lb.appendChild(cb);
-        var bx = document.createElement('span'); bx.className = 'opt-check__box'; lb.appendChild(bx);
+        var bx = document.createElement('span'); bx.className = 'vl-check__box'; lb.appendChild(bx);
         var tx = document.createElement('span');
         tx.textContent = (it.label || it.key) + '　' + (n ? fmtNum(n) + ' 项 · ' + fmtSize(it.bytes) : '无')
           + (it.cleanable ? '' : '（保留：' + (it.reason || '—') + '）');

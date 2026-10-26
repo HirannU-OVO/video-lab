@@ -236,7 +236,7 @@
       }).join('');
       input = '<select class="tl-sel" data-step="' + stepId + '" data-key="' + sc.key + '">' + opts + '</select>';
     } else if (type === 'bool') {
-      input = '<label class="opt-check opt-check--nolabel"><input type="checkbox" data-step="' + stepId + '" data-key="' + sc.key + '" data-bool="1"' + (v ? ' checked' : '') + '><span class="opt-check__box"></span></label>';
+      input = '<label class="vl-check vl-check--nolabel"><input type="checkbox" data-step="' + stepId + '" data-key="' + sc.key + '" data-bool="1"' + (v ? ' checked' : '') + '><span class="opt-check__box"></span></label>';
     } else if (type === 'color') {
       // 颜色值在引擎侧归一化为 0xRRGGBB，界面用原生取色器 + 文本双通道：
       // 取色器方便挑色，文本框允许直接粘贴色值（两处指向同一个 data-key）
@@ -267,7 +267,7 @@
       : (step.schema || []).filter(function (sc) { return fieldVisible(step.id, sc); })
         .map(function (sc) { return paramField(step.id, sc); }).join('');
     div.innerHTML = '<div class="tl-step__head">'
-      + '<label class="opt-check opt-check--nolabel"><input type="checkbox" data-check="' + step.id + '"' + (on ? ' checked' : '') + '><span class="opt-check__box"></span></label>'
+      + '<label class="vl-check vl-check--nolabel"><input type="checkbox" data-check="' + step.id + '"' + (on ? ' checked' : '') + '><span class="opt-check__box"></span></label>'
       + '<span class="tl-step__arrow" data-fold="' + step.id + '" title="展开/收起参数">' + iconEl('chevron-right', 13) + '</span>'
       + '<span class="tl-step__title">' + esc(step.title || step.id) + '</span>'
       + (step.danger === 'lossy' ? '<span class="tl-step__flag">会丢内容</span>' : '')
@@ -346,7 +346,7 @@
         // 点标题行（复选框以外的区域）= 切换勾选；点复选框（.opt-check 区域内）由 label 原生联动
         // 触发 input 的 change，再经 change 委托走 setStepOn —— 若这里也手动切换会双重触发相互抵消
         var cb = head.querySelector('input[data-check]');
-        if (cb && !e.target.closest('.opt-check')) setStepOn(cb.getAttribute('data-check'), !cb.checked);
+        if (cb && !e.target.closest('.vl-check')) setStepOn(cb.getAttribute('data-check'), !cb.checked);
         return;
       }
       var pick = e.target.closest('button[data-pick]');

@@ -227,11 +227,11 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
               + '<div class="rp-form">'
               + '<div class="rp-form__row"><span class="rp-form__label">重复度下限</span>'
               + '<input class="modal-input rp-form__num" id="rpMin" type="number" min="0" max="1" step="0.05" placeholder="' + escapeHtml(dMin) + '">'
-              + '<label class="opt-check"><input type="checkbox" id="rpMinOn"' + (minOn ? ' checked' : '') + '><span class="opt-check__box"></span><span>启用</span></label>'
+              + '<label class="vl-check"><input type="checkbox" id="rpMinOn"' + (minOn ? ' checked' : '') + '><span class="vl-check__box"></span><span>启用</span></label>'
               + '</div>'
               + '<div class="rp-form__row"><span class="rp-form__label">重复度上限</span>'
               + '<input class="modal-input rp-form__num" id="rpMax" type="number" min="0" max="1" step="0.05" placeholder="' + escapeHtml(dMax) + '">'
-              + '<label class="opt-check"><input type="checkbox" id="rpMaxOn"' + (maxOn ? ' checked' : '') + '><span class="opt-check__box"></span><span>启用</span></label>'
+              + '<label class="vl-check"><input type="checkbox" id="rpMaxOn"' + (maxOn ? ' checked' : '') + '><span class="vl-check__box"></span><span>启用</span></label>'
               + '</div>'
               + '<div class="rp-form__hint">留空则使用设置里的默认值</div>'
               + '</div>'
@@ -1974,7 +1974,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
         var checked = sel && curSel[normalizePath(lp)];
         html += '<div class="log-entry' + (checked ? ' log-entry--selected' : '') + '" data-log-path="' + escapeHtml(lp) + '" data-video="' + escapeHtml(entry.video || '') + '">';
         html += '<div class="log-entry__header">';
-        if (sel) html += '<label class="opt-check log-entry__check-wrap"><input type="checkbox" class="log-entry__check"' + (checked ? ' checked' : '') + ' title="选择该成片进行批量复刻"><span class="opt-check__box"></span></label>';
+        if (sel) html += '<label class="vl-check log-entry__check-wrap"><input type="checkbox" class="log-entry__check"' + (checked ? ' checked' : '') + ' title="选择该成片进行批量复刻"><span class="vl-check__box"></span></label>';
         html += '<span class="log-entry__arrow">' + icon('chevron-right', 14) + '</span>' + icon('video', 14);
         html += '<span class="log-entry__video-name" title="' + escapeHtml(entry.video) + '">' + escapeHtml(entry.video || '（未命名成片）') + '</span>';
         html += '<span class="log-entry__clip-count">' + clips.length + ' 片段</span>';
@@ -3471,7 +3471,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       '<div class="modal__title">关闭主窗口</div>' +
       '<div class="modal__message">请选择关闭主窗口后的行为：</div>' +
       '<div class="modal__close-foot">' +
-      '<label class="opt-check"><input type="checkbox" id="closeRemindChk"><span class="opt-check__box"></span><span>不再询问</span></label>' +
+      '<label class="vl-check"><input type="checkbox" id="closeRemindChk"><span class="vl-check__box"></span><span>不再询问</span></label>' +
       '<div class="modal__actions">' +
       '<button type="button" class="modal-btn" id="cbCloseTray">最小化至系统托盘</button>' +
       '<button type="button" class="modal-btn modal-btn--danger" id="cbCloseExit">退出软件</button>' +

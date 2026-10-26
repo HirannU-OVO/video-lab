@@ -84,16 +84,16 @@ var m = new URL(location.href).searchParams.get('token');
         </div>
         <div class="form-group__ops">
         <div class="opt-row">
-          <label class="opt-radio">
+          <label class="vl-radio">
             <input type="radio" name="cachePolicy" value="off">
-            <span class="opt-radio__dot"></span>
+            <span class="vl-radio__dot"></span>
             <span class="opt-radio__label">不删除缓存文件</span>
           </label>
         </div>
         <div class="opt-row">
-          <label class="opt-radio">
+          <label class="vl-radio">
             <input type="radio" name="cachePolicy" value="auto">
-            <span class="opt-radio__dot"></span>
+            <span class="vl-radio__dot"></span>
             <span class="opt-radio__label">自动删除</span>
           </label>
           <select class="form-input opt-time-select" id="cacheKeepDays" title="缓存保留天数">
@@ -121,9 +121,9 @@ var m = new URL(location.href).searchParams.get('token');
         </div>
         <div class="form-group__ops">
         <div class="opt-row">
-          <label class="opt-check">
+          <label class="vl-check">
             <input type="checkbox" id="notifyTaskEnd">
-            <span class="opt-check__box"></span>
+            <span class="vl-check__box"></span>
             <span>任务跑完或失败时弹系统通知</span>
           </label>
         </div>
@@ -136,9 +136,9 @@ var m = new URL(location.href).searchParams.get('token');
         </div>
         <div class="form-group__ops">
         <div class="opt-row">
-          <label class="opt-check">
+          <label class="vl-check">
             <input type="checkbox" id="autoStart">
-            <span class="opt-check__box"></span>
+            <span class="vl-check__box"></span>
             <span>开机后台自启动（静默到托盘）</span>
           </label>
         </div>
@@ -151,16 +151,16 @@ var m = new URL(location.href).searchParams.get('token');
         </div>
         <div class="form-group__ops">
         <div class="opt-row">
-          <label class="opt-radio">
+          <label class="vl-radio">
             <input type="radio" name="closeBehavior" value="exit">
-            <span class="opt-radio__dot"></span>
+            <span class="vl-radio__dot"></span>
             <span class="opt-radio__label">退出软件</span>
           </label>
         </div>
         <div class="opt-row">
-          <label class="opt-radio">
+          <label class="vl-radio">
             <input type="radio" name="closeBehavior" value="tray">
-            <span class="opt-radio__dot"></span>
+            <span class="vl-radio__dot"></span>
             <span class="opt-radio__label">最小化至系统托盘</span>
           </label>
         </div>
@@ -280,9 +280,9 @@ var m = new URL(location.href).searchParams.get('token');
         </div>
         <div class="form-group__ops">
         <div class="opt-row">
-          <label class="opt-check">
+          <label class="vl-check">
             <input type="checkbox" id="replicaDedupRatioOn">
-            <span class="opt-check__box"></span>
+            <span class="vl-check__box"></span>
             <span>默认启用</span>
           </label>
           <input class="form-input opt-num-input" id="replicaDedupRatio" type="number" min="0" max="1" step="0.05" placeholder="">
@@ -296,9 +296,9 @@ var m = new URL(location.href).searchParams.get('token');
         </div>
         <div class="form-group__ops">
         <div class="opt-row">
-          <label class="opt-check">
+          <label class="vl-check">
             <input type="checkbox" id="replicaDedupMaxOn">
-            <span class="opt-check__box"></span>
+            <span class="vl-check__box"></span>
             <span>默认启用</span>
           </label>
           <input class="form-input opt-num-input" id="replicaDedupMax" type="number" min="0" max="1" step="0.05" placeholder="">
@@ -376,9 +376,9 @@ var m = new URL(location.href).searchParams.get('token');
         </div>
         <div class="form-group__ops">
         <div class="opt-row">
-          <label class="opt-check">
+          <label class="vl-check">
             <input type="checkbox" id="backupAutoClean">
-            <span class="opt-check__box"></span>
+            <span class="vl-check__box"></span>
             <span>任务完成后自动清理</span>
           </label>
           <select class="form-input opt-time-select" id="backupKeepDays" title="备份保留时间">
@@ -470,14 +470,14 @@ var m = new URL(location.href).searchParams.get('token');
         <div class="about-hero__pick">
           <span class="about-hero__pick-label">检查更新源：</span>
           <div class="about-hero__pick-opts">
-            <label class="opt-radio">
+            <label class="vl-radio">
               <input type="radio" name="updateSource" value="gitcode">
-              <span class="opt-radio__dot"></span>
+              <span class="vl-radio__dot"></span>
               <span class="opt-radio__label">GitCode</span>
             </label>
-            <label class="opt-radio">
+            <label class="vl-radio">
               <input type="radio" name="updateSource" value="github">
-              <span class="opt-radio__dot"></span>
+              <span class="vl-radio__dot"></span>
               <span class="opt-radio__label">GitHub</span>
             </label>
           </div>
@@ -495,29 +495,29 @@ var m = new URL(location.href).searchParams.get('token');
         </div>
         <div class="form-group__ops">
         <div class="opt-row">
-          <label class="opt-check">
+          <label class="vl-check">
             <input type="checkbox" id="autoCheckUpdate">
-            <span class="opt-check__box"></span>
+            <span class="vl-check__box"></span>
             <span>启动时自动检查更新</span>
           </label>
         </div>
         <div class="opt-row">
-          <label class="opt-check">
+          <label class="vl-check">
             <input type="checkbox" id="checkUpdateDaily">
-            <span class="opt-check__box"></span>
+            <span class="vl-check__box"></span>
             <span>每日定期检查更新</span>
           </label>
           <select class="form-input opt-time-select" id="checkUpdateHour" title="每日定时检查更新时间（24小时制整点，默认 9:00）"></select>
         </div>
         <div class="opt-row opt-row--spaced" title="更新方式：发现新版本后自动检查并下载 / 仅提醒（对启动时检查、手动检查、定时检查均生效）">
-          <label class="opt-radio">
+          <label class="vl-radio">
             <input type="radio" name="updateMode" value="auto">
-            <span class="opt-radio__dot"></span>
+            <span class="vl-radio__dot"></span>
             <span class="opt-radio__label">自动检查并下载</span>
           </label>
-          <label class="opt-radio">
+          <label class="vl-radio">
             <input type="radio" name="updateMode" value="notify">
-            <span class="opt-radio__dot"></span>
+            <span class="vl-radio__dot"></span>
             <span class="opt-radio__label">有新版本提醒我</span>
           </label>
         </div>

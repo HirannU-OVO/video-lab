@@ -136,6 +136,9 @@
   .vl-check,
   .vl-radio {
     display: inline-flex;
+    color: var(--vl-alias-text-secondary);
+    font-family: var(--vl-font-family-base);
+    font-size: 14px;
     align-items: center;
     gap: 8px;
     cursor: pointer;
@@ -189,6 +192,19 @@
   .vl-radio:has(input:disabled) { cursor: not-allowed; color: var(--vl-alias-text-disabled); }
   .vl-check[data-disabled="1"],
   .vl-radio[data-disabled="1"] { cursor: default; opacity: .6; }
+  /* 悬浮 / 按下时文字变亮（取自迁移前的页面私有类，基线补齐以免状态缺失） */
+  .vl-check:hover,
+  .vl-radio:hover { color: var(--vl-alias-text-default); }
+  .vl-check:active,
+  .vl-radio:active { color: var(--vl-alias-text-default); }
+  /* 无文字标签的紧凑排版（取自迁移前的 opt-check--nolabel） */
+  .vl-check--nolabel,
+  .vl-radio--nolabel { gap: 0; }
+  /* 按下时方框描边变深 / 聚焦环（取自迁移前的页面私有类，基线补齐以免状态缺失） */
+  .vl-check:active .vl-check__box,
+  .vl-radio:active .vl-radio__dot { border-color: var(--vl-alias-border-neutral-l3); }
+  .vl-check:focus-visible,
+  .vl-radio:focus-visible { outline: 2px solid var(--vl-alias-accent-blue); outline-offset: 1px; }
   .vl-check__text {
     color: var(--vl-alias-text-secondary);
     font-size: 13px;
