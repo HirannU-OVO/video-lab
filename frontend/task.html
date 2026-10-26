@@ -46,10 +46,10 @@ var m = new URL(location.href).searchParams.get('token');
   <div class="task-main">
     <div class="task-list" id="taskList"></div>
     <div class="task-fab-actions" id="taskFabActions">
-      <button class="task-fab" id="fabResumeAll" title="全部继续（恢复所有暂停任务）"><i data-icon="play" data-size="18"></i></button>
-      <button class="task-fab" id="fabPauseAll" title="全部暂停（暂停所有排队任务）"><i data-icon="pause" data-size="18"></i></button>
+      <button class="task-fab task-fab--success" id="fabResumeAll" title="全部继续（恢复所有暂停任务）"><i data-icon="play" data-size="18"></i></button>
+      <button class="task-fab task-fab--warning" id="fabPauseAll" title="全部暂停（暂停所有排队任务）"><i data-icon="pause" data-size="18"></i></button>
     </div>
-    <button class="task-fab" id="taskFab" title="清除列表" style="display:none"><i data-icon="trash-2" data-size="20"></i></button>
+    <button class="task-fab task-fab--danger" id="taskFab" title="清除列表" style="display:none"><i data-icon="trash-2" data-size="20"></i></button>
   </div>
   <script src="icons.js"></script>
   <script src="txapi.js"></script>

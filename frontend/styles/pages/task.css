@@ -31,31 +31,72 @@
     .task-tab--alert .task-tab__count { background: var(--vl-alias-status-error-default); color: var(--vl-alias-text-onaccent); }
     .task-tab--alert:hover { background: var(--vl-alias-status-error-surface-l1); color: var(--vl-alias-status-error-default); }
     /* 右下角悬浮按钮：正在运行=「全部继续（左）/全部暂停（右）」；已完成/已停止=清除列表；不带品牌色，用背景色 */
+    /* 圆形悬浮操作按钮：形态与矩形按钮差异过大，不套用 vl-btn，
+       但**状态色与反馈一律走变量** → 皮肤将来写
+       html[data-skin="..."] .task-fab--danger { --vl-fab-bg: ... } 即可覆盖，不必碰整条规则。
+       变量：常态底/字/边 + 悬浮底/字/边 + 悬浮滤镜/位移 + 按下滤镜/位移 + 聚焦环 + 禁用透明度。 */
     .task-fab {
+      --vl-fab-bg: var(--vl-alias-bg-base-default);
+      --vl-fab-color: var(--vl-alias-text-secondary);
+      --vl-fab-border-color: var(--vl-alias-border-neutral-l2);
+      --vl-fab-bg-hover: var(--vl-alias-bg-overlay-l1);
+      --vl-fab-color-hover: var(--vl-alias-text-default);
+      --vl-fab-border-hover: var(--vl-alias-border-neutral-l3);
+      --vl-fab-filter-hover: none;
+      --vl-fab-filter-active: brightness(.92);
+      --vl-fab-lift-hover: -2px;
+      --vl-fab-lift-active: 0;
+      --vl-fab-focus-ring: 2px solid var(--vl-alias-accent-blue);
+      --vl-fab-opacity-disabled: .5;
       position: absolute; right: 16px; bottom: 16px; z-index: 6;
       width: 44px; height: 44px; border-radius: 50%;
-      border: 1px solid var(--vl-alias-border-neutral-l2); background: var(--vl-alias-bg-base-default); color: var(--vl-alias-text-secondary);
+      border: 1px solid var(--vl-fab-border-color);
+      background: var(--vl-fab-bg);
+      color: var(--vl-fab-color);
       display: inline-flex; align-items: center; justify-content: center;
       cursor: pointer; box-shadow: 0 6px 18px color-mix(in srgb, var(--vl-alias-text-default) 14%, transparent);
-      transition: transform .15s ease, background .15s ease, color .15s ease;
+      transition: transform .15s ease, background .15s ease, color .15s ease, border-color .15s ease, filter .15s ease;
     }
-    .task-fab:hover { transform: translateY(-2px); background: var(--vl-alias-bg-overlay-l1); color: var(--vl-alias-text-default); }
-    /* 三个悬浮按钮按功能实色底 + 白色图标（全部续绿 / 全部暂停橙 / 清除红），颜色取自主题变量便于换肤 */
-    #fabResumeAll { background: var(--vl-alias-status-success-default); border-color: var(--vl-alias-status-success-default); color: var(--vl-alias-text-onaccent); }
-    #fabResumeAll:hover { background: var(--vl-alias-status-success-default); filter: brightness(1.08); transform: translateY(-2px); }
-    #fabPauseAll { background: var(--vl-alias-status-warning-default); border-color: var(--vl-alias-status-warning-default); color: var(--vl-alias-text-onaccent); }
-    #fabPauseAll:hover { background: var(--vl-alias-status-warning-default); filter: brightness(1.08); transform: translateY(-2px); }
-    #taskFab { background: var(--vl-alias-status-error-default); border-color: var(--vl-alias-status-error-default); color: var(--vl-alias-text-onaccent); }
-    #taskFab:hover { background: var(--vl-alias-status-error-default); filter: brightness(1.08); transform: translateY(-2px); }
+    .task-fab:hover {
+      transform: translateY(var(--vl-fab-lift-hover));
+      background: var(--vl-fab-bg-hover);
+      color: var(--vl-fab-color-hover);
+      border-color: var(--vl-fab-border-hover);
+      filter: var(--vl-fab-filter-hover);
+    }
+    /* 三个悬浮按钮按功能实色底 + 白色图标（全部续绿 / 全部暂停橙 / 清除红）：
+       底色由语义类给出，悬浮时底色保持不变（只提亮），因此这里只设「悬浮滤镜与位移」两个变量。 */
+    .task-fab--success, .task-fab--warning, .task-fab--danger {
+      --vl-fab-bg-hover: var(--vl-fab-bg);
+      --vl-fab-color-hover: var(--vl-fab-color);
+      --vl-fab-border-hover: var(--vl-fab-border-color);
+      --vl-fab-filter-hover: brightness(1.08);
+      --vl-fab-filter-active: brightness(.9);
+    }
+    .task-fab--success { --vl-fab-bg: var(--vl-alias-status-success-default); --vl-fab-color: var(--vl-alias-text-onaccent); --vl-fab-border-color: var(--vl-alias-status-success-default); }
+    .task-fab--warning { --vl-fab-bg: var(--vl-alias-status-warning-default); --vl-fab-color: var(--vl-alias-text-onaccent); --vl-fab-border-color: var(--vl-alias-status-warning-default); }
+    .task-fab--danger  { --vl-fab-bg: var(--vl-alias-status-error-default);   --vl-fab-color: var(--vl-alias-text-onaccent); --vl-fab-border-color: var(--vl-alias-status-error-default); }
     .task-fab-actions {
       position: absolute; right: 16px; bottom: 16px; z-index: 6;
       display: inline-flex; gap: 10px;
     }
     /* 补齐交互状态（基于原样式改造：保留圆形/尺寸/阴影，只补反馈） */
-    .task-fab:active { filter: brightness(.92); transform: translateY(0); }
-    .task-fab:focus-visible { outline: 2px solid var(--vl-alias-accent-blue); outline-offset: 1px; }
+    .task-fab:active { filter: var(--vl-fab-filter-active); transform: translateY(var(--vl-fab-lift-active)); }
+    .task-fab:focus-visible { outline: var(--vl-fab-focus-ring); outline-offset: 1px; }
+    .task-fab:disabled, .task-fab[aria-disabled="true"] {
+      /* ⚠ 用**变量重置**而不是提高选择器特异性：`:active`（含语义类，0,3,0）比
+         `:disabled`（0,2,0）特异性高，若禁用时仍命中 active 规则，滤镜与位移会残留。
+         重置变量后，无论哪个状态规则命中，禁用态的呈现都一致。 */
+      --vl-fab-filter-hover: none;
+      --vl-fab-filter-active: none;
+      --vl-fab-lift-hover: 0;
+      --vl-fab-lift-active: 0;
+      opacity: var(--vl-fab-opacity-disabled);
+      cursor: not-allowed;
+    }
     /* 三个实色悬浮按钮：按下时压暗一档（hover 用 brightness 提亮，active 用 filter 压暗，二者由顺序决定） */
-    #fabResumeAll:active, #fabPauseAll:active, #taskFab:active { filter: brightness(.9); transform: translateY(0); }
+    /* 实色变体的按下滤镜也走变量（基线 .task-fab:active 统一消费），
+       这样禁用态重置变量时才能一并生效。 */
     .task-fab-actions .task-fab { position: static; width: 42px; height: 42px; }
     .task-card { border: 1px solid var(--vl-alias-border-neutral-l1); border-radius: 6px; background: var(--vl-alias-bg-base-secondary); overflow: hidden; flex-shrink: 0; }
     /* 已完成列表按完成日期分组：左侧 yy.mm.dd + 延伸线 + 共 N 个视频；点击整行展开/折叠 */
