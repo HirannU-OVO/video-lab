@@ -65,6 +65,10 @@ body {
   color: var(--vl-alias-text-onaccent);
   font-weight: 600;
 }
+    /* 补齐交互状态（基于原样式改造；选中态用品牌色 active 档，与基线 .vl-btn--primary:active 同源） */
+    .settings-nav__item:active { background: var(--vl-alias-bg-base-tertiary); }
+    .settings-nav__item.is-active:active { background: var(--vl-alias-bg-brand-active); }
+    .settings-nav__item:focus-visible { outline: 2px solid var(--vl-alias-accent-blue); outline-offset: 1px; }
 
 /* ─── 右侧内容 ─── */
 .settings-body {
@@ -385,6 +389,9 @@ body {
   display: inline-block;
   box-sizing: border-box;
 }
+    /* 补齐交互状态（基于原样式改造） */
+    .theme-item:active { background: var(--vl-alias-bg-base-tertiary); }
+    .theme-item:focus-visible { outline: 2px solid var(--vl-alias-accent-blue); outline-offset: 1px; }
 .theme-item__theme { margin-left: -6px; border: 1px solid rgba(255,255,255,0.4); }
 
 /* ─── 成片名预览（标签为小字说明样式，框与下方参数用横线分隔） ─── */

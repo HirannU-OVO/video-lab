@@ -31,6 +31,11 @@
       text-align: center; font-size: 10px; font-variant-numeric: tabular-nums;
       background: var(--vl-alias-bg-overlay-l2); color: var(--vl-alias-text-secondary);
     }
+    /* 补齐交互状态（基于原样式改造） */
+    .task-tab:active { background: var(--vl-alias-bg-base-tertiary); }
+    .task-tab[aria-selected="true"]:active { background: var(--vl-alias-bg-brand-active); border-color: var(--vl-alias-bg-brand-active); }
+    .task-tab:focus-visible { outline: 2px solid var(--vl-alias-accent-blue); outline-offset: 1px; }
+    .task-tab--alert:active { background: var(--vl-alias-status-error-surface-l2, var(--vl-alias-status-error-surface-l1)); }
     .task-tab[aria-selected="true"] .task-tab__count { background: color-mix(in srgb, var(--vl-alias-text-onaccent) 24%, transparent); color: var(--vl-alias-text-onaccent); }
     /* 已停止 tab：新增报错任务时浅红底提醒，点击查看后消除 */
     .task-tab--alert { background: var(--vl-alias-status-error-surface-l1); border-color: var(--vl-alias-status-error-default); color: var(--vl-alias-status-error-default); }
@@ -57,6 +62,11 @@
       position: absolute; right: 16px; bottom: 16px; z-index: 6;
       display: inline-flex; gap: 10px;
     }
+    /* 补齐交互状态（基于原样式改造：保留圆形/尺寸/阴影，只补反馈） */
+    .task-fab:active { filter: brightness(.92); transform: translateY(0); }
+    .task-fab:focus-visible { outline: 2px solid var(--vl-alias-accent-blue); outline-offset: 1px; }
+    /* 三个实色悬浮按钮：按下时压暗一档（hover 用 brightness 提亮，active 用 filter 压暗，二者由顺序决定） */
+    #fabResumeAll:active, #fabPauseAll:active, #taskFab:active { filter: brightness(.9); transform: translateY(0); }
     .task-fab-actions .task-fab { position: static; width: 42px; height: 42px; }
     .task-card { border: 1px solid var(--vl-alias-border-neutral-l1); border-radius: 6px; background: var(--vl-alias-bg-base-secondary); overflow: hidden; flex-shrink: 0; }
     /* 已完成列表按完成日期分组：左侧 yy.mm.dd + 延伸线 + 共 N 个视频；点击整行展开/折叠 */

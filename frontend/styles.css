@@ -4737,7 +4737,11 @@ button.is-vl-disabled {
   user-select: none;
 }
   /* @deprecated 用 .vl-check */
-.opt-check:hover, .opt-radio:hover { color: var(--vl-alias-text-default); }
+  .opt-check:hover, .opt-radio:hover { color: var(--vl-alias-text-default); }
+  /* 补齐交互状态（基于原样式改造：只加反馈，不改既有外观） */
+  .opt-check:active, .opt-radio:active { color: var(--vl-alias-text-default); }
+  .opt-check:active .opt-check__box, .opt-radio:active .opt-radio__box { border-color: var(--vl-alias-border-neutral-l3); }
+  .opt-check:focus-visible, .opt-radio:focus-visible { outline: 2px solid var(--vl-alias-accent-blue); outline-offset: 1px; }
 .opt-check input, .opt-radio input { position: absolute; opacity: 0; width: 0; height: 0; }
 .opt-check__box {
   flex-shrink: 0;

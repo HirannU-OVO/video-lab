@@ -7,6 +7,11 @@
 
     /* ── 输入区（两 Tab 之外：目录与递归）── */
     .tl-input { flex-shrink: 0; padding: 10px 14px; border-bottom: 1px solid var(--vl-alias-border-neutral-l1); background: var(--vl-alias-bg-base-default); }
+    /* 补齐交互状态（基于原样式改造；令牌与基线 .vl-input 保持一致，皮肤可覆盖） */
+    .tl-input:hover:not([disabled]) { border-bottom-color: var(--vl-alias-border-neutral-l3); }
+    .tl-input:focus { outline: none; border-bottom-color: var(--vl-alias-accent-blue); }
+    .tl-input:disabled, .tl-input[readonly] { background: var(--vl-alias-bg-base-tertiary); color: var(--vl-alias-text-disabled); cursor: default; }
+    .tl-input[aria-invalid="true"] { border-bottom-color: var(--vl-alias-status-error-default); }
     .tl-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .tl-label { flex-shrink: 0; font-size: var(--vl-type-body-sm-size); color: var(--vl-alias-text-secondary); }
     .tl-text {
@@ -39,6 +44,10 @@
       background: transparent; color: var(--vl-alias-text-secondary); cursor: pointer;
       font-family: var(--vl-font-family-base); font-size: var(--vl-type-body-sm-size);
     }
+    /* 补齐交互状态（基于原样式改造） */
+    .tl-tab:active { background: var(--vl-alias-bg-base-tertiary); }
+    .tl-tab[aria-selected="true"]:active { background: var(--vl-alias-bg-base-tertiary); }
+    .tl-tab:focus-visible { outline: 2px solid var(--vl-alias-accent-blue); outline-offset: 1px; }
     .tl-tab:hover { background: var(--vl-alias-bg-overlay-l1); color: var(--vl-alias-text-default-hover); }
     .tl-tab[aria-selected="true"] { background: var(--vl-alias-bg-base-tertiary); border-color: var(--vl-alias-border-neutral-l1); color: var(--vl-alias-text-default); font-weight: var(--vl-font-font-weight-strong); }
     .tl-tab[aria-selected="true"]:hover { background: var(--vl-alias-bg-overlay-l1); color: var(--vl-alias-text-default-hover); }
