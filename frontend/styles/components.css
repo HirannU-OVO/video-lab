@@ -290,8 +290,123 @@
   .vl-row--between { justify-content: space-between; }
   .vl-col { display: flex; flex-direction: column; gap: 8px; }
   .vl-spacer { flex: 1 1 auto; }
-  .vl-hint { color: var(--vl-alias-text-tertiary); font-size: 12px; line-height: 1.6; }
+  /* ── 提示文字（M-05 结构类通用化）──────────────────────────
+     用途：表单说明、区块注解、操作提示等「辅助性文字」。
+     全站原先有 10 余种各写一遍的提示类（字号 11 / 11.5 / 12 / 13px 不等、
+     颜色在 tertiary 与 secondary 之间摇摆、间距各自定义）→ 收敛到这里。
+     形态差异靠变量表达，页面私有类只留真正不同的地方：
+       · 字号 / 颜色 / 行高 / 上下间距 —— 走变量
+       · --block  带底色的提示块（原 tl-note：错误底 + 内距 + 圆角）
+       · --warn   警告色（原 cv-warn / tl-hint--warn）
+     不并入的同类项：状态栏的环境警告（.status-bar__envwarn 是带圆点的状态指示，
+     不是说明文字）。 */
+  .vl-hint {
+    --vl-hint-fs: 12px;
+    --vl-hint-color: var(--vl-alias-text-tertiary);
+    /* ⚠ 行高默认 inherit（不强制值）：原先多数提示类并没有声明 line-height，
+       若这里写死 1.6，块级提示的高度会变 → 连累下方内容整体位移
+       （实测工具页因此位移 6.4%）。需要特定行高的页面类自行设 --vl-hint-lh。 */
+    --vl-hint-lh: inherit;
+    --vl-hint-mt: 0;
+    --vl-hint-mb: 0;
+    --vl-hint-pad: 0;
+    --vl-hint-bg: transparent;
+    --vl-hint-radius: 0;
+    margin-top: var(--vl-hint-mt);
+    margin-bottom: var(--vl-hint-mb);
+    padding: var(--vl-hint-pad);
+    background: var(--vl-hint-bg);
+    border-radius: var(--vl-hint-radius);
+    color: var(--vl-hint-color);
+    font-size: var(--vl-hint-fs);
+    line-height: var(--vl-hint-lh);
+  }
+  /* 带底色的提示块（原工具页的备注块） */
+  .vl-hint--block {
+    --vl-hint-pad: 8px 10px;
+    --vl-hint-radius: var(--vl-static-radius-6);
+    --vl-hint-bg: var(--vl-alias-status-error-surface-l1);
+    --vl-hint-color: var(--vl-alias-text-secondary);
+    --vl-hint-mb: 8px;
+  }
+  /* 警告色提示 */
+  .vl-hint--warn { --vl-hint-color: var(--vl-alias-status-warning-default); }
   .vl-path { font-family: "JetBrains Mono", Consolas, monospace; font-size: 11.5px; color: var(--vl-alias-text-secondary); word-break: break-all; }
+
+  /* ── 工具栏（M-05 结构类通用化）────────────────────────────
+     用途：一行里并排放按钮 / 输入框 / 说明的操作区。
+     全站原先有 5 种各写一遍的工具栏类（间距 8 / 10px 不等、换行与否各异、
+     对齐 flex-start / flex-end 混用）→ 收敛到这里，差异走变量。
+     不并入的同类项：窗口标题栏、侧栏、配置栏、状态栏（整块外壳，不是行内工具条），
+     以及设置页表单右侧的纵向操作区（.form-group__ops，是列布局而非行）。 */
+  .vl-toolbar {
+    --vl-tb-gap: 8px;
+    --vl-tb-justify: flex-start;
+    --vl-tb-align: center;
+    --vl-tb-wrap: wrap;
+    display: flex;
+    align-items: var(--vl-tb-align);
+    justify-content: var(--vl-tb-justify);
+    gap: var(--vl-tb-gap);
+    flex-wrap: var(--vl-tb-wrap);
+  }
+  /* 右对齐（弹窗底部、引导页底部） */
+  .vl-toolbar--end { --vl-tb-justify: flex-end; }
+  /* 不换行（画布工具条的单行模式） */
+  .vl-toolbar--nowrap { --vl-tb-wrap: nowrap; }
+
+  /* ── 纯文字标题（M-05 结构类通用化）────────────────────────
+     用途：页面级标题（设置页视图名、主窗口栏标题）、区块小标题。
+     与 .vl-section-head 的分工：那个是「带底色的整条区块头」（有背景与下边框），
+     这个是「纯文字标题」（无背景、无边框，只统一字号/字重/颜色）。
+     ⚠ 不设 margin 与 line-height：这两项各页差异大，交给页面类控制。
+     不并入的同类项：表单分组头（.form-group__head 是标签+说明的容器）、
+     窗口标题（.win-titlebar__title 绝对居中）。 */
+  .vl-title {
+    --vl-title-fs: 15px;
+    --vl-title-fw: 600;
+    --vl-title-color: var(--vl-alias-text-default);
+    color: var(--vl-title-color);
+    font-size: var(--vl-title-fs);
+    font-weight: var(--vl-title-fw);
+  }
+  .vl-title--sm { --vl-title-fs: 14px; }
+  .vl-title--lg { --vl-title-fs: 16px; }
+
+  /* ── 计数徽章（M-05 结构类通用化）──────────────────────────
+     用途：状态栏任务数、分组标题右侧的条目数等。
+     · 默认：小圆角徽章（有底色）
+     · --plain：纯文字计数（无底色，随父级排版） */
+  .vl-count {
+    --vl-count-minw: 15px;
+    --vl-count-h: 15px;
+    --vl-count-pad: 0 4px;
+    --vl-count-radius: 8px;
+    --vl-count-bg: var(--vl-alias-bg-overlay-l2);
+    --vl-count-color: var(--vl-alias-text-secondary);
+    --vl-count-fs: 11px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: var(--vl-count-minw);
+    height: var(--vl-count-h);
+    padding: var(--vl-count-pad);
+    border-radius: var(--vl-count-radius);
+    background: var(--vl-count-bg);
+    color: var(--vl-count-color);
+    font-size: var(--vl-count-fs);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .vl-count--plain {
+    --vl-count-bg: transparent;
+    --vl-count-color: var(--vl-alias-text-tertiary);
+    display: inline;
+    min-width: 0;
+    height: auto;
+    padding: 0;
+    border-radius: 0;
+  }
 }
 
 /* ═══ 已完成迁移记录（旧类名 → 现行组件类，仅供追溯）═════════

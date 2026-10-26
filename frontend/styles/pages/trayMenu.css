@@ -24,14 +24,8 @@
   .tray-menu button:hover { background: var(--vl-alias-bg-overlay-l2); }
   .tray-menu .sep { display: block; height: 1px; margin: 4px 6px; background: var(--vl-alias-border-neutral-l1); }
   /* 预览版标识行（脚本按 window.vlBuild 决定是否显示） */
-  .tray-menu__head {
-    display: flex; align-items: center; gap: 6px;
-    padding: 5px 12px 6px; margin-bottom: 2px;
-    color: #f97316; font-size: 11px; font-weight: 600;
-    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
-    letter-spacing: .3px; white-space: nowrap;
-    border-bottom: 1px solid var(--vl-alias-border-neutral-l1);
-  }
+/* 差异：内距 / 下边框 / 单行（字号/字重/颜色回归基线；前置圆点保留，属明确自定义） */
+.tray-menu__head { display: flex; align-items: center; gap: 6px; padding: 5px 12px 6px; margin-bottom: 2px; white-space: nowrap; border-bottom: 1px solid var(--vl-alias-border-neutral-l1); }
   .tray-menu__head::before {
     content: ''; flex: 0 0 auto;
     width: 6px; height: 6px; border-radius: 50%; background: #f97316;

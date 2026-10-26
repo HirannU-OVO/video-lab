@@ -51,7 +51,7 @@ var m = new URL(location.href).searchParams.get('token');
   <div class="guide-hero">
     <img class="guide-hero__icon" src="../icon/app-icon.png" alt="Video Lab" draggable="false">
     <div class="guide-hero__text">
-      <div class="guide-hero__title">欢迎使用 Video Lab</div>
+      <div class="vl-title guide-hero__title">欢迎使用 Video Lab</div>
       <div class="guide-hero__sub">先选一个工作路径 —— 各项目文件夹与 TXT 配置都存放在这里。</div>
     </div>
   </div>
@@ -62,9 +62,9 @@ var m = new URL(location.href).searchParams.get('token');
         <input class="vl-input form-input" id="guideRoot" type="text" placeholder="尚未选择" readonly>
         <button class="btn btn-ghost vl-btn" id="guidePick">选择文件夹</button>
       </div>
-      <div class="guide-hint">选好后点右下角「保存并开始」。也可以直接关闭本窗口，之后在设置页里设置。</div>
+      <div class="vl-hint guide-hint">选好后点右下角「保存并开始」。也可以直接关闭本窗口，之后在设置页里设置。</div>
     </div>
-    <div class="guide-actions">
+    <div class="vl-toolbar vl-toolbar--end guide-actions">
       <span class="guide-actions__status" id="guideStatus"></span>
       <button class="btn vl-btn vl-btn--primary" id="guideSave">保存并开始</button>
     </div>

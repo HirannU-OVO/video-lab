@@ -77,12 +77,8 @@ body {
   display: none;
 }
 .settings-view.is-active { display: block; }
-.settings-view__title {
-  margin: 0 0 16px;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--vl-alias-text-default);
-}
+/* 差异：下方留 16px（字号/字重/颜色回归基线） */
+.settings-view__title { margin: 0 0 16px; }
 
 /* ─── 表单 ─── */
 /* 设置项：左「标题 + 说明」/ 右「控件」两栏，**项与项之间用一条横线分隔**，
@@ -220,11 +216,11 @@ body {
 /* 无标题设置项的说明行：分组头已经说明了这组是什么，设置项就不必再起一个同义标题
    （如分组「任务通知」下的设置项再写一遍「任务通知」纯属重复）。
    此时说明文字直接作为该项的第一行，样式与 label 内的小字保持一致。 */
+/* 差异：表单说明比基线小一号、块级、下方留 6px（颜色与行高走基线） */
+/* 差异：块级 + 下方留 6px（字号与颜色回归基线） */
 .form-group__desc {
   display: block;
-  font-size: 11px;
-  color: var(--vl-alias-text-tertiary);
-  margin-bottom: 6px;
+  --vl-hint-mb: 6px;
 }
 /* 差异：设置页输入框占满所在容器。
    控件本体（外观、悬浮 / 聚焦 / 禁用 / 只读 / 非法态）已由基线 .vl-input 提供，
@@ -470,7 +466,9 @@ body {
 .opt-actions { margin-top: 8px; }
 
 /* 行内小注（如「自动删除 [3 天] 前的缓存文件」的“前的缓存文件”） */
-.opt-inline-note { font-size: 12px; color: var(--vl-alias-text-secondary); white-space: nowrap; flex-shrink: 0; }
+/* 差异：行内备注取次级文字色、不换行、不被压缩（字号与基线同为 12px） */
+/* 差异：不换行、不被压缩（颜色与字号回归基线） */
+.opt-inline-note { white-space: nowrap; flex-shrink: 0; }
 
 /* 「路径与数据」占用量与提示分两行：主行仅数值（opt-path 单行省略），提示走独立 desc 行 ——
    窄窗口（App 设置 680 宽）不再出现「占用」拆字 / 释放数值断行 */
@@ -484,15 +482,8 @@ body {
   background: var(--vl-alias-bg-overlay-l3, rgba(0, 0, 0, 0.35));
   backdrop-filter: blur(3px);
 }
-.update-result__box {
-  display: flex; align-items: flex-start; flex-wrap: wrap; gap: 14px;
-  width: min(420px, calc(100% - 48px));
-  padding: 20px 22px;
-  border-radius: 12px;
-  background: var(--vl-alias-bg-base-default);
-  border: 1px solid var(--vl-alias-border-neutral-l1);
-  box-shadow: 0 18px 48px color-mix(in srgb, #000 42%, transparent);
-}
+/* 差异：布局 / 宽度 / 内距 / 投影（底色、圆角与边框回归基线 .vl-card） */
+.update-result__box { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 14px; width: min(420px, calc(100% - 48px)); padding: 20px 22px; box-shadow: 0 18px 48px color-mix(in srgb, #000 42%, transparent); }
 .update-result__icon {
   flex: 0 0 auto; width: 34px; height: 34px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
@@ -503,10 +494,12 @@ body {
 .update-result__icon--err { background: #dc2626; }
 .update-result__icon--wait { background: var(--vl-alias-text-tertiary); }
 .update-result__body { flex: 1 1 0; min-width: 0; }
-.update-result__title { font-size: 15px; font-weight: 600; color: var(--vl-alias-text-default); }
+/* 外观全部回归基线 .vl-title */
+/* 差异：弹窗描述比基线大一号、行高更紧、上方 4px、长串可断词 */
+/* 差异：上方 4px、长串可断词（字号/行高/颜色回归基线） */
 .update-result__desc {
-  margin-top: 4px; font-size: 13px; line-height: 1.55;
-  color: var(--vl-alias-text-secondary); word-break: break-word;
+  --vl-hint-mt: 4px;
+  word-break: break-word;
 }
 .update-result__actions { flex: 1 1 100%; display: flex; gap: 8px; justify-content: flex-end; }
 .update-result__btn { padding: 6px 16px; font-size: 13px; }
@@ -563,11 +556,9 @@ body {
   overflow-x: auto;
   color: var(--vl-alias-text-default);
 }
-.changelog-hint {
-  color: var(--vl-alias-text-tertiary);
-  font-size: 13px;
-  padding: 8px 0;
-}
+/* 差异：更新日志提示比基线大一号、上下留 8px（颜色走基线） */
+/* 差异：上下留 8px（字号回归基线） */
+.changelog-hint { --vl-hint-pad: 8px 0; }
 /* 表格 / 行内代码 / 链接 / 引用 */
 .changelog-box table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 13px; }
 .changelog-box th, .changelog-box td { border: 1px solid var(--vl-alias-border-neutral-l2); padding: 6px 10px; text-align: left; color: var(--vl-alias-text-secondary); }

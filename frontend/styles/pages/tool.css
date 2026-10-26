@@ -48,7 +48,8 @@
       flex-shrink: 0;
     }
     .tl-check { display: inline-flex; align-items: center; gap: 5px; font-size: var(--vl-type-body-sm-size); color: var(--vl-alias-text-secondary); cursor: pointer; }
-    .tl-hint { margin-top: 6px; font-size: var(--vl-type-body-xs-size); color: var(--vl-alias-text-tertiary); line-height: 1.5; }
+    /* 差异：上方 6px（字号/行高/颜色回归基线） */
+    .tl-hint { --vl-hint-mt: 6px; }
     .tl-hint--warn { color: var(--vl-alias-status-warning-default); }
 
     /* ── Tab ── */
@@ -72,8 +73,8 @@
     /* ── 滚动区 ── */
     .tl-scroll { flex: 1; overflow-y: auto; padding: 10px 14px 14px; }
     .tl-pane[hidden] { display: none; }
-    .tl-note { margin-bottom: 8px; padding: 8px 10px; border-radius: var(--vl-static-radius-6);
-               background: var(--vl-alias-status-error-surface-l1); color: var(--vl-alias-status-error-default); font-size: var(--vl-type-body-sm-size); line-height: 1.5; }
+    /* 差异：备注块的文字取错误色（底色 / 内距 / 圆角 / 下方间距回归基线 .vl-hint--block） */
+    .tl-note { --vl-hint-color: var(--vl-alias-status-error-default); }
 
     /* ── 步骤分组（框体）：默认全部展开 ── */
     .tl-group { margin-bottom: 6px; border: 1px solid var(--vl-alias-border-neutral-l1); border-radius: var(--vl-static-radius-8); overflow: hidden; }
@@ -84,7 +85,8 @@
     .tl-group__head:hover { background: var(--vl-alias-bg-overlay-l2); }
     .tl-group__arrow { display: inline-flex; transition: transform .15s ease; color: var(--vl-alias-text-tertiary); }
     .tl-group--open .tl-group__arrow { transform: rotate(90deg); }
-    .tl-group__count { margin-left: auto; font-size: var(--vl-type-body-xs-size); font-weight: var(--vl-font-font-weight-default); color: var(--vl-alias-text-tertiary); }
+    /* 差异：靠右（外观回归基线 .vl-count--plain） */
+    .tl-group__count { margin-left: auto; }
     .tl-group__body { display: none; padding: 0; }
     .tl-group--open .tl-group__body { display: block; }
 
@@ -218,9 +220,9 @@
     .cv-badge--ok { background: #14532d; }
     .cv-badge--err { background: #7f1d1d; }
     .cv-warn { font-size: 11px; line-height: 1.6; color: #d97706; min-height: 0; }
-    .cv-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    /* 布局回归基线 .vl-toolbar（原 gap 8 / align center / wrap 与基线一致） */
     /* 列表行（样本 / 背景）：不换行 —— 两个按钮并排相邻，名称占剩余宽度并省略 */
-    .cv-bar--list { flex-wrap: nowrap; }
+    /* 单行工具条改用基线的 .vl-toolbar--nowrap 变体 */
     .cv-bar--list .tl-label { flex: 0 0 auto; }
     .cv-info { flex: 1 1 auto; min-width: 0; font-size: var(--vl-type-body-xs-size); color: var(--vl-alias-text-tertiary);
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

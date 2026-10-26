@@ -642,13 +642,7 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   flex-shrink: 0;
   gap: var(--vl-static-spacer-8);
 }
-.sidebar__header-title {
-  font-family: var(--vl-type-heading-xs-family);
-  font-size: var(--vl-type-heading-xs-size);
-  font-weight: var(--vl-font-font-weight-medium);
-  line-height: var(--vl-type-heading-xs-line-height);
-  color: var(--vl-alias-text-default);
-}
+/* 外观全部回归基线 .vl-title（原为 heading-xs 字体族 + 中等字重） */
 /* 侧栏标题行「新增配置」纯图标按钮：样式完全参考界面右上角预览展开按钮（含阴影、hover 上浮） */
 .sidebar__new-config {
   display: inline-flex;
@@ -1199,13 +1193,7 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   border-bottom: 1px solid var(--vl-alias-border-neutral-l1);
   flex-shrink: 0;
 }
-.center-top__title {
-  font-family: var(--vl-type-heading-xs-family);
-  font-size: var(--vl-type-heading-xs-size);
-  font-weight: var(--vl-font-font-weight-medium);
-  line-height: var(--vl-type-heading-xs-line-height);
-  color: var(--vl-alias-text-default);
-}
+/* 外观全部回归基线 .vl-title（原为 heading-xs 字体族 + 中等字重） */
 .center-top__toggles {
   display: flex;
   gap: var(--vl-static-spacer-4);
@@ -2359,16 +2347,8 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   background: var(--vl-alias-bg-overlay-l2);
   color: var(--vl-alias-text-default);
 }
-.right-panel__subtitle {
-  padding: var(--vl-static-spacer-6) var(--vl-static-spacer-12);
-  font-size: var(--vl-type-body-md-size);
-  color: var(--vl-alias-text-tertiary);
-  border-bottom: 1px solid var(--vl-alias-border-neutral-l1);
-  flex-shrink: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+/* 差异：内距 / 下边框 / 不收缩 / 单行省略（字号与颜色回归基线） */
+.right-panel__subtitle { padding: var(--vl-static-spacer-6) var(--vl-static-spacer-12); border-bottom: 1px solid var(--vl-alias-border-neutral-l1); flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .right-panel__content {
   flex: 1;
   display: flex;
@@ -2744,20 +2724,7 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   color: var(--vl-alias-text-default-hover);
   border-color: var(--vl-alias-border-neutral-l3);
 }
-.status-bar__tasks-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 15px;
-  height: 15px;
-  padding: 0 4px;
-  border-radius: 8px;
-  background: var(--vl-alias-status-primary-default);
-  color: var(--vl-alias-text-onbrand);
-  font-size: 10px;
-  line-height: 15px;
-  font-weight: var(--vl-font-font-weight-strong);
-}
+/* 外观全部回归基线 .vl-count（原为品牌色底 + 反色字 + 10px 字号） */
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -3392,20 +3359,9 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   flex-direction: column;
   gap: 2px;
 }
-.update-banner__title {
-  font-family: var(--vl-font-family-base);
-  font-size: var(--vl-type-body-base-size);
-  font-weight: var(--vl-font-font-weight-strong);
-  color: var(--vl-alias-text-default);
-  line-height: 1.4;
-}
-.update-banner__desc {
-  font-family: var(--vl-font-family-base);
-  font-size: var(--vl-type-body-sm-size);
-  font-weight: var(--vl-type-body-sm-weight);
-  color: var(--vl-alias-text-tertiary);
-  line-height: 1.5;
-}
+/* 外观全部回归基线 .vl-title */
+/* 差异：更新横幅描述用 body-sm 字号与字重、行高 1.5（颜色与基线同） */
+/* 外观全部回归基线 .vl-hint（原为 body-sm 字号 + 单独字重） */
 .update-banner__progress {
   display: flex;
   align-items: center;
@@ -3432,12 +3388,8 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   min-width: 30px;
   text-align: right;
 }
-.update-banner__actions {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: var(--vl-static-spacer-8);
-}
+/* 差异：不参与收缩（布局回归基线 .vl-toolbar） */
+.update-banner__actions { flex-shrink: 0; }
 
 /* ═══ 状态栏下载进度（任务按钮左侧）═══ 配色走主题变量 */
 .update-mini {
@@ -3587,19 +3539,10 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   color: var(--vl-alias-text-tertiary);
 }
 .boot-guide__inner > i { margin-bottom: 6px; }
-.boot-guide__title {
-  font-family: var(--vl-font-family-base);
-  font-size: var(--vl-type-body-base-size);
-  font-weight: var(--vl-font-font-weight-strong);
-  color: var(--vl-alias-text-default);
-}
-.boot-guide__desc {
-  margin-top: 6px;
-  font-family: var(--vl-font-family-base);
-  font-size: var(--vl-type-body-sm-size);
-  line-height: 1.5;
-  color: var(--vl-alias-text-secondary);
-}
+/* 外观全部回归基线 .vl-title */
+/* 差异：引导卡片描述用次级色、body-sm 字号、行高 1.5、上方 6px */
+/* 差异：上方 6px（字号/行高/颜色回归基线） */
+.boot-guide__desc { --vl-hint-mt: 6px; }
 .boot-guide__btn {
   display: inline-flex;
   align-items: center;
@@ -4300,14 +4243,8 @@ button.is-vl-disabled {
   background: var(--vl-static-bg-overlay, rgba(0, 0, 0, 0.35));
   backdrop-filter: blur(3px);
 }
-.update-result__box {
-  display: flex; align-items: flex-start; flex-wrap: wrap; gap: 14px;
-  width: min(420px, calc(100vw - 64px));
-  padding: 20px 22px;
-  border-radius: 12px;
-  background: var(--vl-alias-bg-base-default, #fff);
-  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.22);
-}
+/* 差异：布局 / 宽度 / 内距 / 投影（底色与圆角回归基线 .vl-card） */
+.update-result__box { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 14px; width: min(420px, calc(100vw - 64px)); padding: 20px 22px; box-shadow: 0 10px 34px rgba(0, 0, 0, 0.22); }
 .update-result__icon {
   flex: 0 0 auto; width: 34px; height: 34px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
@@ -4318,12 +4255,15 @@ button.is-vl-disabled {
 .update-result__icon--err { background: #dc2626; }
 .update-result__icon--wait { background: var(--vl-alias-text-tertiary, #8a8a8a); }
 .update-result__body { flex: 1 1 0; min-width: 0; }
-.update-result__title { font-size: 15px; font-weight: 600; color: var(--vl-alias-text-default, #222); }
+/* 外观全部回归基线 .vl-title */
+/* 差异：弹窗描述比基线大一号、行高更紧、上方 4px、长串可断词 */
+/* 差异：上方 4px、长串可断词（字号/行高/颜色回归基线） */
 .update-result__desc {
-  margin-top: 4px; font-size: 13px; line-height: 1.55;
-  color: var(--vl-alias-text-secondary, #666); word-break: break-word;
+  --vl-hint-mt: 4px;
+  word-break: break-word;
 }
-.update-result__actions { flex: 1 1 100%; display: flex; gap: 8px; justify-content: flex-end; }
+/* 差异：占满整行（布局回归基线 .vl-toolbar--end） */
+.update-result__actions { flex: 1 1 100%; }
 
 /* 模式切换（批量 ↔ 遮罩叠加）的中间过渡：两种模式的中栏 / 侧栏结构完全不同，切换必然整片重建；
    重建在遮罩之下进行，用户看到的是一次干净的切换，而非重建过程的中间态 */
@@ -4337,15 +4277,8 @@ button.is-vl-disabled {
   background: var(--vl-static-bg-overlay, rgba(0, 0, 0, 0.35));
   backdrop-filter: blur(3px);
 }
-.mode-mask__box {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 20px;
-  border-radius: 10px;
-  background: var(--vl-alias-bg-base-default, #fff);
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
-}
+/* 差异：布局 / 内距 / 投影（底色与圆角回归基线 .vl-card） */
+.mode-mask__box { display: flex; align-items: center; gap: 10px; padding: 14px 20px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18); }
 .mode-mask__text { font-size: var(--vl-type-body-sm-size, 13px); color: var(--vl-alias-text-default, #222); }
 
 /* 预览版标识（仅预览版构建出现：preload 注入 window.vlBuild.preview → titlebar.js 插入节点） */

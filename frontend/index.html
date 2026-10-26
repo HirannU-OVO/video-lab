@@ -53,7 +53,7 @@ var m = new URL(location.href).searchParams.get('token');
   <!-- 模式切换（批量 ↔ 遮罩叠加）的中间过渡：两种模式的中栏 / 侧栏结构完全不同，
        切换必然整片重建；重建在遮罩之下进行，用户看到的是一次干净的切换而非中间态 -->
   <div id="modeMask" class="mode-mask" style="display:none">
-    <div class="mode-mask__box">
+    <div class="vl-card mode-mask__box">
       <div class="busy-spinner"></div>
       <span class="mode-mask__text" id="modeMaskText">正在切换…</span>
     </div>
@@ -77,7 +77,7 @@ var m = new URL(location.href).searchParams.get('token');
       <div class="sidebar">
         <div class="sidebar__root">
           <div class="sidebar__header">
-            <span class="sidebar__header-title">项目列表</span>
+            <span class="vl-title sidebar__header-title">项目列表</span>
             <button class="sidebar__new-config" id="btnNewConfig" title="点击在该项目下新增配置">
               <i data-icon="plus" data-size="12"></i>
             </button>
@@ -148,7 +148,7 @@ var m = new URL(location.href).searchParams.get('token');
             </div>
             <div class="center-top" id="centerTop">
               <div class="center-top__header">
-                <span class="center-top__title">日期分支</span>
+                <span class="vl-title center-top__title">日期分支</span>
                 <div class="center-top__toggles">
                   <button class="mode-toggle vl-btn vl-btn--sm vl-btn--ghost" data-mode="filelist" aria-pressed="true" id="modeFilelist">
                     <i data-icon="list" data-size="12"></i>配置列表
@@ -192,7 +192,7 @@ var m = new URL(location.href).searchParams.get('token');
                 </button>
               </div>
             </div>
-            <div class="right-panel__subtitle" id="rightPanelSubtitle">请选择一个日期分支</div>
+            <div class="vl-title vl-title--sm right-panel__subtitle" id="rightPanelSubtitle">请选择一个日期分支</div>
             <div class="right-panel__content" id="rightPanelContent">
               <div class="right-panel__line-numbers" id="rightLineNumbers"></div>
               <div class="right-panel__code" id="rightCode"></div>
@@ -234,7 +234,7 @@ var m = new URL(location.href).searchParams.get('token');
       <span class="status-bar__right">
         <span id="envWarnMark" class="status-bar__envwarn" style="display:none"></span>
         <button class="status-bar__tasks-btn" id="btnOpenTasks" title="打开任务列表，查看运行日志">
-          <i data-icon="list" data-size="12"></i>任务<span class="status-bar__tasks-count" id="tasksCount" style="display:none"></span>
+          <i data-icon="list" data-size="12"></i>任务<span class="vl-count status-bar__tasks-count" id="tasksCount" style="display:none"></span>
         </button>
       </span>
     </div>
@@ -243,14 +243,14 @@ var m = new URL(location.href).searchParams.get('token');
     <div class="update-banner" id="updateBanner" style="display:none">
       <div class="update-banner__icon"><i data-icon="download" data-size="20"></i></div>
       <div class="update-banner__body">
-        <div class="update-banner__title" id="updateBannerTitle">发现新版本 v1.4.0</div>
-        <div class="update-banner__desc" id="updateBannerDesc">当前版本 v1.3.0 · 点击立即更新获取最新功能</div>
+        <div class="vl-title update-banner__title" id="updateBannerTitle">发现新版本 v1.4.0</div>
+        <div class="vl-hint update-banner__desc" id="updateBannerDesc">当前版本 v1.3.0 · 点击立即更新获取最新功能</div>
         <div class="update-banner__progress" id="updateBannerProgress" style="display:none">
           <div class="update-banner__progress-track"><div class="update-banner__progress-fill" id="updateBannerProgressFill" style="width:0%"></div></div>
           <span class="update-banner__progress-text" id="updateBannerProgressText">0%</span>
         </div>
       </div>
-      <div class="update-banner__actions">
+      <div class="vl-toolbar update-banner__actions">
         <button class="vl-btn vl-btn--ghost" id="updateLaterBtn">忽略</button>
         <button class="vl-btn vl-btn--primary" id="updateNowBtn">立即更新</button>
       </div>
@@ -260,13 +260,13 @@ var m = new URL(location.href).searchParams.get('token');
          设置页是主窗口内的 iframe，它自己弹的浮层会被裁切，故统一由主窗口出；
          后台静默检查不会触发（main 侧三处事件都有 !silent 闸门）。 -->
     <div class="update-result" id="updateResultMask" style="display:none">
-      <div class="update-result__box">
+      <div class="vl-card update-result__box">
         <div class="update-result__icon" id="updateResultIcon">✓</div>
         <div class="update-result__body">
-          <div class="update-result__title" id="updateResultTitle"></div>
-          <div class="update-result__desc" id="updateResultDesc"></div>
+          <div class="vl-title update-result__title" id="updateResultTitle"></div>
+          <div class="vl-hint update-result__desc" id="updateResultDesc"></div>
         </div>
-        <div class="update-result__actions">
+        <div class="vl-toolbar vl-toolbar--end update-result__actions">
           <button class="vl-btn vl-btn--ghost" id="updateResultClose">知道了</button>
           <button class="vl-btn vl-btn--primary" id="updateResultGo" style="display:none">立即更新</button>
         </div>
@@ -279,8 +279,8 @@ var m = new URL(location.href).searchParams.get('token');
   <div class="boot-guide" id="bootGuide" style="display:none">
     <div class="boot-guide__inner">
       <i data-icon="folder" data-size="22"></i>
-      <div class="boot-guide__title">请选择工作路径</div>
-      <div class="boot-guide__desc">项目列表为空，请选择配置文件所在路径</div>
+      <div class="vl-title boot-guide__title">请选择工作路径</div>
+      <div class="vl-hint boot-guide__desc">项目列表为空，请选择配置文件所在路径</div>
       <button class="boot-guide__btn" id="bootGuidePick">选择路径</button>
     </div>
   </div>

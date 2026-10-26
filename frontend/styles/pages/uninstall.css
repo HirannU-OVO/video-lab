@@ -17,7 +17,7 @@
   .path { word-break: break-all; font-family: Consolas, monospace; font-size: 11.5px; color: var(--vl-alias-text-secondary); margin-top: 4px; }
   label.check { display: flex; gap: 9px; align-items: flex-start; cursor: pointer; padding: 10px 12px; border: 1px solid var(--vl-alias-border-neutral-l1); border-radius: 8px; margin-bottom: 8px; }
   label.check input { margin-top: 2px; width: 15px; height: 15px; accent-color: var(--vl-alias-accent-blue); }
-  .hint { color: var(--vl-alias-text-tertiary); font-size: 12px; line-height: 1.7; margin: 0; }
+  /* 外观全部回归基线 .vl-hint（原行高 1.7） */
   .hint.block { display: block; margin-top: 3px; }
   .warn { color: var(--vl-alias-status-error-default); font-size: 12px; margin: 4px 0 0; display: none; }
   .warn.show { display: block; }
@@ -32,7 +32,8 @@
   button.btn:disabled { opacity: .6; cursor: default; }
   .modal { position: fixed; inset: 0; background: var(--vl-static-bg-overlay); display: none; align-items: center; justify-content: center; }
   .modal.show { display: flex; }
-  .modal .box { width: 380px; background: var(--vl-alias-bg-base-default); border-radius: 10px; padding: 18px 20px 16px; box-shadow: 0 12px 32px rgba(0, 0, 0, .18); }
+  /* 差异：宽度 / 内距 / 投影（底色与圆角回归基线 .vl-card） */
+  .modal .box { width: 380px; padding: 18px 20px 16px; box-shadow: 0 12px 32px rgba(0, 0, 0, .18); }
   .modal h2 { font-size: 14px; margin: 0 0 8px; }
   .modal p { font-size: 12.5px; color: var(--vl-alias-text-secondary); line-height: 1.8; margin: 0 0 14px; }
   .modal .acts { display: flex; gap: 10px; justify-content: flex-end; }

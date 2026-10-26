@@ -53,7 +53,7 @@ var m = new URL(location.href).searchParams.get('token');
 
     <!-- ═══ 通用设置 ═══ -->
     <section class="settings-view is-active" id="view-general">
-      <h2 class="settings-view__title">通用设置</h2>
+      <h2 class="vl-title vl-title--lg settings-view__title">通用设置</h2>
 
       <div class="form-group">
         <div class="form-group__head">
@@ -102,7 +102,7 @@ var m = new URL(location.href).searchParams.get('token');
             <option value="15">15 天</option>
             <option value="30">30 天</option>
           </select></span>
-          <span class="form-group__desc opt-inline-note">前的缓存文件</span>
+          <span class="vl-hint form-group__desc opt-inline-note">前的缓存文件</span>
         </div>
         <div class="opt-row">
           <label class="form-group__label" for="cacheSize">缓存大小</label>
@@ -110,14 +110,14 @@ var m = new URL(location.href).searchParams.get('token');
           <button type="button" class="btn btn-ghost vl-btn" id="btnCacheStats">查看构成</button>
           <button type="button" class="btn btn-ghost vl-btn" id="btnCacheClean">立即清理</button>
         </div>
-        <div class="form-group__desc" id="cacheStatsBox" style="display:none;white-space:pre-line;"></div>
+        <div class="vl-hint form-group__desc" id="cacheStatsBox" style="display:none;white-space:pre-line;"></div>
         </div>
       </div>
 
       <div class="form-group">
         <div class="form-group__head">
           <label class="form-group__label">任务结束提醒</label>
-          <div class="form-group__desc">需系统已允许通知，否则不会弹出</div>
+          <div class="vl-hint form-group__desc">需系统已允许通知，否则不会弹出</div>
         </div>
         <div class="form-group__ops">
         <div class="opt-row">
@@ -170,7 +170,7 @@ var m = new URL(location.href).searchParams.get('token');
       <div class="form-group form-group--http">
         <div class="form-group__head">
           <label class="form-group__label">本地 HTTP 服务</label>
-          <div class="form-group__desc">浏览器访问的端口与令牌</div>
+          <div class="vl-hint form-group__desc">浏览器访问的端口与令牌</div>
         </div>
         <div class="form-group__ops">
         <div class="dir-row">
@@ -191,12 +191,12 @@ var m = new URL(location.href).searchParams.get('token');
 
     <!-- ═══ 批量拼接 ═══ -->
     <section class="settings-view" id="view-batch">
-      <h2 class="settings-view__title">批量拼接</h2>
+      <h2 class="vl-title vl-title--lg settings-view__title">批量拼接</h2>
 
       <div class="form-group">
         <div class="form-group__head">
           <label class="form-group__label">工作路径</label>
-          <div class="form-group__desc">存放各项目文件夹与 TXT 配置</div>
+          <div class="vl-hint form-group__desc">存放各项目文件夹与 TXT 配置</div>
         </div>
         <div class="form-group__ops">
         <div class="dir-row">
@@ -309,12 +309,12 @@ var m = new URL(location.href).searchParams.get('token');
 
     <!-- ═══ 遮罩叠加 ═══ -->
     <section class="settings-view" id="view-mask">
-      <h2 class="settings-view__title">遮罩叠加设置</h2>
+      <h2 class="vl-title vl-title--lg settings-view__title">遮罩叠加设置</h2>
 
       <div class="form-group">
         <div class="form-group__head">
           <label class="form-group__label">遮罩素材路径</label>
-          <div class="form-group__desc">以文件夹区分项目</div>
+          <div class="vl-hint form-group__desc">以文件夹区分项目</div>
         </div>
         <div class="form-group__ops">
         <div class="dir-row">
@@ -351,7 +351,7 @@ var m = new URL(location.href).searchParams.get('token');
     <!-- ═══ 维护 ═══ 低频兜底操作：日常刷新预缓存走主窗口侧栏 -->
     <!-- ═══ 视频处理 ═══ -->
     <section class="settings-view" id="view-tool">
-      <h2 class="settings-view__title">视频处理</h2>
+      <h2 class="vl-title vl-title--lg settings-view__title">视频处理</h2>
 
 
       <div class="form-group">
@@ -393,12 +393,12 @@ var m = new URL(location.href).searchParams.get('token');
     </section>
 
     <section class="settings-view" id="view-maintenance">
-      <h2 class="settings-view__title">维护</h2>
+      <h2 class="vl-title vl-title--lg settings-view__title">维护</h2>
 
       <div class="form-group">
         <div class="form-group__head">
           <label class="form-group__label">视频信息缓存</label>
-          <div class="form-group__desc">清空并重新检测全部素材，耗时较长</div>
+          <div class="vl-hint form-group__desc">清空并重新检测全部素材，耗时较长</div>
         </div>
         <div class="form-group__ops">
         <div class="opt-row">
@@ -410,7 +410,7 @@ var m = new URL(location.href).searchParams.get('token');
       <div class="form-group">
         <div class="form-group__head">
           <label class="form-group__label">运行日志</label>
-          <div class="form-group__desc">逐条记录启动退出、任务执行与配置变更</div>
+          <div class="vl-hint form-group__desc">逐条记录启动退出、任务执行与配置变更</div>
         </div>
         <div class="form-group__ops">
         <div class="opt-row">
@@ -422,7 +422,7 @@ var m = new URL(location.href).searchParams.get('token');
       <div class="form-group">
         <div class="form-group__head">
           <label class="form-group__label">问题反馈包</label>
-          <div class="form-group__desc">按所选时间范围打包运行记录与设置信息</div>
+          <div class="vl-hint form-group__desc">按所选时间范围打包运行记录与设置信息</div>
         </div>
         <div class="form-group__ops">
         <div class="opt-row" data-nosave>
@@ -439,7 +439,7 @@ var m = new URL(location.href).searchParams.get('token');
       <div class="form-group">
         <div class="form-group__head">
           <label class="form-group__label">可清理项</label>
-          <div class="form-group__desc">可清理的中间产物与历史残留</div>
+          <div class="vl-hint form-group__desc">可清理的中间产物与历史残留</div>
         </div>
         <div class="form-group__ops">
         <div class="opt-row">
@@ -452,7 +452,7 @@ var m = new URL(location.href).searchParams.get('token');
     </section>
 
     <section class="settings-view" id="view-changelog">
-      <div class="changelog-box" id="changelogBox"><div class="changelog-hint" id="changelogHint"></div></div>
+      <div class="changelog-box" id="changelogBox"><div class="vl-hint changelog-hint" id="changelogHint"></div></div>
     </section>
 
     <!-- ═══ 关于 ═══ -->
@@ -491,7 +491,7 @@ var m = new URL(location.href).searchParams.get('token');
       <div class="form-group">
         <div class="form-group__head">
           <label class="form-group__label">更新检查</label>
-          <div class="form-group__desc">启动时、或每日定时检查更新</div>
+          <div class="vl-hint form-group__desc">启动时、或每日定时检查更新</div>
         </div>
         <div class="form-group__ops">
         <div class="opt-row">
@@ -530,7 +530,7 @@ var m = new URL(location.href).searchParams.get('token');
         <div class="form-group__head">
           <label class="form-group__label">运行环境<small>当前生效的组件版本与路径</small></label>
         </div>
-        <div class="about-info" id="aboutInfo"><div class="changelog-hint">正在读取…</div></div>
+        <div class="about-info" id="aboutInfo"><div class="vl-hint changelog-hint">正在读取…</div></div>
       </div>
     </section>
 
@@ -543,13 +543,13 @@ var m = new URL(location.href).searchParams.get('token');
      两种形态都由设置页弹，用户正看着哪就在哪出结论（iframe 内的弹窗只覆盖设置面板，不会被裁切）。
      托盘入口的结果由主窗口弹（见 index.html 的 #updateResultMask） -->
 <div class="update-result" id="updateResultMask" style="display:none">
-  <div class="update-result__box">
+  <div class="vl-card update-result__box">
     <div class="update-result__icon" id="updateResultIcon">✓</div>
     <div class="update-result__body">
-      <div class="update-result__title" id="updateResultTitle"></div>
-      <div class="update-result__desc" id="updateResultDesc"></div>
+      <div class="vl-title update-result__title" id="updateResultTitle"></div>
+      <div class="vl-hint update-result__desc" id="updateResultDesc"></div>
     </div>
-    <div class="update-result__actions">
+    <div class="vl-toolbar vl-toolbar--end update-result__actions">
       <button class="btn update-result__btn vl-btn" id="updateResultClose">知道了</button>
       <button class="btn update-result__btn update-result__btn--primary vl-btn vl-btn--primary" id="updateResultGo" style="display:none">立即更新</button>
     </div>

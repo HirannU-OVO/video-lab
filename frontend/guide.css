@@ -34,13 +34,7 @@
   -webkit-user-drag: none;
 }
 .guide-hero__text { min-width: 0; }
-.guide-hero__title {
-  font-family: var(--vl-font-family-base);
-  font-size: 15px;
-  font-weight: var(--vl-font-font-weight-strong, 600);
-  color: var(--vl-alias-text-default);
-  line-height: 1.25;
-}
+/* 外观全部回归基线 .vl-title */
 .guide-hero__sub {
   margin-top: 1px;
   font-family: var(--vl-font-family-base);
@@ -68,26 +62,18 @@
   color: var(--vl-alias-text-default);
 }
 /* 提示文字：宽度按"本句不换行"预留，故不折行 */
+/* 差异：引导页提示字号 11.5px、行高 1.5、上方 7px，单行省略（颜色走基线） */
+/* 差异：上方 7px、单行省略（字号/行高/颜色回归基线） */
 .guide-hint {
-  margin-top: 7px;
-  font-family: var(--vl-font-family-base);
-  font-size: 11.5px;
-  line-height: 1.5;
-  color: var(--vl-alias-text-tertiary, var(--vl-alias-text-secondary));
+  --vl-hint-mt: 7px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 /* 操作行：按钮右对齐，与内容同处一个框体（不使用独立页脚栏） */
-.guide-actions {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-top: 14px;
-}
+/* 差异：不参与收缩、上方 14px（布局回归基线 .vl-toolbar--end） */
+.guide-actions { flex: 0 0 auto; margin-top: 14px; }
 .guide-actions__status {
   min-width: 0;
   flex: 1 1 auto;

@@ -49,7 +49,7 @@ var m = new URL(location.href).searchParams.get('token');
       <button class="tl-btn vl-btn vl-btn--ghost" id="btnClearInput" title="清空已选输入"><i data-icon="x" data-size="14"></i>清空</button>
       <label class="vl-check vl-check--sm"><input type="checkbox" id="inRecursive" checked><span class="vl-check__box"></span><span class="vl-check__text">递归子文件夹</span></label>
     </div>
-    <div class="tl-hint" id="inputHint"></div>
+    <div class="vl-hint tl-hint" id="inputHint"></div>
   </div>
 
   <div class="tl-tabs" role="tablist">
@@ -59,7 +59,7 @@ var m = new URL(location.href).searchParams.get('token');
 
   <div class="tl-scroll">
     <div class="tl-pane" id="panePost">
-      <div class="tl-note" id="envWarn" hidden></div>
+      <div class="vl-hint vl-hint--block tl-note" id="envWarn" hidden></div>
       <div id="stepGroups"></div>
     </div>
     <div class="tl-pane" id="paneCanvas" hidden>
@@ -85,7 +85,7 @@ var m = new URL(location.href).searchParams.get('token');
             <div class="cv-badge" id="cvBadge">尚未预览</div>
           </div>
           <div class="cv-bars">
-            <div class="cv-bar">
+            <div class="vl-toolbar cv-bar">
               <span class="tl-label">时间点</span>
               <input type="range" id="cvAtRange" min="0" max="1" value="0" step="0.05" title="拖动取帧（松手后渲染）">
               <input class="tl-num" type="number" id="cvAt" min="0" step="0.1" value="0" title="秒">
@@ -93,13 +93,13 @@ var m = new URL(location.href).searchParams.get('token');
               <label class="vl-check vl-check--sm" title="勾选 = 每次改动都渲染真实帧（准确，但每次要等一小会儿）；默认为占位示意：即时反馈几何，微调不用等渲染"><input type="checkbox" id="cvLive"><span class="vl-check__box"></span><span>实时预览</span></label>
             </div>
             <!-- 样本 / 背景各一行：两个按钮**并排相邻**，名称紧接在按钮右侧（超长省略，悬浮见全名） -->
-            <div class="cv-bar cv-bar--list" id="cvSampleRow" style="display:none">
+            <div class="vl-toolbar vl-toolbar--nowrap cv-bar cv-bar--list" id="cvSampleRow" style="display:none">
               <span class="tl-label">样本</span>
               <button class="tl-btn vl-btn vl-btn--ghost" id="cvSamplePrev">上一个</button>
               <button class="tl-btn vl-btn vl-btn--ghost" id="cvSampleNext">下一个</button>
               <span class="cv-info" id="cvSampleInfo">—</span>
             </div>
-            <div class="cv-bar cv-bar--list">
+            <div class="vl-toolbar vl-toolbar--nowrap cv-bar cv-bar--list">
               <span class="tl-label">背景</span>
               <button class="tl-btn vl-btn vl-btn--ghost" id="cvBgPrev">上一个</button>
               <button class="tl-btn vl-btn vl-btn--ghost" id="cvBgNext">下一个</button>
@@ -140,7 +140,7 @@ var m = new URL(location.href).searchParams.get('token');
             <input type="range" id="cvScale" min="0.05" max="2" step="0.01" value="0.74">
             <input class="tl-num" type="number" id="cvScaleNum" min="0.05" max="3" step="0.01" value="0.74">
           </div>
-          <div class="tl-hint">视频在画布中的大小，非输出尺寸；拖角手柄吸满屏 / 一半（Alt 关闭）</div>
+          <div class="vl-hint tl-hint">视频在画布中的大小，非输出尺寸；拖角手柄吸满屏 / 一半（Alt 关闭）</div>
           <div class="cv-row">
             <span class="tl-label">基准</span>
             <span class="vl-select-wrap"><select class="vl-select" id="cvPos">
@@ -232,7 +232,7 @@ var m = new URL(location.href).searchParams.get('token');
             <option value="overwrite">覆盖原视频</option>
             <option value="directory">输出到指定文件夹</option>
           </select></span>
-          <span class="tl-hint" id="outModeHint"></span>
+          <span class="vl-hint tl-hint" id="outModeHint"></span>
         </div>
         <div class="tl-out__row tl-out__row--hide" id="outDirRow">
           <span class="tl-label">目标文件夹</span>
@@ -278,7 +278,7 @@ var m = new URL(location.href).searchParams.get('token');
           <button class="tl-btn vl-btn vl-btn--ghost" id="btnPickBackupDir"><i data-icon="folder-open" data-size="14"></i>选择备份文件夹</button>
           <button class="tl-btn vl-btn vl-btn--ghost" id="btnOpenBackupDir" title="打开当前设定的备份文件夹（留空则打开默认备份文件夹）"><i data-icon="folder-open" data-size="14"></i>打开备份文件夹</button>
         </div>
-        <div class="tl-hint" id="outHint"></div>
+        <div class="vl-hint tl-hint" id="outHint"></div>
         <div class="tl-sep"></div>
         <!-- 状态 + 开始按钮：收进输出设置框内 —— 单独占一条底部栏只为塞这个按钮，会白费一栏纵向空间 -->
         <div class="tl-out__row tl-out__row--run">
@@ -292,7 +292,7 @@ var m = new URL(location.href).searchParams.get('token');
       <div class="tl-log__head vl-section-head vl-section-head--interactive" id="logHead">
         <span class="tl-group__arrow"><i data-icon="chevron-right" data-size="14"></i></span>
         <span id="logTitle">运行日志</span>
-        <span class="tl-group__count" id="logCount"></span>
+        <span class="vl-count vl-count--plain tl-group__count" id="logCount"></span>
       </div>
       <div class="tl-log__body" id="logBody"></div>
       <div class="tl-prog"><div class="tl-prog__bar" id="progBar"></div></div>
