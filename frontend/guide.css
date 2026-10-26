@@ -108,3 +108,4 @@ body.is-embedded .win-titlebar { display: none; }
    （那是它还作为独立窗口时的需要）。iframe 形态下标题栏已隐藏，这 34px 会变成卡片顶部的一条纯留白，必须一起取消。 */
 body.is-embedded .guide-shell { padding-top: 0; }
 }
+

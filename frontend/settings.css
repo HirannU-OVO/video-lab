@@ -356,16 +356,9 @@ body {
   align-items: normal;
   min-width: auto;
 }
-.btn:hover { background: var(--vl-alias-bg-overlay-l1); }
 .btn-ghost { flex: 0 0 auto; }
-.btn-primary { background: var(--vl-alias-brand-500); border-color: transparent; color: var(--vl-alias-text-onaccent); }
-.btn-primary:hover { background: var(--vl-alias-brand-600); }
-.btn-primary:disabled {
-  background: var(--vl-alias-bg-base-tertiary, #e2e2e2);
-  border: 1px solid var(--vl-alias-border-neutral-l2);
-  color: var(--vl-alias-text-disabled);
-  cursor: not-allowed;
-}
+/* .btn-primary 的三态已由基线 .vl-btn--primary 提供（brand-500 / hover brand-600 / disabled 基线禁用态），
+   页面不再重复定义；页面只保留与基线不同的差异。 */
 /* ─── 主题选择 ─── */
 .theme-row { display: flex; gap: 10px; }
 .theme-item {

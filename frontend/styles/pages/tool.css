@@ -121,14 +121,14 @@
                  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .tl-status--err { color: var(--vl-alias-status-error-default); }
     .tl-status--ok { color: var(--vl-alias-status-success-default); }
+    /* 差异：运行按钮比默认高一档、横向内距更宽、字号用 body-sm；
+       其余（实心底色 / hover / 按下 / 焦点 / 禁用底色）由基线 .vl-btn--primary 提供 */
     .tl-run {
-      display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 18px;
-      border: none; border-radius: var(--vl-static-radius-6); background: var(--vl-alias-brand-500); color: var(--vl-alias-text-onaccent);
-      cursor: pointer; font-family: var(--vl-font-family-base); font-size: var(--vl-type-body-sm-size); font-weight: var(--vl-font-font-weight-strong);
-      transition: background .15s ease;
+      height: 32px;
+      padding: 0 18px;
+      font-size: var(--vl-type-body-sm-size);
     }
-    .tl-run:hover { background: var(--vl-alias-brand-600); }
-    .tl-run:disabled { background: var(--vl-alias-bg-brand-disabled); cursor: not-allowed; }
+    .tl-run:disabled { background: var(--vl-alias-bg-brand-disabled); }
 
     /* ── 运行日志（折叠区，便于当场看逐文件结果）── */
     .tl-log { margin-top: 10px; border: 1px solid var(--vl-alias-border-neutral-l1); border-radius: var(--vl-static-radius-8); overflow: hidden; }
@@ -226,3 +226,8 @@
       .cv-params { flex: 1 1 auto; max-width: none; width: 100%; }
     }
 }
+
+    /* 差异：运行按钮实心无边框 + 强字重（基线 .vl-btn--primary 给了品牌色边框、.vl-btn 字重为常规） */
+    .tl-run {
+      font-weight: var(--vl-font-font-weight-strong);
+    }
