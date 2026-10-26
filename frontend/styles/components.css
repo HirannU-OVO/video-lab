@@ -10,10 +10,10 @@
    状态用属性表达（不新增状态类名，C-03）：
      [disabled] / [aria-pressed="true"] / [data-loading="1"] / [aria-invalid="true"]
    
-   ⚠ 兼容策略（方案 B-07）：旧类名（.ds-btn / .tl-btn / .btn / .mode-toggle /
-   .preview-toggle / .sort-toggle / .opt-check / .ds-input / .ds-tag …）**保留为兼容别名**，
-   本轮只在各自定义处标 @deprecated 并给出对应新类，不批量改 HTML —— 每批迁移各跑一次视觉回归。
-   本文件只新增未被引用的类，因此**不改变任何现有渲染**。
+   ⚠ 当前状态（2026-10-26）：迁移已完成，旧类名**已全部删除**，页面也已改用下面的组件类。
+       · 蓝本体系（原 ds- 前缀）的 34 族资产已全部并入本文件，原体系已删；
+       · 页面私有类已收敛，剩下的只承载「与基线不同的布局差异」；
+       · 后续新增控件请直接扩到本文件，不要再在页面层写控件本体。
    ───────────────────────────────────────────────────────────── */
 
 @layer components {
@@ -72,9 +72,9 @@
 
   /* size */
   /* ── 从蓝本整合的变体（2026-10-26）────────────────────────
-     以下变体取自成熟体系 ds-btn，本页暂未使用 —— 保留是为了「要用时直接取用」，
+     以下变体取自蓝本体系的按钮族（原 ds- 前缀，该体系已删），本页暂未使用 —— 保留是为了「要用时直接取用」，
      而不是等需要时再手写一遍。语义与蓝本一致。 */
-  /* 反色主按钮（取自蓝本 ds-btn--primary，留作备用方案）
+  /* 反色主按钮（取自蓝本体系的主按钮实现，留作备用方案）
      与 vl-btn--primary 的区别：那个是「品牌色主按钮」，这个是「黑白反转的主按钮」。
      两者语义都是「页面主操作」，取舍看具体场景 —— 品牌色更呼应主题，反色对比更强。
      ⚠ 当前真实页面零使用，属备用变体；补它是为了删蓝本后仍有这个选项。 */
@@ -116,7 +116,7 @@
     background: var(--vl-alias-status-warning-surface-l3);
     border-color: var(--vl-alias-status-warning-surface-l3);
   }
-  /* 纯图标按钮：正方形，宽度随尺寸档位（蓝本 ds-btn--icon 的 sm/lg 宽度 24/32） */
+  /* 纯图标按钮：正方形，宽度随尺寸档位（蓝本纯图标按钮的 sm/lg 宽度 24/32） */
   .vl-btn--icon { padding: 0; width: var(--vl-btn-h); }
   .vl-btn--icon.vl-btn--xs { width: 20px; }
   .vl-btn--icon.vl-btn--sm { width: 24px; }
@@ -126,7 +126,7 @@
   .vl-btn--sm { --vl-btn-h: 24px; --vl-btn-px: 8px; --vl-btn-fs: 12px; border-radius: var(--vl-static-radius-4); }
   .vl-btn--lg { --vl-btn-h: 32px; --vl-btn-px: var(--vl-static-spacer-16); --vl-btn-fs: var(--vl-type-body-base-size); }
   /* state（属性表达，不新增状态类） */
-  /* 禁用态取全站惯例（ds-btn--secondary / mode-toggle / ds-pagination__item 一致）：
+  /* 禁用态取历史惯例（蓝本次要按钮 / 页面开关 / 蓝本分页项三者一致）：
      not-allowed 光标 + .5 透明度。原先的 default 光标 + .9 透明度使禁用态几乎看不出禁用，
      是基线缺陷（页面私有类各自补写反而形成了不一致）。 */
   .vl-btn[disabled],
@@ -185,7 +185,7 @@
   /* ═══ 复选框 ═════════════════════════════════════════════ */
   /* ── 复选框 / 单选框（自绘）────────────────────────────────
      自绘而非原生 input：原生控件只能靠 accent-color 染色，无法做皮肤级定制
-     （选中勾形与描边需要用 ::after 绘制）。做法参考成熟体系的 ds-check / ds-radio。
+     （选中勾形与描边需要用 ::after 绘制）。做法参考蓝本体系的自绘复选与单选。
      ⚠ 占用提示：本组件的 ::after 被选中勾形占用，状态层（state layer）不可接入。 */
   .vl-check,
   .vl-radio {
@@ -294,17 +294,17 @@
   .vl-path { font-family: "JetBrains Mono", Consolas, monospace; font-size: 11.5px; color: var(--vl-alias-text-secondary); word-break: break-all; }
 }
 
-/* ═══ @deprecated 映射表（旧类名 → 新类，供迁移时对照）═══════
-   .ds-btn          → .vl-btn（+ --primary / --ghost / --danger）
-   .tl-btn          → .vl-btn（默认 28px，与 .ds-btn 同档）
+/* ═══ 已完成迁移记录（旧类名 → 现行组件类，仅供追溯）═════════
+   .ds-btn（蓝本）  → .vl-btn（+ --primary / --ghost / --danger；另有 --invert 反色主按钮）
+   .tl-btn          → .vl-btn（默认 28px，与蓝本按钮同档）
    .btn（settings） → .vl-btn--lg（32px 档）
    .mode-toggle     → .vl-btn--sm .vl-btn--ghost（24px 档；选中态用 [aria-pressed="true"]）
    .preview-toggle  → .vl-btn--xs .vl-btn--ghost（20px 档）
    .sort-toggle     → .vl-btn--xs .vl-btn--ghost（20px 档）
    .sidebar-menu__item → .vl-btn--ghost（整宽：本文件不定义整宽，由页面层负责）
    .opt-check       → .vl-check
-   .ds-input        → .vl-input
-   .ds-tag          → .vl-tag（语义变体用 --brand / --accent / --danger / --ok / --outline）
+   .ds-input（蓝本）→ .vl-input；带图标的搜索容器 → .vl-input-group
+   .ds-tag（蓝本）  → .vl-tag（语义变体用 --brand / --accent / --danger / --ok / --success / --outline）
    ═══════════════════════════════════════════════════════ */
 
 /* ─────────────────────────────────────────────────────────────
@@ -457,7 +457,7 @@
   }
 
   /* ── 下拉框 ───────────────────────────────────────────────
-     参考成熟体系的 ds-select + ds-select-wrap：本体负责外观与状态，
+     参考蓝本体系的下拉框与包装容器：本体负责外观与状态，
      wrap 负责定位下拉箭头图标（原生 select 的箭头无法用 appearance:none 之外的可靠方式替换）。 */
   .vl-select {
     width: auto;
@@ -899,12 +899,12 @@
 
     .vl-drawer__body { padding: var(--vl-static-spacer-16) var(--vl-static-spacer-20); flex: 1; }
 
-    .dialog-form .ds-input,
-    .dialog-form .ds-select,
+    .dialog-form .vl-input,
+    .dialog-form .vl-select,
     .dialog-form .vl-textarea { background: var(--vl-alias-bg-base-default); font-size: var(--vl-type-body-base-size); line-height: var(--vl-type-body-base-line-height); letter-spacing: var(--vl-type-body-base-tracking); }
 
-    .dialog-form .ds-input:focus-within,
-    .dialog-form .ds-select:focus,
+    .dialog-form .vl-input:focus-within,
+    .dialog-form .vl-select:focus,
     .dialog-form .vl-textarea:focus { background: var(--vl-alias-bg-base-default); }
 
     .dialog-form .vl-textarea { min-height: 72px; resize: none; }
@@ -1053,7 +1053,7 @@
      只并入「容器」与「计数徽章」两项：
        · vl-tabset —— 标签页容器（flex + 底部分隔线），我们原本没有
        · vl-tab__count —— 标签上的计数徽章
-     ⚠ 蓝本的 .ds-tab（单个标签项）**不并入**：我们的 vl-tab 已是下划线式切换按钮，
+     ⚠ 蓝本的单个标签项**不并入**：我们的 vl-tab 已是下划线式切换按钮，
        语义完全覆盖，且 task / tool 两页已验收定型（形态为 padding 0 12px + 圆角），
        把蓝本的 padding 12px 0 + 无圆角搬进来会破坏已验收的观感。
        属「同一语义已有更贴合本项目的实现」，不是漏做。 */
@@ -1063,7 +1063,7 @@
     .vl-tab .vl-tag.num { margin-left: var(--vl-static-spacer-6); min-width: 18px; height: 18px; padding: 0 var(--vl-static-spacer-6); display: inline-grid; place-items: center; vertical-align: middle; border: none; border-radius: var(--vl-static-radius-full); background: var(--vl-alias-bg-overlay-l2); color: var(--vl-alias-text-tertiary); font-family: var(--vl-font-font-family-metric); font-size: var(--vl-type-body-xs-size); line-height: var(--vl-type-body-xs-line-height); font-weight: var(--vl-type-body-xs-weight); font-variant-numeric: tabular-nums; }
 
   /* ── 删除蓝本前补齐的资产（2026-10-26 逐项对照后发现）──────────
-     逐项对照 ds-* 的 85 个选择器时，发现以下 5 项在 vl-* 里没有等价实现，
+     逐项对照蓝本的 85 个选择器时，发现以下 5 项在 vl-* 里没有等价实现，
      补齐后才允许删除蓝本：
        · vl-backdrop     —— 对话框/抽屉的遮罩层
        · vl-btn-group    —— 按钮组（并排按钮的间距与合并圆角）
@@ -1074,11 +1074,11 @@
        例如变体三态改为统一三态 + 变量、input 用类型选择器、下拉箭头用 ::after 绘制。 */
     .vl-btn-group { display: inline-flex; }
 
-    .vl-btn-group > .ds-btn { border-radius: var(--vl-static-radius-0); margin-left: calc(-1 * var(--vl-static-border-width-default)); }
+    .vl-btn-group > .vl-btn { border-radius: var(--vl-static-radius-0); margin-left: calc(-1 * var(--vl-static-border-width-default)); }
 
-    .vl-btn-group > .ds-btn:first-child { border-top-left-radius: var(--vl-static-radius-8); border-bottom-left-radius: var(--vl-static-radius-8); margin-left: 0; }
+    .vl-btn-group > .vl-btn:first-child { border-top-left-radius: var(--vl-static-radius-8); border-bottom-left-radius: var(--vl-static-radius-8); margin-left: 0; }
 
-    .vl-btn-group > .ds-btn:last-child { border-top-right-radius: var(--vl-static-radius-8); border-bottom-right-radius: var(--vl-static-radius-8); }
+    .vl-btn-group > .vl-btn:last-child { border-top-right-radius: var(--vl-static-radius-8); border-bottom-right-radius: var(--vl-static-radius-8); }
 
     .vl-card {
       background: var(--vl-alias-bg-base-secondary);

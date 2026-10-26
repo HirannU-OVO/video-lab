@@ -155,9 +155,6 @@ samp,
         background-color: currentColor;
       }
 
-/* ═══════════════════════════════════════════════════════════════
-   TraeWork Design Library Tokens (Light)
-   ═══════════════════════════════════════════════════════════════ */
 
 /* ═══════════════════════════════════════════════════════════════
    Components CSS (shared atoms)
@@ -170,7 +167,6 @@ samp,
   font-feature-settings: "tnum" 1, "lnum" 1;
 }
 
-/* ds-input */
 .vl-input-group {
   display: flex;
   align-items: center;
@@ -203,7 +199,6 @@ samp,
   color: var(--vl-alias-text-tertiary);
 }
 
-/* ds-tag */
 
 /* ═══════════════════════════════════════════════════════════════
    Page-Specific Styles
