@@ -74,6 +74,30 @@
   /* ── 从蓝本整合的变体（2026-10-26）────────────────────────
      以下变体取自成熟体系 ds-btn，本页暂未使用 —— 保留是为了「要用时直接取用」，
      而不是等需要时再手写一遍。语义与蓝本一致。 */
+  /* 反色主按钮（取自蓝本 ds-btn--primary，留作备用方案）
+     与 vl-btn--primary 的区别：那个是「品牌色主按钮」，这个是「黑白反转的主按钮」。
+     两者语义都是「页面主操作」，取舍看具体场景 —— 品牌色更呼应主题，反色对比更强。
+     ⚠ 当前真实页面零使用，属备用变体；补它是为了删蓝本后仍有这个选项。 */
+  .vl-btn--invert {
+    background: var(--vl-alias-bg-invert);
+    border-color: var(--vl-alias-bg-invert);
+    color: var(--vl-alias-text-white);
+  }
+  .vl-btn--invert:hover:where(:not([disabled]):not([aria-disabled="true"])) {
+    background: var(--vl-alias-bg-invert-hover);
+    border-color: var(--vl-alias-bg-invert-hover);
+  }
+  .vl-btn--invert:active:where(:not([disabled]):not([aria-disabled="true"])) {
+    background: var(--vl-alias-bg-invert-active);
+    border-color: var(--vl-alias-bg-invert-active);
+  }
+  .vl-btn--invert[disabled],
+  .vl-btn--invert[aria-disabled="true"] {
+    background: var(--vl-alias-bg-invert-disabled);
+    border-color: transparent;
+    color: var(--vl-alias-text-disabled);
+  }
+
   .vl-btn--tertiary {
     background: transparent;
     border-color: transparent;
