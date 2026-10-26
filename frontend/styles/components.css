@@ -43,6 +43,9 @@
          深浅由皮肤令牌决定（反色系天然幅度小，属色系限制，不是规则不一致）。 */
     --vl-btn-bg: var(--vl-alias-bg-base-default);
     --vl-btn-border: var(--vl-alias-border-neutral-l2);
+    /* 边框宽度也走变量：实色按钮对齐正式版是**无边框**的（正式版 .config-btn 是 border: none），
+       有 1px 边框会让同宽文字摊在更宽的按钮里、视觉上显得细一档。 */
+    --vl-btn-border-width: 1px;
     --vl-btn-color: var(--vl-alias-text-default);
     --vl-btn-bg-hover: var(--vl-alias-bg-base-secondary);
     --vl-btn-border-hover: var(--vl-btn-border);
@@ -59,7 +62,7 @@
     min-width: 0;
     height: var(--vl-btn-h);
     padding: 0 var(--vl-btn-px);
-    border: 1px solid var(--vl-btn-border);
+    border: var(--vl-btn-border-width) solid var(--vl-btn-border);
     border-radius: var(--vl-static-radius-6);
     background: var(--vl-btn-bg);
     color: var(--vl-btn-color);

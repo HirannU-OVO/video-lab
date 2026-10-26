@@ -159,8 +159,6 @@
 :root {
   /* ── 旧主令牌块独有项（合并前定义在文件前段，收敛时并入本块） ── */
   --vl-alias-bg-input-default: #FFFFFF;
-  --vl-font-family-base: var(--vl-font-family-base);
-  --vl-font-family-heading: var(--vl-font-family-heading);
   --vl-font-family-mono: var(--vl-font-family-mono);
   /* ── 排版刻度与语义档名 ── */
   /* 刻度：按实际取值建档 */
@@ -388,7 +386,6 @@
   --vl-static-brand-green-grey-800: #5E6E6E;
   --vl-static-brand-green-grey-900: #404F4F;
   --vl-static-brand-green-grey-1000: #212B2B;
-  --vl-font-family-base: var(--vl-font-family-base);
   --vl-font-font-size: var(--vl-type-body-xs-size);
   --vl-font-font-weight: var(--vl-type-body-xs-weight);
   --vl-comp-line-height: var(--vl-type-body-xs-line-height);
