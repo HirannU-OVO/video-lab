@@ -602,7 +602,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
             lastGroupKey = groupKey;
           }
           var dupCls = (state.highlightDup && txt.dup) ? ' tree-txt-item--dup' : '';
-          html += '<div class="tree-txt-item' + (isActive ? ' tree-txt-item--active' : '') + dupCls + '" data-project="' + escapeHtml(proj.name) + '" data-name="' + escapeHtml(txt.name) + '">';
+          html += '<div class="tree-txt-item' + (isActive ? ' tree-txt-item--active' : '') + dupCls + '" data-region="tree-item"' + (isActive ? ' data-state="active"' : '') + ' data-project="' + escapeHtml(proj.name) + '" data-name="' + escapeHtml(txt.name) + '">';
           html += icon('file-text', 16, 'tree-txt-item__icon');
           html += '<span class="tree-txt-item__name">' + escapeHtml(txt.name) + '</span>';
           // 复刻子项无配置日期，不显示 latest；徽章显示其日志数
@@ -3009,7 +3009,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     state._logBranchToken = null;
     var bar = $('configBar'); if (bar) bar.innerHTML = '';
     var act = $('sidebarTree').querySelector('.tree-txt-item--active');
-    if (act) act.classList.remove('tree-txt-item--active');
+    if (act) { act.classList.remove('tree-txt-item--active'); act.removeAttribute('data-state'); }
     // 收回项目/品牌名片视为退出日志模式：进入日志时若折叠，此处恢复折叠
     restorePreviewFromLog();
     buildDateBranches(); buildCenterBottom(); buildRightPanel();
@@ -3029,6 +3029,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
         var mTree = $('sidebarTree');
         if (mTree) mTree.querySelectorAll('.mask-proj-item--active').forEach(function (el) {
           el.classList.remove('mask-proj-item--active');
+          el.removeAttribute('data-state');
         });
         buildMaskCenter(); buildMaskConfigBar();
         setStatus('已返回遮罩叠加项目列表');
@@ -4511,7 +4512,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     }
     maskState.projects.forEach(function (p) {
       var active = maskState.project && maskState.project.name === p.name;
-      html += '<div class="mask-proj-item' + (active ? ' mask-proj-item--active' : '') + '" data-maskproj="' + escapeHtml(p.name) + '">' +
+      html += '<div class="mask-proj-item' + (active ? ' mask-proj-item--active' : '') + '" data-region="mask-proj-item"' + (active ? ' data-state="active"' : '') + ' data-maskproj="' + escapeHtml(p.name) + '">' +
         icon('folder', 16, 'mask-proj-item__icon') +
         '<span class="mask-proj-item__name">' + escapeHtml(p.name) + '</span>' +
         // 软件内新建、尚未放素材的项目：说「暂无素材」而不是「0种遮罩」——
