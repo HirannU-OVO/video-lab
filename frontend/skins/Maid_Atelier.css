@@ -742,18 +742,6 @@ html[data-skin="Maid_Atelier"] .task-list > * {
 
 /* 设置窗口右上角 git 按钮：除位置/大小外，各状态样式对齐侧栏置顶按钮
    （常态 底色+淡金边框+内金投影；hover 主题底白字去边框） */
-html[data-skin="Maid_Atelier"] .settings-gh {
-  background: var(--vl-alias-bg-base-default);
-  border: 1px solid rgba(242, 217, 143, 0.55);
-  box-shadow: 0 4px 14px color-mix(in srgb, var(--vl-alias-text-default) 12%, transparent),
-    inset 0 0 4px rgba(242, 217, 143, 0.12);
-}
-html[data-skin="Maid_Atelier"] .settings-gh:hover {
-  background: var(--vl-alias-brand-500);
-  color: var(--vl-alias-text-onaccent);
-  border: none;
-  transform: translateY(-2px);
-}
 /* 日志预览高亮块：浅蓝（替代金色 brand-100/200，避免金色高亮刺眼） */
 html[data-skin="Maid_Atelier"] .right-panel__code-line.log-target,
 html[data-skin="Maid_Atelier"] .right-panel__line-num.log-target {
@@ -1190,16 +1178,6 @@ html[data-skin="Maid_Atelier"] .mask-proj-item--active .mask-proj-item__badge {
    本身透明无底色；中心列放行溢出并取消最小高度 → 装饰完整显示、不推挤内容，
    选中后装饰 translateY(-100%) 退场，顶部由 header 材质（选中态自带深蓝底+金线）
    与内容区深底接管，无残留空栏、无蓝底条 */
-html[data-skin="Maid_Atelier"] body.mask-mode #maskOrnamentHost {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 76px;
-  z-index: 19;
-  pointer-events: none;
-  background: transparent;
-}
 html[data-skin="Maid_Atelier"] body.mask-mode .center-top {
   min-height: 0;
   overflow: visible;
@@ -1250,19 +1228,8 @@ html[data-skin="Maid_Atelier"] .settings-dim {
   background: rgba(6, 13, 32, 0.6);
   backdrop-filter: blur(4px);
 }
-html[data-skin="Maid_Atelier"] .busy-box {
-  background: rgba(14, 29, 73, 0.95);
-  backdrop-filter: blur(16px);
-  border: 1px solid var(--vl-skin-maid-glass-border);
-  box-shadow: 0 0 0 1px rgba(197, 164, 104, 0.06), 0 8px 32px rgba(0, 0, 0, 0.4);
-}
 
 /* ── 皮肤选择弹窗 ── */
-html[data-skin="Maid_Atelier"] .skin-popup {
-  background: rgba(14, 29, 73, 0.95);
-  backdrop-filter: blur(12px);
-  border: 1px solid var(--vl-skin-maid-glass-border);
-}
 
 /* ── 引导态 ── */
 html[data-skin="Maid_Atelier"] .boot-guide__inner {

@@ -24,7 +24,7 @@ var m = new URL(location.href).searchParams.get('token');
   
 </head>
 <body>
-  <div class="win-titlebar" id="winTitlebar">
+  <div class="win-titlebar" id="winTitlebar" data-region="win-titlebar">
     <span class="win-titlebar__title">Video Lab - 任务</span>
     <div class="win-titlebar__controls">
       <button class="win-titlebar__btn win-titlebar__btn--close" data-wctl="close" title="关闭">
@@ -32,7 +32,7 @@ var m = new URL(location.href).searchParams.get('token');
       </button>
     </div>
   </div>
-  <div class="task-tabs" id="taskTabs" role="tablist">
+  <div class="task-tabs" id="taskTabs" role="tablist" data-region="task-tabs">
     <button class="task-tab vl-tab" role="tab" aria-selected="true" data-tab="running" id="tabRunning">
       <i data-icon="play" data-size="16"></i><span>正在运行</span><span class="task-tab__count" id="cntRunning">0</span>
     </button>
@@ -44,7 +44,7 @@ var m = new URL(location.href).searchParams.get('token');
     </button>
   </div>
   <div class="task-main">
-    <div class="task-list" id="taskList"></div>
+    <div class="task-list" id="taskList" data-region="task-list"></div>
     <div class="task-fab-actions" id="taskFabActions">
       <button class="task-fab task-fab--success" id="fabResumeAll" title="全部继续（恢复所有暂停任务）"><i data-icon="play" data-size="18"></i></button>
       <button class="task-fab task-fab--warning" id="fabPauseAll" title="全部暂停（暂停所有排队任务）"><i data-icon="pause" data-size="18"></i></button>

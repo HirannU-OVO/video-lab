@@ -23,7 +23,7 @@ var m = new URL(location.href).searchParams.get('token');
 </head>
 <body>
   <!-- 自制标题栏（frame:false）；data-main-titlebar 标记主窗口，仅此处使用品牌字体 -->
-  <div class="win-titlebar" id="winTitlebar" data-main-titlebar>
+  <div class="win-titlebar" id="winTitlebar" data-main-titlebar data-region="win-titlebar">
     <!-- 视频处理工具入口：固定在**窗口最左上角**（品牌区之外，不参与居中计算） -->
     <button class="win-titlebar__mode win-titlebar__entry" id="winToolToggle" title="视频处理工具（对已有视频做后处理：去黑屏 / 变速 / 转分辨率 / 叠加图片 …）">
       <i data-icon="video" data-size="13"></i><span class="win-titlebar__mode-label">视频处理</span>
@@ -74,9 +74,9 @@ var m = new URL(location.href).searchParams.get('token');
     <div class="main-content">
 
       <!-- Left Sidebar -->
-      <div class="sidebar">
-        <div class="sidebar__root">
-          <div class="sidebar__header">
+      <div class="sidebar" data-region="sidebar">
+        <div class="sidebar__root" data-region="sidebar__root">
+          <div class="sidebar__header" data-region="sidebar__header">
             <span class="vl-title sidebar__header-title">项目列表</span>
             <button class="sidebar__new-config" id="btnNewConfig" title="点击在该项目下新增配置">
               <i data-icon="plus" data-size="12"></i>
@@ -86,16 +86,16 @@ var m = new URL(location.href).searchParams.get('token');
               <button class="sort-toggle vl-btn vl-btn--xs vl-btn--ghost" id="btnSortTime" aria-pressed="false" title="按时间排序">时间</button>
             </div>
           </div>
-          <div class="sidebar__search">
+          <div class="sidebar__search" data-region="sidebar__search">
             <div class="vl-input-group">
               <i data-icon="search" data-size="14"></i>
               <input type="text" placeholder="搜索配置名..." id="searchInput">
             </div>
           </div>
           <div class="sidebar__tree-wrap">
-            <div class="sidebar__az-index" id="azIndexBar" title="拖动字母快速跳转"></div>
-            <div class="sidebar__tree" id="sidebarTree"></div>
-            <div class="sidebar-menu" id="sidebarMenu" style="display:none">
+            <div class="sidebar__az-index" id="azIndexBar" title="拖动字母快速跳转" data-region="sidebar__az-index"></div>
+            <div class="sidebar__tree" id="sidebarTree" data-region="sidebar__tree"></div>
+            <div class="sidebar-menu" id="sidebarMenu" style="display:none" data-region="sidebar-menu">
               <button class="sidebar-menu__item" id="menuRefreshConfigs" title="重新扫描工作路径下的所有配置，并清理重复的外部 * 配置">
                 <i data-icon="refresh-cw" data-size="14"></i>刷新配置列表
               </button>
@@ -116,7 +116,7 @@ var m = new URL(location.href).searchParams.get('token');
               </button>
             </div>
           </div>
-          <div class="sidebar__footer" data-maid-sidebar-footer>
+          <div class="sidebar__footer" data-maid-sidebar-footer data-region="sidebar__footer">
             <button class="sidebar-menu-btn" id="sidebarToTop" title="跳转至列表顶端" aria-label="跳转至列表顶端">
               <i data-icon="arrow-up" data-size="20"></i>
             </button>
@@ -135,18 +135,18 @@ var m = new URL(location.href).searchParams.get('token');
       </div>
 
       <!-- Workspace -->
-      <div class="workspace">
+      <div class="workspace" data-region="workspace">
         <div class="workspace-body">
 
           <!-- Center Panel -->
-          <div class="center-panel" id="centerPanel">
-            <div class="center-global-search" id="centerGlobalSearch">
+          <div class="center-panel" id="centerPanel" data-region="center-panel">
+            <div class="center-global-search" id="centerGlobalSearch" data-region="center-global-search">
               <div class="vl-input-group">
                 <i data-icon="search" data-size="14"></i>
                 <input type="text" placeholder="搜索成片名..." id="logSearchInput">
               </div>
             </div>
-            <div class="center-top" id="centerTop">
+            <div class="center-top" id="centerTop" data-region="center-top">
               <div class="center-top__header">
                 <span class="vl-title center-top__title">日期分支</span>
                 <div class="center-top__toggles">
@@ -160,18 +160,18 @@ var m = new URL(location.href).searchParams.get('token');
               </div>
               <div class="center-top__dates" id="dateBranches"></div>
             </div>
-            <div class="center-bottom" id="centerBottom"></div>
+            <div class="center-bottom" id="centerBottom" data-region="center-bottom"></div>
           </div>
 
           <!-- 预览栏宽度调节尺寸栏：位于中间配置列表与右侧预览栏之间的固定 5px 布局位，
                贯穿预览栏全高，常态不显示、hover 面板或条本体时浮现，拖拽调整预览宽度 -->
           <div class="preview-resizer-anchor" id="previewResizerAnchor">
-            <div class="preview-resizer" id="previewResizer" title="拖拽调整预览宽度"></div>
+            <div class="preview-resizer" id="previewResizer" title="拖拽调整预览宽度" data-region="preview-resizer"></div>
           </div>
 
           <!-- Right Panel: 预览 -->
-          <div class="right-panel" id="rightPanel">
-            <div class="right-panel__header">
+          <div class="right-panel" id="rightPanel" data-region="right-panel">
+            <div class="right-panel__header" data-region="right-panel__header">
               <div class="right-panel__toggle">
                 <button class="preview-toggle vl-btn vl-btn--xs vl-btn--ghost" id="btnPreviewModified" aria-pressed="true" title="显示修改后的 TXT 预览">
                   <i data-icon="save" data-size="12"></i>实时
@@ -192,10 +192,10 @@ var m = new URL(location.href).searchParams.get('token');
                 </button>
               </div>
             </div>
-            <div class="vl-title vl-title--sm right-panel__subtitle" id="rightPanelSubtitle">请选择一个日期分支</div>
-            <div class="right-panel__content" id="rightPanelContent">
-              <div class="right-panel__line-numbers" id="rightLineNumbers"></div>
-              <div class="right-panel__code" id="rightCode"></div>
+            <div class="vl-title vl-title--sm right-panel__subtitle" id="rightPanelSubtitle" data-region="right-panel__subtitle">请选择一个日期分支</div>
+            <div class="right-panel__content" id="rightPanelContent" data-region="right-panel__content">
+              <div class="right-panel__line-numbers" id="rightLineNumbers" data-region="right-panel__line-numbers"></div>
+              <div class="right-panel__code" id="rightCode" data-region="right-panel__code"></div>
             </div>
           </div>
 
@@ -207,13 +207,13 @@ var m = new URL(location.href).searchParams.get('token');
         </div>
 
         <!-- 配置栏：横跨除左侧项目列表外的整个底部 -->
-        <div class="config-bar" id="configBar"></div>
+        <div class="config-bar" id="configBar" data-region="config-bar"></div>
       </div>
 
     </div>
 
     <!-- ═══ Status Bar ═══ -->
-    <div class="status-bar">
+    <div class="status-bar" data-region="status-bar">
       <span class="status-bar__left">
         <span class="status-bar__version" id="versionTag"></span>
         <span class="status-bar__divider"></span>
@@ -240,7 +240,7 @@ var m = new URL(location.href).searchParams.get('token');
     </div>
 
     <!-- ═══ 更新提示条 ═══ 悬浮于底部状态栏上方，居中显示；由 update_available 事件驱动显示 -->
-    <div class="update-banner" id="updateBanner" style="display:none">
+    <div class="update-banner" id="updateBanner" style="display:none" data-region="update-banner">
       <div class="update-banner__icon"><i data-icon="download" data-size="20"></i></div>
       <div class="update-banner__body">
         <div class="vl-title update-banner__title" id="updateBannerTitle">发现新版本 v1.4.0</div>
@@ -277,7 +277,7 @@ var m = new URL(location.href).searchParams.get('token');
 
   <!-- ═══ 未配置工作路径时的引导态：项目列表为空，列表内居中指引选择路径 ═══ -->
   <div class="boot-guide" id="bootGuide" style="display:none">
-    <div class="boot-guide__inner">
+    <div class="boot-guide__inner" data-region="boot-guide__inner">
       <i data-icon="folder" data-size="22"></i>
       <div class="vl-title boot-guide__title">请选择工作路径</div>
       <div class="vl-hint boot-guide__desc">项目列表为空，请选择配置文件所在路径</div>
