@@ -554,7 +554,7 @@ html[data-skin="Maid_Atelier"] [data-region="sidebar__az-index"].is-show {
 }
 /* azbar 首字母激活突出时：字母颜色换成深棕色（与亮金缎带区分明）
    背景沿用基础浅蓝高亮，只改前景色 */
-html[data-skin="Maid_Atelier"] .az-letter--active {
+html[data-skin="Maid_Atelier"] [data-region="az-letter"][data-active] {
   color: #4a2e14;
 }
 
@@ -751,10 +751,10 @@ html[data-skin="Maid_Atelier"] .right-panel__code-line.log-target.code-line--log
   background: rgba(105, 158, 216, 0.34);
 }
 /* 日志选择模式选中行：浅黄底上白字看不清，整行文字改深蓝色（hover 态恢复默认浅字，避免深蓝叠深背景） */
-html[data-skin="Maid_Atelier"] .log-list--selecting .log-entry--selected:not(:hover),
-html[data-skin="Maid_Atelier"] .log-list--selecting .log-entry--selected:not(:hover) .log-entry__video-name,
-html[data-skin="Maid_Atelier"] .log-list--selecting .log-entry--selected:not(:hover) .log-entry__clip-count,
-html[data-skin="Maid_Atelier"] .log-list--selecting .log-entry--selected:not(:hover) .log-entry__clip-path {
+html[data-skin="Maid_Atelier"] [data-region="log-list"][data-selecting] [data-region="log-entry"][data-selected]:not(:hover),
+html[data-skin="Maid_Atelier"] [data-region="log-list"][data-selecting] [data-region="log-entry"][data-selected]:not(:hover) .log-entry__video-name,
+html[data-skin="Maid_Atelier"] [data-region="log-list"][data-selecting] [data-region="log-entry"][data-selected]:not(:hover) .log-entry__clip-count,
+html[data-skin="Maid_Atelier"] [data-region="log-list"][data-selecting] [data-region="log-entry"][data-selected]:not(:hover) .log-entry__clip-path {
   color: #14335e;
 }
 
@@ -854,7 +854,7 @@ html[data-skin="Maid_Atelier"] .config-resizer {
   background: var(--vl-skin-maid-glass-border);
 }
 html[data-skin="Maid_Atelier"] .config-resizer:hover,
-html[data-skin="Maid_Atelier"] .config-resizer--active {
+html[data-skin="Maid_Atelier"] [data-region="config-resizer"][data-active] {
   background: var(--vl-skin-maid-gold);
 }
 
@@ -970,12 +970,12 @@ html[data-skin="Maid_Atelier"] [data-region="right-panel__subtitle"] {
 }
 
 /* ── 日期分支按钮激活态：亮金底（与「共 N 个配置」徽章同源）── */
-html[data-skin="Maid_Atelier"] .date-branch-btn--active {
+html[data-skin="Maid_Atelier"] [data-region="date-branch"][data-active] {
   background: rgba(242, 217, 143, 0.18);
   border-color: var(--vl-skin-maid-gold);
   color: var(--vl-skin-maid-gold-soft);
 }
-html[data-skin="Maid_Atelier"] .date-branch-btn--active:hover {
+html[data-skin="Maid_Atelier"] [data-region="date-branch"][data-active]:hover {
   background: rgba(242, 217, 143, 0.28);
 }
 
@@ -1016,7 +1016,7 @@ html[data-skin="Maid_Atelier"] .config-watermark__path:hover {
   background: linear-gradient(90deg, rgba(30, 58, 120, 0.85), rgba(42, 79, 155, 0.65));
   border-color: rgba(245, 220, 120, 0.6);
 }
-html[data-skin="Maid_Atelier"] .config-watermark__path--empty {
+html[data-skin="Maid_Atelier"] [data-region="watermark-path"][data-empty] {
   color: var(--vl-skin-maid-gold-light);
   opacity: 0.55;
 }
@@ -1082,7 +1082,7 @@ html[data-skin="Maid_Atelier"] .tree-project__badge {
   text-shadow: none; /* 徽章在激活项目行内，清除父级继承的文字投影 */
 }
 /* 切换配置文件场景（非展开触发）：徽章静止，不重播滑入动画 */
-html[data-skin="Maid_Atelier"] .tree-project__badge--static {
+html[data-skin="Maid_Atelier"] [data-region="tree-badge"][data-static] {
   animation: none;
 }
 html[data-skin="Maid_Atelier"] .tree-project__badge--leave {
@@ -1193,7 +1193,7 @@ html[data-skin="Maid_Atelier"] .mask-config.mask-config--static {
 }
 /* 遮罩列表各行 hover：与批量 config-path-row 同款蓝调 */
 html[data-skin="Maid_Atelier"] .mask-folder-row:hover,
-html[data-skin="Maid_Atelier"] .mask-folder-row--open,
+html[data-skin="Maid_Atelier"] [data-region="mask-folder"][data-open],
 html[data-skin="Maid_Atelier"] .mask-theme-row:hover,
 html[data-skin="Maid_Atelier"] .mask-theme-row--open,
 html[data-skin="Maid_Atelier"] .mask-file-item:hover,
@@ -1388,7 +1388,7 @@ html[data-skin="Maid_Atelier"] .date-branch-btn {
   to { opacity: 1; transform: none; }
 }
 /* 配置间切换时静默：按钮不重放进场动画（与徽章/config-editor --static 同思路） */
-html[data-skin="Maid_Atelier"] .date-branch-btn.date-branch-btn--static {
+html[data-skin="Maid_Atelier"] .date-branch-btn[data-region="date-branch"][data-static] {
   animation: none;
 }
 html[data-skin="Maid_Atelier"] .config-editor {
@@ -1399,7 +1399,7 @@ html[data-skin="Maid_Atelier"] .config-editor {
   to { opacity: 1; transform: none; }
 }
 /* 配置间切换静默：不重放进场动画（与徽章 --static 同思路） */
-html[data-skin="Maid_Atelier"] .config-editor.config-editor--static {
+html[data-skin="Maid_Atelier"] .config-editor[data-region="config-editor"][data-static] {
   animation: none;
 }
 

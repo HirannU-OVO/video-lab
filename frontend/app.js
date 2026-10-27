@@ -54,7 +54,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     var showActions = withActions !== false;
     var h = '<div class="config-watermark__row">';
     if (p) h += '<div class="config-watermark__path" title="' + escapeHtml(p) + '">' + escapeHtml(baseNameNoExt(p)) + '</div>';
-    else h += '<div class="config-watermark__path config-watermark__path--empty" title="点击更换水印">未设置水印</div>';
+    else h += '<div class="config-watermark__path config-watermark__path--empty" data-region="watermark-path" data-empty="1" title="点击更换水印">未设置水印</div>';
     if (showActions) {
       h += '<button type="button" class="config-watermark__btn' + (p ? '' : ' is-vl-disabled') + '" data-wm="open" title="打开文件"' + (p ? '' : ' data-why="未设置主流水印"') + '>' + icon('image', 15) + '</button>';
       h += '<button type="button" class="config-watermark__btn' + (p ? '' : ' is-vl-disabled') + '" data-wm="folder" title="打开文件夹"' + (p ? '' : ' data-why="未设置主流水印"') + '>' + icon('folder-open', 15) + '</button>';
@@ -577,7 +577,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       // 项目名行右侧：展开时显示「共 N 个配置」徽章（复刻虚拟项目无配置则不显示）
       // 切换配置场景（noBadgeAnim）：徽章加 --static 静止类，不重播滑入动画，与本行其他内容保持一致
       if (proj.name !== REPLICA_PROJECT && expanded) {
-        html += '<span class="tree-project__badge' + (noBadgeAnim ? ' tree-project__badge--static' : '') + '">共 ' + proj.txts.length + ' 个配置</span>';
+        html += '<span class="tree-project__badge' + (noBadgeAnim ? ' tree-project__badge--static' : '') + '" data-region="tree-badge"' + (noBadgeAnim ? ' data-static="1"' : '') + '>共 ' + proj.txts.length + ' 个配置</span>';
       }
       html += '</div>';
       if (expanded) {
@@ -667,7 +667,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     _lastAzActive = null; // 字母 DOM 重建后幂等基准失效，需重新判定高亮
     letters.forEach(function (L) {
       var b = document.createElement('span');
-      b.className = 'az-letter';
+      b.className = 'az-letter'; b.setAttribute('data-region', 'az-letter');
       b.textContent = L;
       b.dataset.letter = L;
       bar.appendChild(b);
@@ -714,7 +714,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     if (!bar) return;
     if (_lastAzActive === letter) return; // 首字母未变化：不重放高亮弹出动画
     _lastAzActive = letter;
-    bar.querySelectorAll('.az-letter').forEach(function (b) { b.classList.toggle('az-letter--active', b.dataset.letter === letter); });
+    bar.querySelectorAll('.az-letter').forEach(function (b) { b.classList.toggle('az-letter--active', b.dataset.letter === letter); b.toggleAttribute('data-active', b.dataset.letter === letter); });
   }
   function azJumpByPos(clientY, highlightOnDrag) {
     var bar = $('azIndexBar');
@@ -893,7 +893,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     var html = '';
     state.versions.forEach(function (v) {
       var active = v.label === state.activeVersion.label;
-      html += '<button class="date-branch-btn' + (active ? ' date-branch-btn--active' : '') + (silent ? ' date-branch-btn--static' : '') + '" data-label="' + escapeHtml(v.label) + '" title="' + escapeHtml(v.path) + '">' + escapeHtml(v.label);
+      html += '<button class="date-branch-btn' + (active ? ' date-branch-btn--active' : '') + (silent ? ' date-branch-btn--static' : '') + '" data-region="date-branch"' + (active ? ' data-active="1"' : '') + (silent ? ' data-static="1"' : '') + ' data-label="' + escapeHtml(v.label) + '" title="' + escapeHtml(v.path) + '">' + escapeHtml(v.label);
       html += '</button>';
     });
     c.innerHTML = html;
@@ -931,7 +931,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       files.forEach(function (f) {
         var isActive = f.path === active.path;
         var txt = f.label || f.date;
-        html += '<button class="date-branch-btn' + (isActive ? ' date-branch-btn--active' : '') + (silent ? ' date-branch-btn--static' : '') + '" data-date="' + escapeHtml(f.date) + '" data-file="' + escapeHtml(f.path) + '" title="' + escapeHtml(f.path) + '">' + escapeHtml(txt) + '</button>';
+        html += '<button class="date-branch-btn' + (isActive ? ' date-branch-btn--active' : '') + (silent ? ' date-branch-btn--static' : '') + '" data-region="date-branch"' + (isActive ? ' data-active="1"' : '') + (silent ? ' data-static="1"' : '') + ' data-date="' + escapeHtml(f.date) + '" data-file="' + escapeHtml(f.path) + '" title="' + escapeHtml(f.path) + '">' + escapeHtml(txt) + '</button>';
       });
       c.innerHTML = html;
       updateModeToggle();
@@ -954,7 +954,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     var excludes = data.excludes || [];
     var watermark = data.watermark || '';
     // 配置间切换（silent）时不给进场动画：与徽章 --static 同思路，避免重建页面时的滑入感
-    var html = '<div class="config-editor' + (silent ? ' config-editor--static' : '') + '">';
+    var html = '<div class="config-editor' + (silent ? ' config-editor--static' : '') + '" data-region="config-editor"' + (silent ? ' data-static="1"' : '') + '>';
     html += '<div class="config-editor__col config-editor__col--paths">';
     html += '<div class="config-path-subheader"><span class="config-path-subheader__sort">排序</span><span class="config-path-subheader__nopoll">取消轮询</span><span class="config-path-subheader__path">路径</span><span class="config-path-subheader__check">预检测结果'
       + '<button type="button" class="config-path-subheader__refresh" id="btnRefreshPrecache" title="刷新预缓存：更新变化的视频并清理失效缓存（含批量与遮罩素材）">' + icon('refresh-cw', 12) + '</button>'
@@ -972,7 +972,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     });
     html += '</div>';
     html += '<button class="config-path-add" id="btnAddPath" title="添加路径">' + icon('plus', 14) + '添加路径</button></div>';
-    html += '<div class="config-resizer"></div>';
+    html += '<div class="config-resizer" data-region="config-resizer"></div>';
     html += '<div class="config-editor__bottom">';
     html += '<div class="config-editor__col config-editor__col--exclude">';
     html += '<div class="config-editor__col-header">排除字段 <span class="config-editor__col-count">' + excludes.length + '</span></div>';
@@ -1166,7 +1166,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     else { if (state.selectedLogPaths[key]) delete state.selectedLogPaths[key]; else state.selectedLogPaths[key] = val; }
     var cb = entry.querySelector('.log-entry__check');
     if (cb) cb.checked = !!state.selectedLogPaths[key];
-    entry.classList.toggle('log-entry--selected', !!state.selectedLogPaths[key]);
+    entry.classList.toggle('log-entry--selected', !!state.selectedLogPaths[key]); entry.toggleAttribute('data-selected', !!state.selectedLogPaths[key]);
     refreshLogConfigBar();
   }
   function selectedLogCount() {
@@ -1269,14 +1269,14 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
         var sizeBelow = horizontal ? below.clientWidth : below.clientHeight;
         var startPos = horizontal ? e.clientX : e.clientY;
         var minSize = 48;
-        rz.classList.add('config-resizer--active');
+        rz.classList.add('config-resizer--active'); rz.setAttribute('data-active', '1');
         function onMove(ev) {
           var pos = horizontal ? ev.clientX : ev.clientY;
           var delta = pos - startPos;
           above.style.flex = '0 0 ' + Math.max(minSize, sizeAbove + delta) + 'px';
           below.style.flex = '0 0 ' + Math.max(minSize, sizeBelow - delta) + 'px';
         }
-        function onUp() { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); rz.classList.remove('config-resizer--active'); }
+        function onUp() { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); rz.classList.remove('config-resizer--active'); rz.removeAttribute('data-active'); }
         document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
       });
     });
@@ -1967,12 +1967,12 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       }
       var sel = !!state.selectMode;
       var curSel = state.selectedLogPaths || {};
-      var html = '<div class="log-list' + (sel ? ' log-list--selecting' : '') + '">';
+      var html = '<div class="log-list' + (sel ? ' log-list--selecting' : '') + '" data-region="log-list"' + (sel ? ' data-selecting="1"' : '') + '>';
       entries.forEach(function (entry) {
         var clips = entry.clips || [];
         var lp = entry.log_path || '';
         var checked = sel && curSel[normalizePath(lp)];
-        html += '<div class="log-entry' + (checked ? ' log-entry--selected' : '') + '" data-log-path="' + escapeHtml(lp) + '" data-video="' + escapeHtml(entry.video || '') + '">';
+        html += '<div class="log-entry' + (checked ? ' log-entry--selected' : '') + '" data-region="log-entry"' + (checked ? ' data-selected="1"' : '') + ' data-log-path="' + escapeHtml(lp) + '" data-video="' + escapeHtml(entry.video || '') + '">';
         html += '<div class="log-entry__header">';
         if (sel) html += '<label class="vl-check log-entry__check-wrap"><input type="checkbox" class="log-entry__check"' + (checked ? ' checked' : '') + ' title="选择该成片进行批量复刻"><span class="vl-check__box"></span></label>';
         html += '<span class="log-entry__arrow">' + icon('chevron-right', 14) + '</span>' + icon('video', 14);
@@ -2991,7 +2991,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     header.classList.remove('is-filled');
     var bdg = header.querySelector('.tree-project__badge');
     if (bdg) {
-      bdg.classList.remove('tree-project__badge--static');
+      bdg.classList.remove('tree-project__badge--static'); bdg.removeAttribute('data-static');
       bdg.classList.add('tree-project__badge--leave');
     }
     var wrap = header.parentElement ? header.parentElement.querySelector('.tree-project__items') : null;
@@ -3081,7 +3081,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
           if (bdgFold) {
             // 摘除切换配置时加的 --static（animation:none 特异性高于 --leave 的滑出动画），
             // 让收回时的 az-badge-out 滑出动画正常播放
-            bdgFold.classList.remove('tree-project__badge--static');
+            bdgFold.classList.remove('tree-project__badge--static'); bdgFold.removeAttribute('data-static');
             bdgFold.classList.add('tree-project__badge--leave');
           }
           if (azBar) azBar.classList.remove('is-show');
@@ -3119,7 +3119,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
             var bdgOld = oldHeader.querySelector('.tree-project__badge');
             if (bdgOld) {
               // 与折叠分支一致：先摘除 --static 再播 --leave 收回动画
-              bdgOld.classList.remove('tree-project__badge--static');
+              bdgOld.classList.remove('tree-project__badge--static'); bdgOld.removeAttribute('data-static');
               bdgOld.classList.add('tree-project__badge--leave');
             }
           }
@@ -4726,7 +4726,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     } else {
       maskState.rawDirs.forEach(function (rd, i) {
         if (rd.files && rd.files.length === 0) return; // 已扫描且 0 素材：该原片文件夹不显示
-        html += '<div class="mask-folder-row" data-rawfold="' + i + '" title="点击展开/收起文件列表">' +
+        html += '<div class="mask-folder-row" data-region="mask-folder" data-rawfold="' + i + '" title="点击展开/收起文件列表">' +
           '<label class="mask-folder-row__check" title="全选/取消该文件夹全部素材"><input type="checkbox" data-rawall="' + i + '"><span class="mask-folder-row__box"></span></label>' +
           '<span class="mask-folder-row__name" title="' + escapeHtml(rd.path) + '">' + escapeHtml(rd.name) + '</span>' +
           '<span class="mask-folder-row__count" id="maskRawCount_' + i + '"></span>' +
@@ -4791,7 +4791,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
         if (!box) return;
         var open = box.style.display === 'none';
         box.style.display = open ? '' : 'none';
-        row.classList.toggle('mask-folder-row--open', open);
+        row.classList.toggle('mask-folder-row--open', open); row.toggleAttribute('data-open', open);
       });
     });
     // 原片文件夹移除
@@ -5010,7 +5010,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       });
       // 文件加载完成：有勾选的文件夹保持展开箭头态；同时刷新底部提示、计数与时长禁用
       var rowEl = document.querySelector('[data-rawfold="' + i + '"]');
-      if (rowEl && (maskState.rawSel[rd.path] || []).length > 0) rowEl.classList.add('mask-folder-row--open');
+      if (rowEl && (maskState.rawSel[rd.path] || []).length > 0) rowEl.classList.add('mask-folder-row--open'); rowEl.setAttribute('data-open', '1');
       maskSyncDurDisabled();
       refreshMaskStartHint();
       var selEl2 = document.getElementById('maskSelTotal');
@@ -5423,7 +5423,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     var html = '';
     branches.forEach(function (b) {
       var active = b.path === maskState.maskLogBranch;
-      html += '<button class="date-branch-btn' + (active ? ' date-branch-btn--active' : '') + (silent ? ' date-branch-btn--static' : '') + '" data-masklog="' + escapeHtml(b.path) + '" title="' + escapeHtml(b.path) + '">' + escapeHtml(b.label) + '</button>';
+      html += '<button class="date-branch-btn' + (active ? ' date-branch-btn--active' : '') + (silent ? ' date-branch-btn--static' : '') + '" data-region="date-branch"' + (active ? ' data-active="1"' : '') + (silent ? ' data-static="1"' : '') + ' data-masklog="' + escapeHtml(b.path) + '" title="' + escapeHtml(b.path) + '">' + escapeHtml(b.label) + '</button>';
     });
     c.innerHTML = html;
   }
