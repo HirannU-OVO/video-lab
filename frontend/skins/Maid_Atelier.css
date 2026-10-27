@@ -882,40 +882,27 @@ html[data-skin="Maid_Atelier"] .sidebar-resize-btn {
 html[data-skin="Maid_Atelier"] .sidebar-resize-btn:hover {
   background: #1c326b;
 }
-/* 界面右上角圆形折叠按钮：蓝金皮肤（同侧栏置顶按钮风格） */
-html[data-skin="Maid_Atelier"] .preview-collapse-round {
-  background: linear-gradient(180deg, rgba(23, 46, 106, 0.95), rgba(11, 24, 64, 0.95));
-  border: 1px solid rgba(242, 217, 143, 0.55);
-  color: #e8c77f;
-  box-shadow:
-    inset 0 0 0 1px rgba(5, 15, 45, 0.64),
-    0 4px 12px rgba(1, 7, 24, 0.3);
+/* 界面右上角圆形折叠按钮 + 侧栏「新增配置」按钮：蓝金渐变（同侧栏置顶按钮风格）
+   ⚠ 外观全部走基线按钮变量；两者只在「悬浮是否上移」上不同，故分开声明。 */
+html[data-skin="Maid_Atelier"] :is([data-region="preview-collapse"], [data-region="new-config"]) {
+  --vl-btn-bg: linear-gradient(180deg, rgba(23, 46, 106, 0.95), rgba(11, 24, 64, 0.95));
+  --vl-btn-border: rgba(242, 217, 143, 0.55);
+  --vl-btn-color: #e8c77f;
+  --vl-btn-shadow: inset 0 0 0 1px rgba(5, 15, 45, 0.64), 0 4px 12px rgba(1, 7, 24, 0.3);
+  --vl-btn-bg-hover: linear-gradient(180deg, rgba(44, 78, 152, 0.95), rgba(15, 33, 82, 0.95));
+  --vl-btn-border-hover: rgba(244, 218, 164, 0.9);
+  --vl-btn-color-hover: #fff3cf;
 }
-html[data-skin="Maid_Atelier"] .preview-collapse-round:hover {
-  background: linear-gradient(180deg, rgba(44, 78, 152, 0.95), rgba(15, 33, 82, 0.95));
-  border-color: rgba(244, 218, 164, 0.9);
-  color: #fff3cf;
+/* 侧栏「新增配置」悬浮时上移 1px（圆形折叠按钮不上移） */
+html[data-skin="Maid_Atelier"] [data-region="new-config"] {
+  --vl-btn-lift-hover: -1px;
 }
 html[data-skin="Maid_Atelier"] .preview-collapse-round .preview-collapse__icon,
 html[data-skin="Maid_Atelier"] .preview-collapse-round svg {
   width: 12px;
   height: 12px;
 }
-/* 女仆皮肤：侧栏标题行「新增配置」图标按钮，与右上角圆形按钮同款蓝金渐变 */
-html[data-skin="Maid_Atelier"] .sidebar__new-config {
-  background: linear-gradient(180deg, rgba(23, 46, 106, 0.95), rgba(11, 24, 64, 0.95));
-  border: 1px solid rgba(242, 217, 143, 0.55);
-  color: #e8c77f;
-  box-shadow:
-    inset 0 0 0 1px rgba(5, 15, 45, 0.64),
-    0 4px 12px rgba(1, 7, 24, 0.3);
-}
-html[data-skin="Maid_Atelier"] .sidebar__new-config:hover {
-  background: linear-gradient(180deg, rgba(44, 78, 152, 0.95), rgba(15, 33, 82, 0.95));
-  border-color: rgba(244, 218, 164, 0.9);
-  color: #fff3cf;
-  transform: translateY(-1px); /* 保持 hover 上浮与预览按钮一致 */
-}
+/* 侧栏「新增配置」按钮的外观已在上面与圆形折叠按钮合并声明，这里只留图标尺寸 */
 html[data-skin="Maid_Atelier"] .sidebar__new-config svg {
   width: 12px;
   height: 12px;

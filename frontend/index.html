@@ -78,7 +78,7 @@ var m = new URL(location.href).searchParams.get('token');
         <div class="sidebar__root" data-region="sidebar__root">
           <div class="sidebar__header" data-region="sidebar__header">
             <span class="vl-title sidebar__header-title">项目列表</span>
-            <button class="sidebar__new-config" id="btnNewConfig" title="点击在该项目下新增配置">
+            <button class="sidebar__new-config vl-btn vl-btn--lift" data-region="new-config" id="btnNewConfig" title="点击在该项目下新增配置">
               <i data-icon="plus" data-size="12"></i>
             </button>
             <div class="sidebar__sort">
@@ -117,10 +117,10 @@ var m = new URL(location.href).searchParams.get('token');
             </div>
           </div>
           <div class="sidebar__footer" data-maid-sidebar-footer data-region="sidebar__footer">
-            <button class="sidebar-menu-btn" id="sidebarToTop" title="跳转至列表顶端" aria-label="跳转至列表顶端">
+            <button class="sidebar-menu-btn vl-btn vl-btn--icon vl-btn--ghost" data-region="sidebar-menu-btn" id="sidebarToTop" title="跳转至列表顶端" aria-label="跳转至列表顶端">
               <i data-icon="arrow-up" data-size="20"></i>
             </button>
-            <button class="sidebar-menu-btn" id="sidebarMenuBtn" title="菜单">
+            <button class="sidebar-menu-btn vl-btn vl-btn--icon vl-btn--ghost" data-region="sidebar-menu-btn" id="sidebarMenuBtn" title="菜单">
               <i data-icon="menu" data-size="20"></i>
             </button>
           </div>
@@ -201,7 +201,7 @@ var m = new URL(location.href).searchParams.get('token');
 
           <!-- 界面右上角圆形折叠按钮：独立于预览栏，始终可见，
                点击折叠/展开预览栏；颜色风格同侧栏置顶按钮 -->
-          <button class="preview-collapse-round" id="previewCollapseRound" title="展开预览面板">
+          <button class="preview-collapse-round vl-btn vl-btn--icon" data-region="preview-collapse" id="previewCollapseRound" title="展开预览面板">
             <i data-icon="panel-right" data-size="12"></i>
           </button>
         </div>
