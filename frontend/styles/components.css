@@ -23,6 +23,12 @@
     --vl-btn-h: 28px;
     --vl-btn-px: 12px;
     --vl-btn-fs: 13px;
+    /* 字重：默认 600。
+       ⚠ 与正式版的关系：正式版的 .config-btn 没声明 font-family，按钮回落到 <button> 的
+         UA 默认字体（Arial），Arial 在 12px/500 下比我们的 SF Pro Text 明显粗一档。
+         我们保留 font-family: inherit（与全站统一，不让按钮单独用 Arial），
+         改为把字重提高半档（600 实测偏粗，550 最接近）。 */
+    --vl-btn-fw: 500;
     /* 悬浮 / 按下的**位移与投影**反馈：默认无（普通按钮不该跳），
        需要「悬浮浮起」观感的用 --lift 变体，或由页面/皮肤给变量。
        ⚠ 与尺寸、颜色分开：这样「悬浮反馈」是全站一致的能力，各按钮只调数值。 */
@@ -68,6 +74,7 @@
     color: var(--vl-btn-color);
     font-family: inherit;
     font-size: var(--vl-btn-fs);
+    font-weight: var(--vl-btn-fw);
     line-height: 1;
     white-space: nowrap;
     cursor: pointer;
@@ -403,7 +410,7 @@
   }
   /* 警告色提示 */
   .vl-hint--warn { --vl-hint-color: var(--vl-alias-status-warning-default); }
-  .vl-path { font-family: "JetBrains Mono", Consolas, monospace; font-size: 11.5px; color: var(--vl-alias-text-secondary); word-break: break-all; }
+  .vl-path { font-family: var(--vl-font-family-mono); font-size: 11.5px; color: var(--vl-alias-text-secondary); word-break: break-all; }
 
   /* ── 工具栏（M-05 结构类通用化）────────────────────────────
      用途：一行里并排放按钮 / 输入框 / 说明的操作区。

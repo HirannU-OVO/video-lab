@@ -38,7 +38,7 @@
     padding: 1px 4px;
     border-radius: 3px;
     background: var(--vl-alias-bg-base-tertiary);
-    font-family: "JetBrains Mono", Consolas, monospace;
+    font-family: var(--vl-font-family-mono);
     font-size: 12px;
   }
 }

@@ -1993,13 +1993,12 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
 /* 差异：字号取 body-md、字重 medium（基线是 13px / 常规）；
    控件本体 —— 尺寸档、内距、圆角、边框、全部交互状态、悬浮上浮与投影
    一律由基线 .vl-btn + .vl-btn--lift 提供，这里不再重复定义。 */
-/* 差异：字号 body-md（12px）、字重 medium（500）、行高 normal ——
-   三项均与正式版 .config-btn 逐项对齐（实测正式版为 12px / 500 / normal）。
+/* 差异：字号 body-md（12px）、行高 normal；字重跟随基线变量 --vl-btn-fw ——
+   字号与行高与正式版逐项对齐；字重不用页面的 medium，统一跟随基线（便于整体调档）。
    ⚠ 基线 vl-btn 的 line-height 是 1（为图标与文字对齐），这里必须覆盖回 normal，
      否则文字在按钮内偏扁、视觉上比正式版细一档。 */
 .config-btn {
   --vl-btn-fs: var(--vl-type-body-md-size);
-  font-weight: var(--vl-font-font-weight-medium);
   line-height: normal;
 }
 /* 配置栏按钮 hover：统一向上轻抬（与状态色变亮叠加） */

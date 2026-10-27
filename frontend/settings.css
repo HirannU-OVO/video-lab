@@ -12,7 +12,7 @@ html, body {
 body {
   background: var(--vl-alias-bg-base-default);
   color: var(--vl-alias-text-default);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+  font-family: var(--vl-font-family-base);
   font-size: 14px;
 }
 
@@ -390,7 +390,7 @@ body {
 }
 .producer-preview__value {
   display: block;
-  font-family: Consolas, "Courier New", monospace;
+  font-family: var(--vl-font-family-mono);
   font-size: 13px;
   color: var(--vl-alias-text-brand, var(--vl-alias-brand-500));
   white-space: nowrap;
@@ -443,7 +443,7 @@ body {
   /* 提示/路径文字：用次级文字色（不是三级）—— 深色皮肤下三级色偏暗（深色 #707070 on 近黑底）
      对比不足，看起来像"没跟随皮肤"；次级色三皮肤下都清晰 */
   color: var(--vl-alias-text-secondary);
-  font-family: Consolas, "Courier New", monospace;
+  font-family: var(--vl-font-family-mono);
   /* 长路径单行省略，避免换行打乱行高（2026-09-29 调整） */
   max-width: 100%;
   overflow: hidden;
