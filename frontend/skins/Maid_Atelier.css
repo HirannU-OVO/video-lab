@@ -188,9 +188,15 @@ html[data-skin="Maid_Atelier"] {
   --vl-skin-maid-gold-glow: rgba(242, 217, 143, 0.14);
   --vl-skin-brand-hue: var(--vl-skin-maid-gold);
 }
+/* ⚠ 这里曾经丢了 `@layer skins {` 的开头：第一个 @layer 块在上面的 `}` 就闭合了，
+   于是下面 1400 多行规则全部变成 **未分层（unlayered）** —— 而未分层规则的优先级
+   高于所有 layer，导致女仆皮肤能压过页面层与组件层的任何规则（实测曾出现
+   皮肤覆盖 .config-btn--save-today 压掉页面层改动的现象）。
+   本层块由文件末尾那处收尾的 `}` 闭合。 */
+@layer skins {
 /* ═══════════════════════════════════════════════════════════════
-   装饰层：宫殿背景 / 玻璃容器 / 四角+金线 / 女仆装饰
-   ═══════════════════════════════════════════════════════════════ */
+  装饰层：宫殿背景 / 玻璃容器 / 四角+金线 / 女仆装饰
+  ═══════════════════════════════════════════════════════════════ */
 
 /* ── 中心面板：宫殿背景移交行为层角色舞台（character-stage） ── */
 /* 容器透明，让角色舞台（palace + 双女仆）作为 z0 完全透出；
@@ -1622,7 +1628,11 @@ html[data-skin="Maid_Atelier"] .modal-btn--primary {
 html[data-skin="Maid_Atelier"] .modal-btn--primary:hover {
   background: var(--vl-alias-brand-500);
   border-color: var(--vl-alias-brand-500);
-}  /* toast 固定实色（深海蓝浮层：深蓝卡片 + 海蓝边框） */
+}
+/* toast 固定实色（深海蓝浮层：深蓝卡片 + 海蓝边框）
+   ⚠ 原先是两条**没有选择器**的裸声明（写在上一条规则的 `}` 之后），属无效 CSS，
+     导致女仆皮肤的 toast 一直落回兜底色。 */
+html[data-skin="Maid_Atelier"] {
   --vl-skin-toast-bg: #14264f;
   --vl-skin-toast-border: #2c4a97;
 }

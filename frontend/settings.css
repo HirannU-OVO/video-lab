@@ -423,17 +423,9 @@ body {
 /* 每日定时检查更新下拉框：紧凑宽度，与左侧勾选间隔 8px */
 /* 差异：时间下拉固定 100px 宽；外观与全部交互状态由基线 .vl-select 提供 */
 .opt-time-select { width: 100px; flex-shrink: 0; }
-  flex-shrink: 0;
-  width: 16px;
-  height: 16px;
-  border: 1px solid var(--vl-alias-border-neutral-l2);
-  border-radius: 50%;
-  background: var(--vl-alias-bg-base-default);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: border-color 0.12s ease;
-}
+/* ⚠ 这里原有一段**没有选择器**的裸声明（11 行：16×16 / 圆角 50% / 边框 / 过渡），
+   是自绘单选圆点 .opt-radio__dot 的规则体丢了选择器。该子元素全库已无任何引用
+   （只剩 .opt-radio__label 在用），圆点样式早已由基线 .vl-radio__dot 承担，故删除。 */
 /* 分组头（.settings-group / .settings-group__title）已移除 —— 每个设置项自带
    「主标题 + 副标题」，再保留分组标题会出现语义重叠（如分组「日志」下面还有
    「日志级别」这种项）。分隔完全交给 .form-group 的下边框，整列是一条连续的条目列表。 */
@@ -624,3 +616,6 @@ body {
 }
 .about-info__v a:hover { color: var(--vl-alias-text-brand, var(--vl-alias-brand-500)); text-decoration-color: currentColor; }
 .about-info__sep { color: var(--vl-alias-text-tertiary); }
+}
+/* 上面这个右花括号闭合文件开头的 @layer pages。原本这里缺失，靠中间那段孤立声明块
+   末尾的右花括号误闭合，导致后半段规则（关于页等）掉出了 layer，优先级失控。 */

@@ -253,7 +253,13 @@
   .vl-input::placeholder { color: var(--vl-alias-text-tertiary); }
   .vl-input:hover:not([disabled]) { border-color: var(--vl-alias-border-neutral-l3); }
   .vl-input:focus { outline: none; border-color: var(--vl-alias-accent-blue); }
-  .vl-input[disabled], .vl-input[readonly] { background: var(--vl-alias-bg-base-tertiary); color: var(--vl-alias-text-disabled); cursor: default; }
+  /* 禁用：整块变灰、不可交互 */
+  .vl-input[disabled] { background: var(--vl-alias-bg-base-tertiary); color: var(--vl-alias-text-disabled); cursor: not-allowed; }
+  /* 只读：**外观与普通输入框一致**（只读仍可聚焦、选中、复制，不是禁用）。
+     ⚠ 曾与 [disabled] 写在一起 → 设置页「默认备份文件夹」是页面里唯一 readonly 的输入框，
+       结果只有它变成灰底灰字，看着像被禁用，与旁边可编辑的路径框明显不一致。 */
+  .vl-input[readonly] { cursor: default; }
+  .vl-input[readonly]:hover { border-color: var(--vl-alias-border-neutral-l1); }
   .vl-input[aria-invalid="true"] { border-color: var(--vl-alias-status-error-default); }
   .vl-input--sm { --vl-input-h: 26px; font-size: 12px; }
   .vl-input--lg { --vl-input-h: 38px; font-size: 14px; }
@@ -819,6 +825,10 @@
     --vl-option-bg: transparent;
     --vl-option-color: var(--vl-alias-text-secondary);
     --vl-option-border-color: transparent;
+    /* 边框宽度默认 0（= 无边框）。⚠ 原先只设了 border-color 而没设宽度，
+       `<button>` 的 UA 默认边框（2px outset）仍在 → 导航 tab 比正式版宽高各多 4px。
+       需要描边的形态（主题项）改用 box-shadow 外发光，或把本变量设为 1px。 */
+    --vl-option-border-width: 0;
     --vl-option-bg-hover: var(--vl-alias-bg-overlay-l1);
     --vl-option-color-hover: var(--vl-alias-text-default);
     --vl-option-border-hover: transparent;
@@ -836,7 +846,7 @@
     font-family: inherit;
     background: var(--vl-option-bg);
     color: var(--vl-option-color);
-    border-color: var(--vl-option-border-color);
+    border: var(--vl-option-border-width) solid var(--vl-option-border-color);
   }
   .vl-option:hover {
     background: var(--vl-option-bg-hover);
