@@ -55,8 +55,12 @@
     --vl-btn-color: var(--vl-alias-text-default);
     --vl-btn-bg-hover: var(--vl-alias-bg-base-secondary);
     --vl-btn-border-hover: var(--vl-btn-border);
+    /* 文字色也走变量：皮肤常需要「悬浮时文字变亮」（如女仆皮肤的浅金→亮金），
+       若只允许改背景，皮肤就只能用类名覆盖 color —— 那正是要消灭的写法。 */
+    --vl-btn-color-hover: var(--vl-btn-color);
     --vl-btn-bg-active: var(--vl-alias-bg-base-tertiary);
     --vl-btn-border-active: var(--vl-btn-border-hover);
+    --vl-btn-color-active: var(--vl-btn-color-hover);
     --vl-btn-bg-disabled: var(--vl-alias-bg-base-tertiary);
     --vl-btn-border-disabled: var(--vl-alias-border-neutral-l1);
     --vl-btn-color-disabled: var(--vl-alias-text-disabled);
@@ -85,12 +89,14 @@
   .vl-btn:hover:where(:not([disabled]):not([aria-disabled="true"])) {
     background: var(--vl-btn-bg-hover);
     border-color: var(--vl-btn-border-hover);
+    color: var(--vl-btn-color-hover);
     transform: translateY(var(--vl-btn-lift-hover));
     box-shadow: var(--vl-btn-shadow-hover);
   }
   .vl-btn:active:where(:not([disabled]):not([aria-disabled="true"])) {
     background: var(--vl-btn-bg-active);
     border-color: var(--vl-btn-border-active);
+    color: var(--vl-btn-color-active);
     transform: translateY(var(--vl-btn-lift-active));
   }
   /* 悬浮浮起变体：主窗口配置栏那类「彩色实色 + 悬浮上浮 + 投影」的按钮用它。

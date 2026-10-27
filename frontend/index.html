@@ -35,14 +35,14 @@ var m = new URL(location.href).searchParams.get('token');
       </button>
     </div>
     <div class="win-titlebar__controls">
-      <button class="win-titlebar__btn vl-btn vl-btn--ghost" data-wctl="min" title="最小化">
+      <button class="win-titlebar__btn vl-btn vl-btn--ghost" data-region="titlebar-btn" data-wctl="min" title="最小化">
         <svg viewBox="0 0 12 12"><line x1="2" y1="6" x2="10" y2="6" stroke="currentColor" stroke-width="1"/></svg>
       </button>
-      <button class="win-titlebar__btn vl-btn vl-btn--ghost" data-wctl="max" title="最大化">
+      <button class="win-titlebar__btn vl-btn vl-btn--ghost" data-region="titlebar-btn" data-wctl="max" title="最大化">
         <svg class="win-titlebar__svg-max" viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1"/></svg>
         <svg class="win-titlebar__svg-restore" viewBox="0 0 12 12" style="display:none"><rect x="2.5" y="3.5" width="6" height="6" fill="none" stroke="currentColor" stroke-width="1"/><path d="M4 3.5V2H9v6H8.5" fill="none" stroke="currentColor" stroke-width="1"/></svg>
       </button>
-      <button class="win-titlebar__btn vl-btn vl-btn--ghost win-titlebar__btn--close" data-wctl="close" title="关闭">
+      <button class="win-titlebar__btn vl-btn vl-btn--ghost win-titlebar__btn--close" data-region="titlebar-btn" data-close="1" data-wctl="close" title="关闭">
         <svg viewBox="0 0 12 12"><path d="M3 3l6 6M9 3L3 9" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>
       </button>
     </div>
@@ -82,8 +82,8 @@ var m = new URL(location.href).searchParams.get('token');
               <i data-icon="plus" data-size="12"></i>
             </button>
             <div class="sidebar__sort">
-              <button class="sort-toggle vl-btn vl-btn--xs vl-btn--ghost" id="btnSortName" aria-pressed="true" title="按名称排序">名称</button>
-              <button class="sort-toggle vl-btn vl-btn--xs vl-btn--ghost" id="btnSortTime" aria-pressed="false" title="按时间排序">时间</button>
+              <button class="sort-toggle vl-btn vl-btn--xs vl-btn--ghost" data-region="sort-toggle" id="btnSortName" aria-pressed="true" title="按名称排序">名称</button>
+              <button class="sort-toggle vl-btn vl-btn--xs vl-btn--ghost" data-region="sort-toggle" id="btnSortTime" aria-pressed="false" title="按时间排序">时间</button>
             </div>
           </div>
           <div class="sidebar__search" data-region="sidebar__search">
@@ -150,10 +150,10 @@ var m = new URL(location.href).searchParams.get('token');
               <div class="center-top__header">
                 <span class="vl-title center-top__title">日期分支</span>
                 <div class="center-top__toggles">
-                  <button class="mode-toggle vl-btn vl-btn--sm vl-btn--ghost" data-mode="filelist" aria-pressed="true" id="modeFilelist">
+                  <button class="mode-toggle vl-btn vl-btn--sm vl-btn--ghost" data-region="mode-toggle" data-mode="filelist" aria-pressed="true" id="modeFilelist">
                     <i data-icon="list" data-size="12"></i>配置列表
                   </button>
-                  <button class="mode-toggle vl-btn vl-btn--sm vl-btn--ghost" data-mode="log" aria-pressed="false" id="modeLog">
+                  <button class="mode-toggle vl-btn vl-btn--sm vl-btn--ghost" data-region="mode-toggle" data-mode="log" aria-pressed="false" id="modeLog">
                     <i data-icon="scroll-text" data-size="12"></i>日志
                   </button>
                 </div>
@@ -173,16 +173,16 @@ var m = new URL(location.href).searchParams.get('token');
           <div class="right-panel" id="rightPanel" data-region="right-panel">
             <div class="right-panel__header" data-region="right-panel__header">
               <div class="right-panel__toggle">
-                <button class="preview-toggle vl-btn vl-btn--xs vl-btn--ghost" id="btnPreviewModified" aria-pressed="true" title="显示修改后的 TXT 预览">
+                <button class="preview-toggle vl-btn vl-btn--xs vl-btn--ghost" data-region="preview-toggle" id="btnPreviewModified" aria-pressed="true" title="显示修改后的 TXT 预览">
                   <i data-icon="save" data-size="12"></i>实时
                 </button>
-                <button class="preview-toggle vl-btn vl-btn--xs vl-btn--ghost" id="btnPreviewRaw" aria-pressed="false" title="显示原始 TXT 内容">
+                <button class="preview-toggle vl-btn vl-btn--xs vl-btn--ghost" data-region="preview-toggle" id="btnPreviewRaw" aria-pressed="false" title="显示原始 TXT 内容">
                   <i data-icon="file-text" data-size="12"></i>原始
                 </button>
-                <button class="preview-toggle vl-btn vl-btn--xs vl-btn--ghost" id="btnLogSimple" aria-pressed="true" title="简化显示日志片段路径（默认）" style="display:none">
+                <button class="preview-toggle vl-btn vl-btn--xs vl-btn--ghost" data-region="preview-toggle" id="btnLogSimple" aria-pressed="true" title="简化显示日志片段路径（默认）" style="display:none">
                   <i data-icon="list" data-size="12"></i>简化
                 </button>
-                <button class="preview-toggle vl-btn vl-btn--xs vl-btn--ghost" id="btnLogRaw" aria-pressed="false" title="显示日志完整原始内容" style="display:none">
+                <button class="preview-toggle vl-btn vl-btn--xs vl-btn--ghost" data-region="preview-toggle" id="btnLogRaw" aria-pressed="false" title="显示日志完整原始内容" style="display:none">
                   <i data-icon="file-text" data-size="12"></i>原始
                 </button>
               </div>

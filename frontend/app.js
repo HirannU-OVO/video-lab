@@ -4388,8 +4388,8 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       top.innerHTML = '<div class="center-top__header">' +
         '<span class="center-top__title">遮罩叠加</span>' +
         '<div class="center-top__toggles">' +
-        '<button class="mode-toggle" aria-pressed="' + (maskState.view === 'config' ? 'true' : 'false') + '" data-maskview="config" id="maskViewConfig">' + icon('list', 12) + '配置</button>' +
-        '<button class="mode-toggle" aria-pressed="' + (maskState.view === 'log' ? 'true' : 'false') + '" data-maskview="log" id="maskViewLog">' + icon('scroll-text', 12) + '日志</button>' +
+        '<button class="mode-toggle vl-btn vl-btn--sm vl-btn--ghost" data-region="mode-toggle" aria-pressed="' + (maskState.view === 'config' ? 'true' : 'false') + '" data-maskview="config" id="maskViewConfig">' + icon('list', 12) + '配置</button>' +
+        '<button class="mode-toggle vl-btn vl-btn--sm vl-btn--ghost" data-region="mode-toggle" aria-pressed="' + (maskState.view === 'log' ? 'true' : 'false') + '" data-maskview="log" id="maskViewLog">' + icon('scroll-text', 12) + '日志</button>' +
         '</div></div>' +
         '<div class="center-top__dates" id="maskDateBranches"></div>' +
         '<div class="center-top__ornament-host" id="maskOrnamentHost" aria-hidden="true"></div>';
@@ -4430,8 +4430,8 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     top.innerHTML = '<div class="center-top__header">' +
       '<span class="center-top__title">日期分支</span>' +
       '<div class="center-top__toggles">' +
-      '<button class="mode-toggle" aria-pressed="true" data-mode="filelist" id="modeFilelist">' + icon('list', 12) + '配置列表</button>' +
-      '<button class="mode-toggle" aria-pressed="false" data-mode="log" id="modeLog">' + icon('scroll-text', 12) + '日志</button>' +
+      '<button class="mode-toggle vl-btn vl-btn--sm vl-btn--ghost" data-region="mode-toggle" aria-pressed="true" data-mode="filelist" id="modeFilelist">' + icon('list', 12) + '配置列表</button>' +
+      '<button class="mode-toggle vl-btn vl-btn--sm vl-btn--ghost" data-region="mode-toggle" aria-pressed="false" data-mode="log" id="modeLog">' + icon('scroll-text', 12) + '日志</button>' +
       '</div></div>' +
       '<div class="center-top__dates" id="dateBranches"></div>';
     // 恢复右侧预览结构（遮罩模式重写过 rightPanelContent，行号/代码容器需重建）

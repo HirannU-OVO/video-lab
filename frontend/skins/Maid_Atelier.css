@@ -599,35 +599,30 @@ html[data-skin="Maid_Atelier"] .center-top__title {
 /* 统一 tab 风格：透明背景 + 米色文字 + 激活态金色下划线发光（替代实底按钮）。
    sort-toggle 为左侧列表「名称/时间」排序切换，preview-toggle 为右侧「实时/原始」切换，
    与中间「配置列表/日志」完全一致 */
-html[data-skin="Maid_Atelier"] :is(.mode-toggle, .sort-toggle, .preview-toggle) {
-  position: relative;
-  height: 24px;
-  padding: 0 8px;
+html[data-skin="Maid_Atelier"] :is([data-region="mode-toggle"], [data-region="sort-toggle"], [data-region="preview-toggle"]) {
+  /* 尺寸与配色全部走基线按钮变量（这几类已接 .vl-btn--sm / --xs + --ghost）。
+     ⚠ 只有「圆角、文字投影、选中态文字色」基线没有对应变量，才留在本规则里。 */
+  --vl-btn-h: 24px;
+  --vl-btn-px: 8px;
+  --vl-btn-bg: transparent;
+  --vl-btn-border: transparent;
+  --vl-btn-color: #d7def0;
+  --vl-btn-bg-hover: rgba(255, 252, 243, 0.08);
+  --vl-btn-color-hover: var(--vl-skin-maid-gold-soft);
+  --vl-btn-bg-active: rgba(255, 252, 243, 0.12);
+  --vl-btn-color-active: #fff7e6;
+  position: relative;   /* 仅供下面的金色下划线伪元素定位 */
   border-radius: 4px;
-  background: transparent;
-  border: 0;
-  color: #d7def0;
   text-shadow: 0 1px 3px rgba(4, 11, 35, 0.55);
-  transition: color 0.15s ease, background 0.15s ease;
 }
-html[data-skin="Maid_Atelier"] :is(.mode-toggle, .sort-toggle, .preview-toggle):hover {
-  background: rgba(255, 252, 243, 0.08);
-  color: var(--vl-skin-maid-gold-soft);
-  border-color: transparent;
-}
-html[data-skin="Maid_Atelier"] :is(.mode-toggle[aria-pressed="true"], .sort-toggle[aria-pressed="true"], .preview-toggle[aria-pressed="true"]) {
-  background: transparent;
-  border-color: transparent;
-  color: #fff7e6;
-}
-html[data-skin="Maid_Atelier"] :is(.mode-toggle[aria-pressed="true"], .sort-toggle[aria-pressed="true"], .preview-toggle[aria-pressed="true"]):hover {
-  background: rgba(255, 252, 243, 0.08);
-  color: #fff7e6;
-  border-color: transparent;
+/* 选中态（aria-pressed=true）：只把文字提亮一档，底色仍透明 */
+html[data-skin="Maid_Atelier"] :is([data-region="mode-toggle"], [data-region="sort-toggle"], [data-region="preview-toggle"])[aria-pressed="true"] {
+  --vl-btn-color: #fff7e6;
+  --vl-btn-color-hover: #fff7e6;
 }
 /* 激活态底部金色下划线 + 光晕（移植母本 tab[aria-selected='true']::after）
    位置上移：紧挨文字下方（bottom:0，原 bottom:-7px 悬在按钮下方，再下移 2px 后的位置） */
-html[data-skin="Maid_Atelier"] :is(.mode-toggle[aria-pressed="true"], .sort-toggle[aria-pressed="true"], .preview-toggle[aria-pressed="true"])::after {
+html[data-skin="Maid_Atelier"] :is([data-region="mode-toggle"], [data-region="sort-toggle"], [data-region="preview-toggle"])[aria-pressed="true"]::after {
   content: '';
   position: absolute;
   left: 50%;
@@ -1552,8 +1547,11 @@ html[data-skin="Maid_Atelier"] .win-titlebar__title {
   letter-spacing: 0.06em;
   text-shadow: 0 1px 3px rgba(2, 7, 25, 0.55);
 }
-html[data-skin="Maid_Atelier"] .win-titlebar__btn {
-  color: #e6dcc4;
+html[data-skin="Maid_Atelier"] [data-region="titlebar-btn"] {
+  /* 文字与悬浮底色走基线按钮变量；正常/关闭两形态各自声明档位 */
+  --vl-btn-color: #e6dcc4;
+  --vl-btn-bg-hover: rgba(242, 217, 143, 0.16);
+  --vl-btn-color-hover: #fff7e6;
 }
 /* 标题栏模式切换按钮：女仆皮肤金色适配（文字亮金、hover 金辉、图标取金色阶） */
 html[data-skin="Maid_Atelier"] .win-titlebar__mode {
@@ -1567,13 +1565,10 @@ html[data-skin="Maid_Atelier"] .win-titlebar__mode i,
 html[data-skin="Maid_Atelier"] .win-titlebar__mode svg {
   color: #d9b65c;
 }
-html[data-skin="Maid_Atelier"] .win-titlebar__btn:hover {
-  background: rgba(242, 217, 143, 0.16);
-  color: #fff7e6;
-}
-html[data-skin="Maid_Atelier"] .win-titlebar__btn--close:hover {
-  background: #d34a3f;
-  color: #ffffff;
+/* 关闭按钮：悬浮变红（覆盖上面的通用档位） */
+html[data-skin="Maid_Atelier"] [data-region="titlebar-btn"][data-close] {
+  --vl-btn-bg-hover: #d34a3f;
+  --vl-btn-color-hover: #ffffff;
 }
 
 /* ═══════════════════════════════════════════════════════════════

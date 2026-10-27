@@ -26,14 +26,14 @@ var m = new URL(location.href).searchParams.get('token');
   <div class="win-titlebar" id="winTitlebar" data-region="win-titlebar">
     <span class="win-titlebar__title">Video Lab - 视频处理</span>
     <div class="win-titlebar__controls">
-      <button class="win-titlebar__btn" data-wctl="min" title="最小化">
+      <button class="win-titlebar__btn vl-btn vl-btn--ghost" data-region="titlebar-btn" data-wctl="min" title="最小化">
         <svg viewBox="0 0 12 12"><line x1="2" y1="6" x2="10" y2="6" stroke="currentColor" stroke-width="1"/></svg>
       </button>
-      <button class="win-titlebar__btn" data-wctl="max" title="最大化">
+      <button class="win-titlebar__btn vl-btn vl-btn--ghost" data-region="titlebar-btn" data-wctl="max" title="最大化">
         <svg class="win-titlebar__svg-max" viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1"/></svg>
         <svg class="win-titlebar__svg-restore" viewBox="0 0 12 12" style="display:none"><rect x="2.5" y="3.5" width="6" height="6" fill="none" stroke="currentColor" stroke-width="1"/><path d="M4 3.5V2H9v6H8.5" fill="none" stroke="currentColor" stroke-width="1"/></svg>
       </button>
-      <button class="win-titlebar__btn win-titlebar__btn--close" data-wctl="close" title="关闭">
+      <button class="win-titlebar__btn vl-btn vl-btn--ghost win-titlebar__btn--close" data-region="titlebar-btn" data-close="1" data-wctl="close" title="关闭">
         <svg viewBox="0 0 12 12"><path d="M3 3l6 6M9 3L3 9" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>
       </button>
     </div>
