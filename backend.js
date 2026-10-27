@@ -4212,12 +4212,15 @@ class Api {
     try { this._idleEnqueue('loglevel:' + this.root, () => this._restoreLogLevel()); } catch (e) {}
   }
 
-  // 把任务列表里缺配置的任务按快照补回原位（批量/复刻）
+  // 把任务列表里「可能继续执行」的任务按快照补回原位（批量/复刻）
   _healTaskTxt() {
     let healed = 0;
+    // 仅为可能继续执行的任务备一份原位配置：已完成任务的配置随成片归档，原位为空属正常形态
+    const activeStates = ['queued', 'running', 'paused', 'interrupted', 'stopped'];
     try {
       for (const t of this.tasks.values()) {
         if (!t || (t.type !== 'batch' && t.type !== 'replica')) continue;
+        if (activeStates.indexOf(String(t.status || '')) < 0) continue;
         const src = String((t.env && t.env.REPLICA_TXT) || '').trim();
         if (!src) continue;
         let alive = false;
