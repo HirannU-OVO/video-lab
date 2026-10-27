@@ -228,8 +228,8 @@ body {
   align-items: center;
   -webkit-app-region: drag;
   user-select: none;
-  background: var(--vl-alias-bg-base-default);
-  border-bottom: 1px solid var(--vl-alias-border-neutral-l1);
+  background: var(--vl-panel-bg-strong);
+  border-bottom: 1px solid var(--vl-panel-border);
 }
 .win-titlebar__title {
   position: absolute;
@@ -609,8 +609,8 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   height: 46px;
   flex-shrink: 0;
   padding: 0 var(--vl-static-spacer-12);
-  background: var(--vl-alias-bg-base-default);
-  border-top: 1px solid var(--vl-alias-border-neutral-l1);
+  background: var(--vl-panel-bg-strong);
+  border-top: 1px solid var(--vl-panel-border);
   overflow: hidden;
 }
 
@@ -620,8 +620,8 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  background: var(--vl-alias-bg-base-secondary);
-  border-right: 1px solid var(--vl-alias-border-neutral-l1);
+  background: var(--vl-panel-bg);
+  border-right: 1px solid var(--vl-panel-border);
   overflow: hidden;
 }
 /* 侧栏内容根（承载皮肤三层渐变背景与 corners z4/mascot z0/内容 z2 层级） */
@@ -638,7 +638,7 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   align-items: center;
   height: 36px;
   padding: 0 var(--vl-static-spacer-12);
-  border-bottom: 1px solid var(--vl-alias-border-neutral-l1);
+  border-bottom: 1px solid var(--vl-panel-border);
   flex-shrink: 0;
   gap: var(--vl-static-spacer-8);
 }
@@ -736,7 +736,7 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
 }
 .sidebar__search {
   padding: var(--vl-static-spacer-8) var(--vl-static-spacer-12);
-  border-bottom: 1px solid var(--vl-alias-border-neutral-l1);
+  border-bottom: 1px solid var(--vl-panel-border);
   flex-shrink: 0;
 }
 .sidebar__search .vl-input-group {
@@ -1144,7 +1144,7 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid var(--vl-alias-border-neutral-l1);
+  border-right: 1px solid var(--vl-panel-border);
   overflow: hidden;
 }
 
@@ -1156,8 +1156,8 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   align-items: center;
   height: 36px;
   padding: 0 var(--vl-static-spacer-12);
-  border-bottom: 1px solid var(--vl-alias-border-neutral-l1);
-  background: var(--vl-alias-bg-base-default);
+  border-bottom: 1px solid var(--vl-panel-border);
+  background: var(--vl-panel-bg-strong);
   flex-shrink: 0;
 }
 .center-global-search .vl-input-group {
@@ -1178,7 +1178,7 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
 .center-top {
   display: flex;
   flex-direction: column;
-  border-bottom: 1px solid var(--vl-alias-border-neutral-l1);
+  border-bottom: 1px solid var(--vl-panel-border);
   flex-shrink: 0;
   min-height: 100px;
   max-height: 160px;
@@ -2291,7 +2291,7 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  background: var(--vl-alias-bg-base-secondary);
+  background: var(--vl-panel-bg);
   overflow: hidden;
 }
 .right-panel__header {
@@ -2300,7 +2300,7 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   justify-content: flex-start;
   height: 36px;
   padding: 0 var(--vl-static-spacer-12);
-  border-bottom: 1px solid var(--vl-alias-border-neutral-l1);
+  border-bottom: 1px solid var(--vl-panel-border);
   flex-shrink: 0;
   white-space: nowrap; /* 折叠动画收缩时禁止换行，文字整体裁剪而非逐行堆叠 */
 }
@@ -2380,7 +2380,7 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   color: var(--vl-alias-text-default);
 }
 /* 差异：内距 / 下边框 / 不收缩 / 单行省略（字号与颜色回归基线） */
-.right-panel__subtitle { padding: var(--vl-static-spacer-6) var(--vl-static-spacer-12); border-bottom: 1px solid var(--vl-alias-border-neutral-l1); flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.right-panel__subtitle { padding: var(--vl-static-spacer-6) var(--vl-static-spacer-12); border-bottom: 1px solid var(--vl-panel-border); flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .right-panel__content {
   flex: 1;
   display: flex;
@@ -2510,8 +2510,8 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   justify-content: space-between;
   height: 24px;
   padding: 0 var(--vl-static-spacer-12);
-  background: var(--vl-alias-bg-base-secondary);
-  border-top: 1px solid var(--vl-alias-border-neutral-l1);
+  background: var(--vl-panel-bg);
+  border-top: 1px solid var(--vl-panel-border);
   font-size: var(--vl-type-body-xs-size);
   line-height: var(--vl-type-body-xs-line-height);
   color: var(--vl-alias-text-tertiary);

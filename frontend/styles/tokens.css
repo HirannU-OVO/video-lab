@@ -677,5 +677,18 @@
   --vl-static-bg-overlay: rgba(0, 0, 0, 0.35);
   --vl-static-text-muted: #999;
   --vl-static-success-500: #16a34a;
+
+  /* ── 面板级接口令牌（皮肤可覆盖）──────────────────────────────
+     用途：侧栏 / 顶栏 / 底栏 / 右栏 / 标题栏 / 状态栏 / 配置栏这类**整块面板**的
+           底色、分隔边框、投影与毛玻璃。
+     为什么要多这一层：这些面板原先各自直接引用 bg-base-* / border-neutral-*，
+           皮肤想给它们换底色或加毛玻璃时，令牌表达不了，只能写页面类名去覆盖
+           （女仆皮肤那批纯色规则就是这么来的）→ 页面结构一变就得再补一条类名。
+     有了这一层，皮肤只需设下面几个变量，不必认识任何页面类名。 */
+  --vl-panel-bg: var(--vl-alias-bg-base-secondary);        /* 一般面板底（侧栏、右栏、状态栏） */
+  --vl-panel-bg-strong: var(--vl-alias-bg-base-default);   /* 主要面板底（顶栏、底栏、标题栏、搜索栏） */
+  --vl-panel-border: var(--vl-alias-border-neutral-l1);    /* 面板之间的分隔线 */
+  --vl-panel-shadow: none;                                 /* 面板投影 */
+  --vl-panel-backdrop: none;                               /* 面板毛玻璃模糊 */
 }
 }
