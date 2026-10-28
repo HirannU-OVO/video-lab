@@ -3119,22 +3119,34 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
 /* 右键菜单项：改用类选择器 + 基线变量。
    ⚠ 原先是 `.ctx-menu button`（类型选择器，特异性 0,1,1 高于 .vl-btn 的 0,1,0），
      会直接压死组件变量，所以必须换成类选择器。 */
+/* 右键菜单项：改用类选择器 + 基线变量。
+   ⚠ 原先是 `.ctx-menu button`（类型选择器，特异性 0,1,1 高于 .vl-btn 的 0,1,0），
+     会直接压死组件变量，所以必须换成类选择器。
+   ⚠ 接入基线后要显式对齐这几项，否则外观会被基线的默认值改掉（实测差异）：
+     · --vl-btn-lh：基线默认 1 → 行高 14px，原来继承 normal(≈19.6px)，行距明显变紧、行高 31→26；
+     · --vl-btn-fw：基线默认 500，原来继承 400，文字变粗；
+     · font-family：基线指定了字体族，原来继承页面默认，字形不同。 */
 .ctx-menu__item {
   --vl-btn-h: auto;
   --vl-btn-py: 6px;
   --vl-btn-px: 12px;
   --vl-btn-fs: var(--vl-type-body-base-size);
+  --vl-btn-lh: normal;      /* 与原来的继承行高一致，别用基线的 1 */
+  --vl-btn-fw: normal;      /* 原来是 400，不是基线的 500 */
   --vl-btn-radius: var(--vl-static-radius-6);
   --vl-btn-border-width: 0;
   --vl-btn-bg: transparent;
   --vl-btn-color: var(--vl-alias-text-default);
   --vl-btn-bg-hover: var(--vl-alias-brand-100);
   --vl-btn-color-hover: var(--vl-alias-brand-600);
-  display: flex;
+  display: block;           /* 原来是块级，flex 会改变文本布局 */
   width: 100%;
   text-align: left;
-  justify-content: flex-start;
   white-space: nowrap;
+  /* ⚠ 字体对齐到正式版的实际渲染（Arial）。
+     不能写 inherit：会继承 .ctx-menu → body 的 SF Pro Text；
+     也不能写 initial：font-family 的初始值是 serif，浏览器会解析成 Times New Roman。 */
+  font-family: Arial, sans-serif;
 }
 /* 变灰项仍可点击（点击弹 toast 说明）：同 disabled 的灰显外观，但保留可点光标 */
 /* 带子菜单的项：右侧箭头提示 */
