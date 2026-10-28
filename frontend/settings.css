@@ -183,8 +183,8 @@ body {
    （副标题 tertiary）。此前 13px / 常规字重与副标题区分度不足。 */
 .form-group__label {
   display: block;
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--vl-type-body-base-size);
+  font-weight: var(--vl-font-font-weight-medium);
   color: var(--vl-alias-text-secondary);
   margin-bottom: 6px;
 }
@@ -194,7 +194,7 @@ body {
    主标题在上、副标题在下）。 */
 .form-group__label small {
   display: block;
-  font-size: 11px;
+  font-size: var(--vl-type-body-sm-size);
   color: var(--vl-alias-text-tertiary);
   margin-top: 2px;
 }
@@ -292,7 +292,7 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: flex-end;
-  font-size: 13px;
+  font-size: var(--vl-type-heading-xs-size);
   color: var(--vl-alias-text-secondary);
   user-select: none;
 }
@@ -365,21 +365,21 @@ body {
 /* ─── 成片名预览（标签为小字说明样式，框与下方参数用横线分隔） ─── */
 .producer-preview__label {
   display: block;
-  font-size: 11px;
+  font-size: var(--vl-type-body-sm-size);
   color: var(--vl-alias-text-tertiary);
   margin-bottom: 6px;
 }
 .producer-preview {
   position: relative;
   border: 1px dashed var(--vl-alias-border-neutral-l2);
-  border-radius: 8px;
+  border-radius: var(--vl-static-radius-8);
   padding: 7px 12px; /* 高度与输入框一致，横向保留原 12px */
   background: var(--vl-alias-bg-overlay-l1);
 }
 .producer-preview__value {
   display: block;
   font-family: var(--vl-font-family-mono);
-  font-size: 13px;
+  font-size: var(--vl-type-heading-xs-size);
   color: var(--vl-alias-text-brand, var(--vl-alias-brand-500));
   white-space: nowrap;
   overflow: hidden;
@@ -419,7 +419,7 @@ body {
    「日志级别」这种项）。分隔完全交给 .form-group 的下边框，整列是一条连续的条目列表。 */
 
 .opt-path {
-  font-size: 11px;
+  font-size: var(--vl-type-body-sm-size);
   /* 提示/路径文字：用次级文字色（不是三级）—— 深色皮肤下三级色偏暗（深色 #707070 on 近黑底）
      对比不足，看起来像"没跟随皮肤"；次级色三皮肤下都清晰 */
   color: var(--vl-alias-text-secondary);
@@ -450,15 +450,15 @@ body {
   backdrop-filter: blur(3px);
 }
 /* 差异：布局 / 宽度 / 内距 / 投影（底色、圆角与边框回归基线 .vl-card） */
-.update-result__box { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 14px; width: min(420px, calc(100% - 48px)); padding: 20px 22px; box-shadow: 0 18px 48px color-mix(in srgb, #000 42%, transparent); }
+.update-result__box { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 14px; width: min(420px, calc(100% - 48px)); padding: 20px 22px; box-shadow: var(--vl-alias-shadow-lg, 0 18px 48px color-mix(in srgb, #000 42%, transparent)); }
 .update-result__icon {
   flex: 0 0 auto; width: 34px; height: 34px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  font-size: 17px; font-weight: 700; color: #fff;
+  font-size: var(--vl-type-body-lg-size)   /* 18px，原 17px 无对应档 */; font-weight: 700; color: var(--vl-alias-text-onaccent);
   background: var(--vl-alias-brand-500);
 }
-.update-result__icon--ok { background: #16a34a; }
-.update-result__icon--err { background: #dc2626; }
+.update-result__icon--ok { background: var(--vl-alias-status-success-default); }
+.update-result__icon--err { background: var(--vl-alias-status-error-default); }
 .update-result__icon--wait { background: var(--vl-alias-text-tertiary); }
 .update-result__body { flex: 1 1 0; min-width: 0; }
 /* 外观全部回归基线 .vl-title */
@@ -469,9 +469,12 @@ body {
   word-break: break-word;
 }
 .update-result__actions { flex: 1 1 100%; display: flex; gap: 8px; justify-content: flex-end; }
-.update-result__btn { padding: 6px 16px; font-size: 13px; }
-.update-result__btn--primary { background: var(--vl-alias-brand-500); border-color: var(--vl-alias-brand-500); color: var(--vl-alias-text-onaccent, #fff); }
-.update-result__btn--primary:hover { background: var(--vl-alias-brand-600); }
+.update-result__btn {
+  --vl-btn-h: auto;
+  --vl-btn-py: 6px;
+  --vl-btn-px: 16px;
+  --vl-btn-fs: var(--vl-type-heading-xs-size);   /* 13px */
+}
 
 /* ═══ 更新日志视图 ═══ */
 /* 直接随右侧视图自然流动，由 .settings-view 整体滚动，不留底部空档 */
