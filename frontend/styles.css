@@ -3143,10 +3143,11 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   width: 100%;
   text-align: left;
   white-space: nowrap;
-  /* ⚠ 字体对齐到正式版的实际渲染（Arial）。
-     不能写 inherit：会继承 .ctx-menu → body 的 SF Pro Text；
-     也不能写 initial：font-family 的初始值是 serif，浏览器会解析成 Times New Roman。 */
-  font-family: Arial, sans-serif;
+  /* 字体走主字体令牌（Windows 实际渲染 Segoe UI）。
+     ⚠ 不再对齐正式版的 Arial：那只是 <button> 未设字体时的 UA 默认值，并非设计选择；
+       全站字面量字体只此一处，统一到主字体更合理。
+     （不能写 inherit —— 会继承 .ctx-menu 上的字体族；写 initial 会被解析成 serif。） */
+  font-family: var(--vl-font-family-base);
 }
 /* 变灰项仍可点击（点击弹 toast 说明）：同 disabled 的灰显外观，但保留可点光标 */
 /* 带子菜单的项：右侧箭头提示 */
