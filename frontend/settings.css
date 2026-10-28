@@ -215,9 +215,9 @@ body {
 /* 多值输入（提取前缀/后缀）：回车添加的 tags 列表，可拖拽排序、点击删除 */
 .multi-tags {
   margin-top: 8px;
-  border: 1px solid var(--vl-alias-border-neutral-l2);
-  border-radius: 6px;
-  background: var(--vl-alias-bg-base-secondary);
+  border: 1px solid var(--vl-panel-border);
+  border-radius: var(--vl-static-radius-6);
+  background: var(--vl-panel-bg);
   padding: 4px 6px 0;
   max-height: 180px;
   overflow-y: auto;
@@ -229,7 +229,7 @@ body {
   padding: 4px 6px;
   margin-bottom: 4px;
   border: 1px solid var(--vl-alias-border-neutral-l2);
-  border-radius: 4px;
+  border-radius: var(--vl-static-radius-4);
   background: var(--vl-alias-bg-base-secondary);
   cursor: grab;
   user-select: none;
@@ -238,14 +238,17 @@ body {
 .multi-tags__drag { color: var(--vl-alias-text-disabled); font-size: 13px; cursor: grab; }
 .multi-tags__text { flex: 1; font-size: 13px; color: var(--vl-alias-text-default); word-break: break-all; }
 .multi-tags__del {
-  border: none;
-  background: transparent;
-  color: var(--vl-alias-text-disabled);
-  font-size: 13px;
-  cursor: pointer;
-  padding: 2px 4px;
-  border-radius: 4px;
-  line-height: 1;
+  --vl-btn-h: auto;
+  --vl-btn-py: 2px;
+  --vl-btn-px: 4px;
+  --vl-btn-fs: 13px;   /* 13px 在排版令牌里没有对应档（只有 10/11/14），保留字面量 */
+  --vl-btn-lh: 1;
+  --vl-btn-radius: var(--vl-static-radius-4);
+  --vl-btn-border-width: 0;
+  --vl-btn-bg: transparent;
+  --vl-btn-color: var(--vl-alias-text-disabled);
+  --vl-btn-bg-hover: var(--vl-alias-bg-overlay-l1);
+  --vl-btn-color-hover: var(--vl-alias-status-error-default, #E5484D);
 }
 .multi-tags__del:hover { color: var(--vl-alias-status-error-default, #E5484D); background: var(--vl-alias-bg-overlay-l1); }
 

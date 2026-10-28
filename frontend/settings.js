@@ -192,7 +192,7 @@
         row.className = 'multi-tags__row';
         row.draggable = true;
         row.dataset.idx = i;
-        row.innerHTML = '<span class="multi-tags__drag">&#9776;</span><span class="multi-tags__text" title="' + v.replace(/"/g, '&quot;') + '">' + v + '</span><button type="button" class="multi-tags__del" title="删除该项">&#10005;</button>';
+        row.innerHTML = '<span class="multi-tags__drag">&#9776;</span><span class="multi-tags__text" title="' + v.replace(/"/g, '&quot;') + '">' + v + '</span><button type="button" class="multi-tags__del vl-btn" title="删除该项">&#10005;</button>';
         // 拖拽排序：行可拖，落到其它行前/后交换位置（顺序即成片名顺序）
         row.addEventListener('dragstart', function (e) { e.dataTransfer.setData('text/plain', String(i)); row.classList.add('multi-tags__row--drag'); });
         row.addEventListener('dragend', function () { row.classList.remove('multi-tags__row--drag'); });
