@@ -939,10 +939,13 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   --vl-btn-bg-hover: var(--vl-alias-bg-base-tertiary);
   --vl-btn-color-hover: var(--vl-alias-text-default);
   margin-left: var(--vl-static-spacer-20);
-  justify-content: flex-start;
   /* ⚠ 必须保留 display:flex：父容器是 column flex + stretch，
      靠它撑满整行；.vl-btn 是 inline-flex，改成它会让列表项按内容收缩。 */
   display: flex;
+  /* ⚠ .vl-btn 自带 justify-content:center，会把「图标+名称+日期+徽章」整行居中，
+     看起来分成几块。这里是整行列表项，必须左对齐、由 __name 吃满剩余宽度。 */
+  justify-content: flex-start;
+  align-items: center;
 }
 /* 名称排序按首字母、时间排序按月份分组：左侧大写字母/月份标签 + 向右延伸的分组线 */
 .tree-txt-group {
@@ -1446,9 +1449,9 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
 /* Modify path button */
 /* 外观已回归基线 .vl-btn，这里只保留布局 */
 .config-path-row__browse {
-  --vl-btn-h: 24px;
+  --vl-btn-h: 20px;
   --vl-btn-px: 0;
-  --vl-btn-radius: var(--vl-static-radius-4);
+  --vl-btn-radius: 50%;
   --vl-btn-border-width: 0;
   flex-shrink: 0;
   --vl-btn-bg: transparent;
@@ -1459,9 +1462,9 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
 /* Open path button */
 /* 外观已回归基线 .vl-btn，这里只保留布局 */
 .config-path-row__open {
-  --vl-btn-h: 24px;
+  --vl-btn-h: 20px;
   --vl-btn-px: 0;
-  --vl-btn-radius: var(--vl-static-radius-4);
+  --vl-btn-radius: 50%;
   --vl-btn-border-width: 0;
   flex-shrink: 0;
   --vl-btn-bg: transparent;
@@ -2680,7 +2683,7 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
 .config-path-row__remove {
   --vl-btn-h: 20px;
   --vl-btn-px: 0;
-  --vl-btn-radius: var(--vl-static-radius-4);
+  --vl-btn-radius: 50%;
   --vl-btn-border-width: 0;
   --vl-btn-bg: transparent;
   --vl-btn-color: var(--vl-alias-text-tertiary);
