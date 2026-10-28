@@ -844,30 +844,26 @@ html[data-skin="Maid_Atelier"] [data-region="config-resizer"][data-active] {
 }
 
 /* ── 左侧列表栏三竖线按钮 + 右侧预览栏中缝尺寸栏（蓝金）── */
+/* ⚠ 只声明变量：直接写 background/border/color 会压死页面层的 --vl-btn-* 声明，
+   让下面 869-870 行的变量变成死代码（与 .vl-btn--ghost 写死属性同型的事故）。 */
 html[data-skin="Maid_Atelier"] .sidebar-resize-btn,
 html[data-skin="Maid_Atelier"] [data-region="preview-resizer"] {
-  background: linear-gradient(180deg, rgba(23, 46, 106, 0.95), rgba(11, 24, 64, 0.95));
-  border: 1px solid rgba(242, 217, 143, 0.55);
-  color: #e8c77f;
-  box-shadow:
-    inset 0 0 0 1px rgba(5, 15, 45, 0.64),
-    0 4px 12px rgba(1, 7, 24, 0.3);
+  --vl-btn-bg: linear-gradient(180deg, rgba(23, 46, 106, 0.95), rgba(11, 24, 64, 0.95));
+  --vl-btn-border: rgba(242, 217, 143, 0.55);
+  --vl-btn-color: #e8c77f;
+  --vl-btn-shadow: inset 0 0 0 1px rgba(5, 15, 45, 0.64), 0 4px 12px rgba(1, 7, 24, 0.3);
+  --vl-btn-bg-hover: linear-gradient(180deg, rgba(44, 78, 152, 0.95), rgba(15, 33, 82, 0.95));
+  --vl-btn-border-hover: rgba(244, 218, 164, 0.9);
+  --vl-btn-color-hover: #fff3cf;
 }
-html[data-skin="Maid_Atelier"] .sidebar-resize-btn:hover,
-html[data-skin="Maid_Atelier"] [data-region="preview-resizer"]:hover {
-  background: linear-gradient(180deg, rgba(44, 78, 152, 0.95), rgba(15, 33, 82, 0.95));
-  border-color: rgba(244, 218, 164, 0.9);
-  color: #fff3cf;
-}
+/* 悬浮色已在上面的 --vl-btn-*-hover 声明 */
 html[data-skin="Maid_Atelier"] .sidebar-resize-btn svg {
   width: 14px;
   height: 14px;
 }
 /* 女仆皮肤：三竖线按钮右移 1.5px（净 -8.5px，骑在金边框中间）与实色背景（不透明，不透背景） */
+/* 位移单独一条（定位属布局；配色已在上面的共用规则里用变量表达） */
 html[data-skin="Maid_Atelier"] .sidebar-resize-btn {
-  /* 改用变量而非直接写 background，否则会压死页面层的 --vl-btn-bg */
-  --vl-btn-bg: #142a59;
-  --vl-btn-bg-hover: #1c326b;
   transform: translate(-50%, -50%) translateX(-8.5px);
 }
 /* 女仆皮肤：按钮 hover 同样使用实色，避免常态实色↔hover 半透明渐变切换时出现"丢背景"闪变 */

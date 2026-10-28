@@ -238,9 +238,6 @@
   --vl-btn-py: 0;
   width: var(--vl-btn-h);
 }
-  .vl-btn--icon.vl-btn--xs { width: 20px; }
-  .vl-btn--icon.vl-btn--sm { width: 24px; }
-  .vl-btn--icon.vl-btn--lg { width: 32px; }
 
   .vl-btn--xs { --vl-btn-h: 20px; --vl-btn-px: 6px; --vl-btn-fs: 11px; --vl-btn-radius: var(--vl-static-radius-4); }
   .vl-btn--sm { --vl-btn-h: 24px; --vl-btn-px: 8px; --vl-btn-fs: 12px; --vl-btn-radius: var(--vl-static-radius-4); }
@@ -804,8 +801,7 @@
     background: transparent;
     border-color: transparent;
     color: var(--vl-alias-accent-blue);
-    padding-left: 0;
-    padding-right: 0;
+    --vl-btn-px: 0;
   }
   .vl-btn--link:hover:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) {
     color: var(--vl-alias-accent-blue);
@@ -1370,7 +1366,7 @@
 
     .vl-input-group__icon { color: var(--vl-alias-icon-secondary); display: inline-flex; align-items: center; }
 
-    .vl-tag .icon { width: 12px; height: 12px; }
+    
 
 .vl-tag .icon { width: 12px; height: 12px; }
 }

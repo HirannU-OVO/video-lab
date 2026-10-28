@@ -4638,7 +4638,14 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     // 切换项目：仅更新侧栏 active 高亮（不整树重建，列表已渲染），
     // 保证缎带展开/收回的 scaleX 过渡动画完整播放；不重建顶部栏，header/装饰由 data 切换驱动
     document.querySelectorAll('.mask-proj-item').forEach(function (el) {
-      el.classList.toggle('mask-proj-item--active', el.getAttribute('data-maskproj') === name);
+      var on = el.getAttribute('data-maskproj') === name;
+      el.classList.toggle('mask-proj-item--active', on);
+      /* ⚠ 必须同步 data-state：皮肤里缎带的展开条件是
+         [data-region="mask-proj-item"][data-state="active"]::before { transform: scaleX(1) }。
+         这里若只切换类名，data-state 就永远停在初始渲染时的值，
+         于是切到其它项目后缎带不会展开（女仆皮肤实测丢装饰）。 */
+      if (on) el.setAttribute('data-state', 'active');
+      else el.removeAttribute('data-state');
     });
     // 切换项目不立即渲染中间区：先用加载占位，等会话恢复/自动扫描完成后一次性渲染，
     // 避免「立即渲染 + 恢复后重绘」造成配置/日志视图各刷新两次
