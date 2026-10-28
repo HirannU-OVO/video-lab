@@ -379,25 +379,20 @@ body {
 
 /* Toggle button */
   /* @deprecated 用 .vl-btn */
+/* 外观走 .vl-btn 基线变量（原属性值 1:1 转为变量，状态由基线提供） */
 .btn-toggle-dup {
-  display: flex;
-  align-items: center;
-  gap: var(--vl-static-spacer-6);
-  height: 28px;
-  padding: 0 var(--vl-static-spacer-12);
-  border-radius: var(--vl-static-radius-6);
-  border: 1px solid var(--vl-alias-border-neutral-l1);
-  background: var(--vl-alias-bg-base-secondary);
-  color: var(--vl-alias-text-secondary);
-  cursor: pointer;
-  font-family: var(--vl-type-body-base-strong-family);
-  font-size: var(--vl-type-body-base-strong-size);
-  font-weight: var(--vl-type-body-base-strong-weight);
-  line-height: var(--vl-type-body-base-strong-line-height);
-  white-space: nowrap;
-  transition: background 0.12s ease;
+  --vl-btn-gap: var(--vl-static-spacer-6);
+  --vl-btn-h: 28px;
+  --vl-btn-radius: var(--vl-static-radius-6);
+  --vl-btn-border: var(--vl-alias-border-neutral-l1);
+  --vl-btn-bg: var(--vl-alias-bg-base-secondary);
+  --vl-btn-color: var(--vl-alias-text-secondary);
+  --vl-btn-fs: var(--vl-type-body-base-strong-size);
+  --vl-btn-fw: var(--vl-type-body-base-strong-weight);
+  --vl-btn-lh: var(--vl-type-body-base-strong-line-height);
+  --vl-btn-py: 0;
+  --vl-btn-px: var(--vl-static-spacer-12);
 }
-.btn-toggle-dup:hover { background: var(--vl-alias-bg-overlay-l2); }
 .btn-toggle-dup--active {
   background: var(--vl-alias-brand-200);
   border-color: var(--vl-alias-brand-200);
@@ -405,27 +400,19 @@ body {
 }
 .btn-toggle-dup--active:hover { background: var(--vl-alias-brand-200); }
 
+/* 外观走 .vl-btn 基线变量（原属性值 1:1 转为变量，状态由基线提供） */
 .btn-refresh {
-  display: flex;
-  align-items: center;
-  gap: var(--vl-static-spacer-6);
-  height: 28px;
-  padding: 0 var(--vl-static-spacer-12);
-  border-radius: var(--vl-static-radius-6);
-  border: 1px solid var(--vl-alias-border-neutral-l1);
-  background: var(--vl-alias-bg-base-secondary);
-  color: var(--vl-alias-text-secondary);
-  cursor: pointer;
-  font-family: var(--vl-type-body-base-strong-family);
-  font-size: var(--vl-type-body-base-strong-size);
-  font-weight: var(--vl-type-body-base-strong-weight);
-  line-height: var(--vl-type-body-base-strong-line-height);
-  white-space: nowrap;
-  transition: background 0.12s ease;
-}
-.btn-refresh:hover {
-  background: var(--vl-alias-bg-overlay-l2);
-  color: var(--vl-alias-text-default);
+  --vl-btn-gap: var(--vl-static-spacer-6);
+  --vl-btn-h: 28px;
+  --vl-btn-radius: var(--vl-static-radius-6);
+  --vl-btn-border: var(--vl-alias-border-neutral-l1);
+  --vl-btn-bg: var(--vl-alias-bg-base-secondary);
+  --vl-btn-color: var(--vl-alias-text-secondary);
+  --vl-btn-fs: var(--vl-type-body-base-strong-size);
+  --vl-btn-fw: var(--vl-type-body-base-strong-weight);
+  --vl-btn-lh: var(--vl-type-body-base-strong-line-height);
+  --vl-btn-py: 0;
+  --vl-btn-px: var(--vl-static-spacer-12);
 }
 
 /* Main Content */
@@ -660,27 +647,20 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   border-color: var(--vl-alias-border-neutral-l3);
   transform: translateY(-1px);
 }
+/* 外观走 .vl-btn 基线变量（原属性值 1:1 转为变量，状态由基线提供） */
 .sidebar__recheck {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 22px;
-  padding: 0 8px;
-  border: 1px solid var(--vl-alias-status-error-default);
-  border-radius: var(--vl-static-radius-4);
-  background: var(--vl-alias-status-error-surface-l1);
-  color: var(--vl-alias-status-error-default);
-  font-size: 11px;
-  font-weight: var(--vl-font-font-weight-medium);
-  cursor: pointer;
-  white-space: nowrap;
+  --vl-btn-gap: 4px;
+  --vl-btn-h: 22px;
+  --vl-btn-border: var(--vl-alias-status-error-default);
+  --vl-btn-radius: var(--vl-static-radius-4);
+  --vl-btn-bg: var(--vl-alias-status-error-surface-l1);
+  --vl-btn-color: var(--vl-alias-status-error-default);
+  --vl-btn-fs: 11px;
+  --vl-btn-fw: var(--vl-font-font-weight-medium);
   margin-left: auto;
   flex-shrink: 0;
-  transition: all 0.1s ease;
-}
-.sidebar__recheck:hover {
-  background: var(--vl-alias-status-error-surface-l2);
-  color: var(--vl-alias-status-error-default);
+  --vl-btn-py: 0;
+  --vl-btn-px: 8px;
 }
   /* @deprecated 同 .mode-toggle */
 .sort-toggle__arrow {
@@ -1122,8 +1102,14 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   --vl-btn-lh: normal;   /* 原设计继承正文行高 */
 }
 .sidebar-menu__item svg { flex-shrink: 0; color: var(--vl-alias-text-default); }
-.btn-external-edit { background: transparent; color: var(--vl-alias-text-secondary); border-color: var(--vl-alias-border-neutral-l1); }
-.btn-external-edit:hover { background: var(--vl-alias-bg-overlay-l2); color: var(--vl-alias-text-default); }
+/* 外观走 .vl-btn 基线变量 */
+.btn-external-edit {
+  --vl-btn-bg: transparent;
+  --vl-btn-color: var(--vl-alias-text-secondary);
+  --vl-btn-border: var(--vl-alias-border-neutral-l1);
+  --vl-btn-bg-hover: var(--vl-alias-bg-overlay-l2);
+  --vl-btn-color-hover: var(--vl-alias-text-default);
+}
 
 /* ── Center Panel ── */
 .center-panel {
@@ -1504,25 +1490,18 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
 .precheck--group { background: var(--vl-alias-status-primary-default); }
 
 /* Re-check button in path list header */
+/* 外观走 .vl-btn 基线变量（原属性值 1:1 转为变量，状态由基线提供） */
 .btn-recheck {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--vl-static-spacer-4);
-  height: 20px;
-  padding: 0 var(--vl-static-spacer-8);
-  border: 1px solid var(--vl-alias-border-neutral-l2);
-  border-radius: var(--vl-static-radius-4);
-  background: var(--vl-alias-bg-base-default);
-  color: var(--vl-alias-text-secondary);
-  font-size: 12px;
-  cursor: pointer;
+  --vl-btn-gap: var(--vl-static-spacer-4);
+  --vl-btn-h: 20px;
+  --vl-btn-border: var(--vl-alias-border-neutral-l2);
+  --vl-btn-radius: var(--vl-static-radius-4);
+  --vl-btn-bg: var(--vl-alias-bg-base-default);
+  --vl-btn-color: var(--vl-alias-text-secondary);
+  --vl-btn-fs: 12px;
   flex-shrink: 0;
-  transition: all 0.1s ease;
-}
-.btn-recheck:hover {
-  border-color: var(--vl-alias-brand-500);
-  color: var(--vl-alias-brand-600);
-  background: var(--vl-alias-brand-100);
+  --vl-btn-py: 0;
+  --vl-btn-px: var(--vl-static-spacer-8);
 }
 
 /* Config bar left/right groups */
@@ -1751,26 +1730,17 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   --vl-btn-bg-hover: var(--vl-alias-status-error-surface-l1);
   --vl-btn-color-hover: var(--vl-alias-status-error-default);
 }
+/* 外观走 .vl-btn 基线变量（原属性值 1:1 转为变量，状态由基线提供） */
 .config-exclude-add {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--vl-static-spacer-4);
-  height: 32px;
+  --vl-btn-gap: var(--vl-static-spacer-4);
+  --vl-btn-h: 32px;
   margin: var(--vl-static-spacer-8);
-  border: 1px dashed var(--vl-alias-border-neutral-l2);
-  border-radius: var(--vl-static-radius-6);
-  background: transparent;
-  color: var(--vl-alias-text-tertiary);
-  font-size: var(--vl-type-body-md-size);
-  cursor: pointer;
+  --vl-btn-border: var(--vl-alias-border-neutral-l2);
+  --vl-btn-radius: var(--vl-static-radius-6);
+  --vl-btn-bg: transparent;
+  --vl-btn-color: var(--vl-alias-text-tertiary);
+  --vl-btn-fs: var(--vl-type-body-md-size);
   flex-shrink: 0;
-  transition: all 0.1s ease;
-}
-.config-exclude-add:hover {
-  border-color: var(--vl-alias-brand-500);
-  color: var(--vl-alias-brand-500);
-  background: var(--vl-alias-brand-100);
 }
 .config-exclude-input {
   flex-shrink: 0;
@@ -2621,25 +2591,18 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   vertical-align: middle;
   background: var(--vl-alias-status-success-default);
 }
+/* 外观走 .vl-btn 基线变量（原属性值 1:1 转为变量，状态由基线提供） */
 .status-bar__tasks-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 18px;
-  padding: 0 8px;
-  border: 1px solid var(--vl-alias-border-neutral-l2);
-  border-radius: 4px;
-  background: transparent;
-  color: var(--vl-alias-text-secondary);
-  font-family: var(--vl-font-family-base);
-  font-size: var(--vl-type-body-xs-size);
-  line-height: 18px;
-  cursor: pointer;
-}
-.status-bar__tasks-btn:hover {
-  background: var(--vl-alias-bg-overlay-l1);
-  color: var(--vl-alias-text-default-hover);
-  border-color: var(--vl-alias-border-neutral-l3);
+  --vl-btn-gap: 4px;
+  --vl-btn-h: 18px;
+  --vl-btn-border: var(--vl-alias-border-neutral-l2);
+  --vl-btn-radius: 4px;
+  --vl-btn-bg: transparent;
+  --vl-btn-color: var(--vl-alias-text-secondary);
+  --vl-btn-fs: var(--vl-type-body-xs-size);
+  --vl-btn-lh: 18px;
+  --vl-btn-py: 0;
+  --vl-btn-px: 8px;
 }
 /* 外观全部回归基线 .vl-count（原为品牌色底 + 反色字 + 10px 字号） */
 
@@ -2695,25 +2658,18 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   flex-shrink: 0;
 }
 
+/* 外观走 .vl-btn 基线变量（原属性值 1:1 转为变量，状态由基线提供） */
 .log-entry__replica {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--vl-static-spacer-4);
-  height: 22px;
-  padding: 0 var(--vl-static-spacer-8);
-  border: 1px solid var(--vl-alias-border-neutral-l2);
-  border-radius: var(--vl-static-radius-6);
-  background: var(--vl-alias-bg-base-default);
-  color: var(--vl-alias-text-secondary);
-  font-size: var(--vl-type-body-xs-size);
-  cursor: pointer;
+  --vl-btn-gap: var(--vl-static-spacer-4);
+  --vl-btn-h: 22px;
+  --vl-btn-border: var(--vl-alias-border-neutral-l2);
+  --vl-btn-radius: var(--vl-static-radius-6);
+  --vl-btn-bg: var(--vl-alias-bg-base-default);
+  --vl-btn-color: var(--vl-alias-text-secondary);
+  --vl-btn-fs: var(--vl-type-body-xs-size);
   flex-shrink: 0;
-  transition: all 0.1s ease;
-}
-.log-entry__replica:hover {
-  border-color: var(--vl-alias-brand-500);
-  color: var(--vl-alias-brand-600);
-  background: var(--vl-alias-brand-100);
+  --vl-btn-py: 0;
+  --vl-btn-px: var(--vl-static-spacer-8);
 }
 
 /* ── 全局成片名搜索下拉列表 ── */
@@ -2805,25 +2761,21 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
 }
 .browser-embedded-card iframe { flex: 1; min-height: 0; }
 /* 弹窗右上角圆形关闭按钮 */
+/* 外观走 .vl-btn 基线变量（原属性值 1:1 转为变量，状态由基线提供） */
 .modal-close {
   position: absolute;
   top: 12px;
   right: 12px;
   width: 22px;
-  height: 22px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--vl-alias-text-tertiary);
-  font-size: 12px;
-  line-height: 1;
-  cursor: pointer;
+  --vl-btn-h: 22px;
+  --vl-btn-border-width: 0;
+  --vl-btn-radius: 50%;
+  --vl-btn-bg: transparent;
+  --vl-btn-color: var(--vl-alias-text-tertiary);
+  --vl-btn-fs: 12px;
+  --vl-btn-lh: 1;
   z-index: 2;
 }
-.modal-close:hover { background: var(--vl-alias-bg-overlay-l2); color: var(--vl-alias-text-default); }
 .modal__title {
   padding: var(--vl-static-spacer-16) var(--vl-static-spacer-20) 0;
   font-size: var(--vl-type-heading-sm-size);
@@ -3401,25 +3353,19 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   background: var(--vl-alias-bg-brand);
   transition: width 0.2s ease;
 }
+/* 外观走 .vl-btn 基线变量（原属性值 1:1 转为变量，状态由基线提供） */
 .probe-mini__cancel {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   width: 16px;
-  height: 16px;
+  --vl-btn-h: 16px;
   margin: 0;
-  padding: 0;
-  border: none;
-  border-radius: var(--vl-alias-radius-sm);
-  background: transparent;
-  color: var(--vl-alias-text-tertiary);
-  font-size: 11px;
-  line-height: 1;
-  cursor: pointer;
-}
-.probe-mini__cancel:hover {
-  color: var(--vl-alias-status-error-default);
-  background: var(--vl-alias-bg-overlay-l2);
+  --vl-btn-border-width: 0;
+  --vl-btn-radius: var(--vl-alias-radius-sm);
+  --vl-btn-bg: transparent;
+  --vl-btn-color: var(--vl-alias-text-tertiary);
+  --vl-btn-fs: 11px;
+  --vl-btn-lh: 1;
+  --vl-btn-py: 0;
+  --vl-btn-px: 0;
 }
 /* 遮罩「缩到后台」按钮（仅预检测全量探测时显示） */
 .busy-min-btn {
@@ -3485,28 +3431,18 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
 /* 差异：引导卡片描述用次级色、body-sm 字号、行高 1.5、上方 6px */
 /* 差异：上方 6px（字号/行高/颜色回归基线） */
 .boot-guide__desc { --vl-hint-mt: 6px; }
+/* 外观走 .vl-btn 基线变量（原属性值 1:1 转为变量，状态由基线提供） */
 .boot-guide__btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--vl-static-spacer-8);
+  --vl-btn-gap: var(--vl-static-spacer-8);
   margin-top: 16px;
-  padding: 8px 20px;
-  border: 1px solid var(--vl-alias-border-neutral-l2);
-  border-radius: var(--vl-static-radius-8);
-  background: var(--vl-alias-bg-overlay-l1);
-  color: var(--vl-alias-text-default);
-  font-family: var(--vl-font-family-base);
-  font-size: var(--vl-type-body-base-size);
-  font-weight: var(--vl-font-font-weight-medium);
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
-}
-.boot-guide__btn:hover {
-  background: var(--vl-alias-bg-brand);
-  border-color: var(--vl-alias-bg-brand);
-  color: var(--vl-alias-text-onbrand);
-  transform: translateY(-1px);
+  --vl-btn-border: var(--vl-alias-border-neutral-l2);
+  --vl-btn-radius: var(--vl-static-radius-8);
+  --vl-btn-bg: var(--vl-alias-bg-overlay-l1);
+  --vl-btn-color: var(--vl-alias-text-default);
+  --vl-btn-fs: var(--vl-type-body-base-size);
+  --vl-btn-fw: var(--vl-font-font-weight-medium);
+  --vl-btn-py: 8px;
+  --vl-btn-px: 20px;
 }
 
 /* ════════════ 遮罩叠加模式（复用主窗口，布局与配置管理模式一致） ════════════ */
@@ -3629,14 +3565,12 @@ body[data-mask="1"] .right-panel__subtitle { display: none; }
   color: var(--vl-alias-text-default);
   white-space: nowrap;
 }
+/* 外观走 .vl-btn 基线变量（原属性值 1:1 转为变量，状态由基线提供） */
 .mask-config__addbtn {
-  display: inline-flex; align-items: center; gap: 4px;
-  height: 22px; padding: 0 8px; border-radius: 4px;
-  border: 1px solid var(--vl-alias-border-neutral-l2); background: transparent;
-  color: var(--vl-alias-text-secondary); cursor: pointer;
-  font-family: var(--vl-font-family-base); font-size: var(--vl-type-body-xs-size);
+  --vl-btn-h: 22px; padding: 0 8px; border-radius: 4px;
+  --vl-btn-border: var(--vl-alias-border-neutral-l2); background: transparent;
+  --vl-btn-color: var(--vl-alias-text-secondary); cursor: pointer;
 }
-.mask-config__addbtn:hover { background: var(--vl-alias-bg-overlay-l1); color: var(--vl-alias-text-default); }
 .mask-config__hint { font-size: var(--vl-type-body-xs-size); color: var(--vl-alias-text-tertiary); padding: 4px 0 8px; }
 /* 居中大字提示：遮罩主题/日志空态使用（暂无遮罩日志、正在扫描遮罩主题等），放大并水平居中 */
 .mask-config__hint--center {
@@ -3695,12 +3629,11 @@ body[data-mask="1"] .right-panel__subtitle { display: none; }
 }
 .mask-folder-row__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: var(--vl-font-font-weight-medium); color: var(--vl-alias-text-default); }
 .mask-folder-row__count { flex-shrink: 0; font-size: var(--vl-type-body-xs-size); color: var(--vl-alias-text-tertiary); font-variant-numeric: tabular-nums; }
+/* 外观走 .vl-btn 基线变量（原属性值 1:1 转为变量，状态由基线提供） */
 .mask-folder-row__del {
   flex-shrink: 0; width: 20px; height: 20px; padding: 0; border: none; border-radius: 50%;
-  background: transparent; color: var(--vl-alias-text-tertiary); cursor: pointer;
-  display: inline-flex; align-items: center; justify-content: center;
+  --vl-btn-bg: transparent; color: var(--vl-alias-text-tertiary); cursor: pointer;
 }
-.mask-folder-row__del:hover { background: var(--vl-alias-status-error-surface-l1); color: var(--vl-alias-status-error-default); }
 .mask-folder-row__arrow {
   flex-shrink: 0; width: 12px; height: 12px;
   -webkit-mask: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M5 6l3 3 3-3' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
@@ -3800,12 +3733,11 @@ body[data-mask="1"] .right-panel__subtitle { display: none; }
 .mask-bar__suffix { width: 100px; text-align: left; }
 /* 遮罩模式：顶部无日期分支，解除 center-top 批量占位的最小高度，消除空栏 */
 body[data-mask="1"] .center-top { min-height: 0; max-height: none; }
+/* 外观走 .vl-btn 基线变量（原属性值 1:1 转为变量，状态由基线提供） */
 .mask-bar__pick {
-  display: inline-flex; align-items: center; justify-content: center;
   width: 26px; height: 26px; padding: 0; border: 1px solid var(--vl-alias-border-neutral-l2); border-radius: 4px;
-  background: transparent; color: var(--vl-alias-text-secondary); cursor: pointer;
+  --vl-btn-bg: transparent; color: var(--vl-alias-text-secondary); cursor: pointer;
 }
-.mask-bar__pick:hover { background: var(--vl-alias-bg-overlay-l1); color: var(--vl-alias-text-default); }
 .mask-bar__hint { color: var(--vl-alias-status-error-default); font-size: var(--vl-type-body-md-size); font-weight: var(--vl-font-font-weight-regular); }
 
 /* 遮罩主题：主题行 + 组勾选 */
@@ -3976,12 +3908,11 @@ body[data-mask="1"] .center-top { min-height: 0; max-height: none; }
 .mask-log-entry:last-child { border-bottom: none; }
 .mask-log-entry__head { display: flex; align-items: center; gap: 6px; }
 .mask-log-entry__video { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--vl-type-body-xs-size); color: var(--vl-alias-text-default); }
+/* 外观走 .vl-btn 基线变量（原属性值 1:1 转为变量，状态由基线提供） */
 .mask-log-entry__del {
   flex-shrink: 0; width: 18px; height: 18px; padding: 0; border: none; border-radius: 50%;
-  background: transparent; color: var(--vl-alias-text-tertiary); cursor: pointer;
-  display: inline-flex; align-items: center; justify-content: center;
+  --vl-btn-bg: transparent; color: var(--vl-alias-text-tertiary); cursor: pointer;
 }
-.mask-log-entry__del:hover { background: var(--vl-alias-status-error-surface-l1); color: var(--vl-alias-status-error-default); }
 .mask-log-entry__clip {
   display: inline-flex; align-items: center; gap: 4px;
   padding: 1px 6px; margin: 2px 4px 0 0; border-radius: 4px;
@@ -4153,16 +4084,27 @@ button.is-vl-disabled {
   white-space: pre-wrap; word-break: break-all; max-height: 200px; overflow: auto;
 }
 .vl-pop__actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+/* 外观走 .vl-btn 基线变量（原属性值 1:1 转为变量，状态由基线提供） */
 .vl-pop__btn {
-  padding: 5px 14px; font-size: 13px; border-radius: 6px; cursor: pointer;
-  border: 1px solid var(--vl-alias-border-neutral-l2);
-  background: var(--vl-alias-bg-base-default); color: var(--vl-alias-text-default);
+  --vl-btn-border: var(--vl-alias-border-neutral-l2);
+  --vl-btn-bg: var(--vl-alias-bg-base-default); color: var(--vl-alias-text-default);
+  --vl-btn-py: 5px;
+  --vl-btn-px: 14px;;
 }
-.vl-pop__btn:hover { background: var(--vl-alias-bg-overlay-l1, rgba(127, 127, 127, .12)); }
-.vl-pop__btn--primary { background: var(--vl-alias-brand-500); border-color: var(--vl-alias-brand-500); color: var(--vl-alias-text-onaccent, #fff); }
-.vl-pop__btn--primary:hover { background: var(--vl-alias-brand-600, var(--vl-alias-brand-500)); }
-.vl-pop__btn--danger { background: var(--vl-alias-status-error-default); border-color: var(--vl-alias-status-error-default); color: #fff; }
-.vl-pop__btn--danger:hover { filter: brightness(.94); }
+/* 外观走 .vl-btn 基线变量 */
+.vl-pop__btn--primary {
+  --vl-btn-bg: var(--vl-alias-brand-500);
+  --vl-btn-border: var(--vl-alias-brand-500);
+  --vl-btn-color: var(--vl-alias-text-onaccent, #fff);
+  --vl-btn-bg-hover: var(--vl-alias-brand-600, var(--vl-alias-brand-500));
+}
+/* 外观走 .vl-btn 基线变量 */
+.vl-pop__btn--danger {
+  --vl-btn-bg: var(--vl-alias-status-error-default);
+  --vl-btn-border: var(--vl-alias-status-error-default);
+  --vl-btn-color: #fff;
+  --vl-btn-bg-hover: var(--vl-alias-status-error-hover);
+}
 
 /* ── 复刻参数弹窗（去重复刻）：上下限行 + 启用勾选 ── */
 .rp-form { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: var(--vl-static-spacer-12) var(--vl-static-spacer-20) var(--vl-static-spacer-4); }

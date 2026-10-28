@@ -223,7 +223,7 @@ var m = new URL(location.href).searchParams.get('token');
         <span class="probe-mini" id="probeMini" style="display:none">
           <span class="probe-mini__label" id="probeMiniLabel">预检测 0/0</span>
           <span class="probe-mini__track"><span class="probe-mini__fill" id="probeMiniFill" style="width:0%"></span></span>
-          <button type="button" class="probe-mini__cancel" id="probeMiniCancel" title="取消后台预检测">✕</button>
+          <button type="button" class="probe-mini__cancel vl-btn vl-btn--icon" id="probeMiniCancel" title="取消后台预检测">✕</button>
         </span>
         <span class="update-mini" id="updateMini" style="display:none">
           <span class="update-mini__label" id="updateMiniLabel">更新中…</span>
@@ -233,7 +233,7 @@ var m = new URL(location.href).searchParams.get('token');
       </span>
       <span class="status-bar__right">
         <span id="envWarnMark" class="status-bar__envwarn" style="display:none"></span>
-        <button class="status-bar__tasks-btn" id="btnOpenTasks" title="打开任务列表，查看运行日志">
+        <button class="status-bar__tasks-btn vl-btn" id="btnOpenTasks" title="打开任务列表，查看运行日志">
           <i data-icon="list" data-size="12"></i>任务<span class="vl-count status-bar__tasks-count" id="tasksCount" style="display:none"></span>
         </button>
       </span>
@@ -281,7 +281,7 @@ var m = new URL(location.href).searchParams.get('token');
       <i data-icon="folder" data-size="22"></i>
       <div class="vl-title boot-guide__title">请选择工作路径</div>
       <div class="vl-hint boot-guide__desc">项目列表为空，请选择配置文件所在路径</div>
-      <button class="boot-guide__btn" id="bootGuidePick">选择路径</button>
+      <button class="boot-guide__btn vl-btn" id="bootGuidePick">选择路径</button>
     </div>
   </div>
 

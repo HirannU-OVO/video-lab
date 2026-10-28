@@ -53,7 +53,7 @@
       overlay.className = 'modal-overlay';
       var card = document.createElement('div');
       card.className = 'modal-card' + (opts.cssClass ? ' ' + opts.cssClass : '');
-      var html = '<button type="button" class="modal-close" title="关闭">✕</button>'
+      var html = '<button type="button" class="modal-close vl-btn vl-btn--icon" title="关闭">✕</button>'
         + '<div class="modal__title">' + esc(opts.title) + '</div>';
       if (opts.message) html += '<div class="modal__message">' + opts.message + '</div>';
       // 文本输入（可选）：**不要用 window.prompt** —— Electron 渲染进程不支持它，
@@ -1682,8 +1682,8 @@
       if (o.message) html += '<div class="vl-pop__msg"></div>';
       if (o.input) html += '<div class="modal__field"><input type="text" class="modal__input"></div>';
       html += '<div class="vl-pop__actions">'
-        + '<button type="button" class="vl-pop__btn" data-k="cancel"></button>'
-        + '<button type="button" class="vl-pop__btn ' + (o.danger ? 'vl-pop__btn--danger' : 'vl-pop__btn--primary') + '" data-k="ok"></button>'
+        + '<button type="button" class="vl-pop__btn vl-btn" data-k="cancel"></button>'
+        + '<button type="button" class="vl-pop__btn vl-btn ' + (o.danger ? 'vl-pop__btn--danger' : 'vl-pop__btn--primary') + '" data-k="ok"></button>'
         + '</div>';
       pop.innerHTML = html;
       if (o.title) pop.querySelector('.vl-pop__title').textContent = o.title;

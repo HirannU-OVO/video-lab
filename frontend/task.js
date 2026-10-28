@@ -128,7 +128,7 @@
       overlay.className = 'modal-overlay';
       var card = document.createElement('div');
       card.className = 'modal-card' + (opts.cardClass ? ' ' + opts.cardClass : '');
-      var html = '<button type="button" class="modal-close" title="关闭">✕</button><div class="modal__title">' + escapeHtml(opts.title) + '</div>';
+      var html = '<button type="button" class="modal-close vl-btn vl-btn--icon" title="关闭">✕</button><div class="modal__title">' + escapeHtml(opts.title) + '</div>';
       if (opts.message) html += '<div class="modal__message">' + escapeHtml(opts.message) + '</div>';
       html += '<div class="modal__actions">';
       (opts.buttons || []).forEach(function (b) {
@@ -211,8 +211,8 @@
       if (o.title) html += '<div class="vl-pop__title"></div>';
       if (o.message) html += '<div class="vl-pop__msg"></div>';
       html += '<div class="vl-pop__actions">'
-        + '<button type="button" class="vl-pop__btn" data-k="cancel"></button>'
-        + '<button type="button" class="vl-pop__btn ' + (o.danger ? 'vl-pop__btn--danger' : 'vl-pop__btn--primary') + '" data-k="ok"></button>'
+        + '<button type="button" class="vl-pop__btn vl-btn" data-k="cancel"></button>'
+        + '<button type="button" class="vl-pop__btn vl-btn ' + (o.danger ? 'vl-pop__btn--danger' : 'vl-pop__btn--primary') + '" data-k="ok"></button>'
         + '</div>';
       pop.innerHTML = html;
       if (o.title) pop.querySelector('.vl-pop__title').textContent = o.title;
@@ -798,7 +798,7 @@
     var card = document.createElement('div');
     card.className = 'modal-card modal-card--wide';
     card.innerHTML =
-      '<button type="button" class="modal-close" title="关闭">✕</button>' +
+      '<button type="button" class="modal-close vl-btn vl-btn--icon" title="关闭">✕</button>' +
       '<div class="modal__title">重分组</div>' +
       '<div class="modal__message">为任务「' + escapeHtml(t.title || '') + '」的成片重新分组（已有分组字母会被替换）。请输入分组数：</div>' +
       '<div class="modal__input-row"><input type="number" class="modal-input" id="rgInput" min="1" max="99" value="1"></div>' +

@@ -115,8 +115,8 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       if (o.title) html += '<div class="vl-pop__title"></div>';
       if (o.message) html += '<div class="vl-pop__msg"></div>';
       html += '<div class="vl-pop__actions">'
-        + '<button type="button" class="vl-pop__btn" data-k="cancel"></button>'
-        + '<button type="button" class="vl-pop__btn ' + (o.danger ? 'vl-pop__btn--danger' : 'vl-pop__btn--primary') + '" data-k="ok"></button>'
+        + '<button type="button" class="vl-pop__btn vl-btn" data-k="cancel"></button>'
+        + '<button type="button" class="vl-pop__btn vl-btn ' + (o.danger ? 'vl-pop__btn--danger' : 'vl-pop__btn--primary') + '" data-k="ok"></button>'
         + '</div>';
       pop.innerHTML = html;
       if (o.title) pop.querySelector('.vl-pop__title').textContent = o.title;
@@ -170,7 +170,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       overlay.className = 'modal-overlay';
       var card = document.createElement('div');
       card.className = 'modal-card' + (opts.cssClass ? ' ' + opts.cssClass : '');
-      var html = '<button type="button" class="modal-close" title="关闭">✕</button><div class="modal__title">' + escapeHtml(opts.title) + '</div>';
+      var html = '<button type="button" class="modal-close vl-btn vl-btn--icon" title="关闭">✕</button><div class="modal__title">' + escapeHtml(opts.title) + '</div>';
       if (opts.message) html += '<div class="modal__message">' + escapeHtml(opts.message) + '</div>';
       html += '<div class="modal__actions">';
       (opts.buttons || []).forEach(function (b) {
@@ -222,7 +222,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
             overlay.className = 'modal-overlay';
             var card = document.createElement('div');
             card.className = 'modal-card';
-            card.innerHTML = '<button type="button" class="modal-close" title="关闭">✕</button>'
+            card.innerHTML = '<button type="button" class="modal-close vl-btn vl-btn--icon" title="关闭">✕</button>'
               + '<div class="modal__title">复刻</div>'
               + '<div class="rp-form">'
               + '<div class="rp-form__row"><span class="rp-form__label">重复度下限</span>'
@@ -270,7 +270,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       overlay.className = 'modal-overlay';
       var card = document.createElement('div');
       card.className = 'modal-card modal-card--dest';
-      var html = '<button type="button" class="modal-close" title="关闭">✕</button><div class="modal__title">' + escapeHtml(opts.title) + '</div>';
+      var html = '<button type="button" class="modal-close vl-btn vl-btn--icon" title="关闭">✕</button><div class="modal__title">' + escapeHtml(opts.title) + '</div>';
       if (opts.message) html += '<div class="modal__message">' + escapeHtml(opts.message) + '</div>';
       html += '<div class="modal__dest-list">';
       (opts.rows || []).forEach(function (r) {
@@ -329,7 +329,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       var card = document.createElement('div');
       card.className = 'modal-card modal-card--wm';
       card.innerHTML =
-        '<button type="button" class="modal-close" title="关闭">✕</button>' +
+        '<button type="button" class="modal-close vl-btn vl-btn--icon" title="关闭">✕</button>' +
         '<div class="modal__title">' + (isNew ? "新建项目" : "项目设置") + '</div>' +
         '<div class="modal__wm-body">' +
         projectNameRowHtml(project, isNew) +
@@ -1978,7 +1978,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
         html += '<span class="log-entry__arrow">' + icon('chevron-right', 14) + '</span>' + icon('video', 14);
         html += '<span class="log-entry__video-name" title="' + escapeHtml(entry.video) + '">' + escapeHtml(entry.video || '（未命名成片）') + '</span>';
         html += '<span class="log-entry__clip-count">' + clips.length + ' 片段</span>';
-        html += '<button class="log-entry__replica" title="用该日志发起复刻">' + icon('repeat', 13) + '复刻</button>';
+        html += '<button class="log-entry__replica vl-btn" title="用该日志发起复刻">' + icon('repeat', 13) + '复刻</button>';
         html += '</div>';
         html += '<div class="log-entry__clips" style="display:none">';
         clips.forEach(function (clip) { html += '<div class="log-entry__clip" data-path="' + escapeHtml(clip) + '">' + icon('video', 12) + '<span class="log-entry__clip-path" title="' + escapeHtml(clip) + '">' + escapeHtml(clip) + '</span></div>'; });
@@ -3473,7 +3473,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     overlay.className = 'modal-overlay';
     var card = document.createElement('div');
     card.className = 'modal-card modal-card--close';
-    card.innerHTML = '<button type="button" class="modal-close" title="关闭">✕</button>' +
+    card.innerHTML = '<button type="button" class="modal-close vl-btn vl-btn--icon" title="关闭">✕</button>' +
       '<div class="modal__title">关闭主窗口</div>' +
       '<div class="modal__message">请选择关闭主窗口后的行为：</div>' +
       '<div class="modal__close-foot">' +
@@ -3846,7 +3846,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     var card = document.createElement('div');
     card.className = 'modal-card changelog-card';
     card.innerHTML =
-      '<button type="button" class="modal-close" title="关闭">✕</button>' +
+      '<button type="button" class="modal-close vl-btn vl-btn--icon" title="关闭">✕</button>' +
       '<div class="changelog-card__body"></div>' +
       '<div class="changelog-card__actions"><button type="button" class="modal-btn vl-btn vl-btn--lift modal-btn--primary">知道了</button></div>';
     var body = card.querySelector('.changelog-card__body');
@@ -4560,7 +4560,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       var card = document.createElement('div');
       card.className = 'modal-card modal-card--wm';
       card.innerHTML =
-        '<button type="button" class="modal-close" title="关闭">✕</button>' +
+        '<button type="button" class="modal-close vl-btn vl-btn--icon" title="关闭">✕</button>' +
         '<div class="modal__title">' + (isNew ? "新建项目" : "项目设置") + '</div>' +
         '<div class="modal__wm-body">' +
         projectNameRowHtml(projectName, isNew) +
@@ -4713,8 +4713,8 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     // ── 左栏：遮罩主题（标题固定，列表独立滚动） ──
     if (maskNeedMask()) {
       html += '<div class="mask-config__col mask-config__col--mask"><div class="mask-config__section-title"><span class="mask-config__title">遮罩</span>' +
-        '<button type="button" class="mask-config__addbtn" id="maskAddThemeFile" title="添加单个遮罩文件（.mov）">' + icon('plus', 12) + '添加文件</button>' +
-        '<button type="button" class="mask-config__addbtn" id="maskAddThemeDir" title="添加遮罩文件夹（其中 .mov 递归扫描）">' + icon('plus', 12) + '添加文件夹</button></div><div class="mask-config__list">';
+        '<button type="button" class="mask-config__addbtn vl-btn" id="maskAddThemeFile" title="添加单个遮罩文件（.mov）">' + icon('plus', 12) + '添加文件</button>' +
+        '<button type="button" class="mask-config__addbtn vl-btn" id="maskAddThemeDir" title="添加遮罩文件夹（其中 .mov 递归扫描）">' + icon('plus', 12) + '添加文件夹</button></div><div class="mask-config__list">';
       if (!maskState.themes.length) {
         html += '<div class="mask-config__hint mask-config__hint--center">项目下没有遮罩文件夹，请放入含 mov 的主题文件夹后刷新</div>';
       } else {
@@ -4724,8 +4724,8 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     }
     // ── 右栏：原片选择（标题固定，列表独立滚动） ──
     html += '<div class="mask-config__col mask-config__col--raw"><div class="mask-config__section-title"><span class="mask-config__title">原片</span>' +
-      '<button type="button" class="mask-config__addbtn" id="maskAddRawFile" title="添加单个原片文件（mp4 等视频）">' + icon('plus', 12) + '添加文件</button>' +
-      '<button type="button" class="mask-config__addbtn" id="maskAddRawDir" title="添加原片文件夹（其中视频递归扫描）">' + icon('plus', 12) + '添加文件夹</button></div><div class="mask-config__list">';
+      '<button type="button" class="mask-config__addbtn vl-btn" id="maskAddRawFile" title="添加单个原片文件（mp4 等视频）">' + icon('plus', 12) + '添加文件</button>' +
+      '<button type="button" class="mask-config__addbtn vl-btn" id="maskAddRawDir" title="添加原片文件夹（其中视频递归扫描）">' + icon('plus', 12) + '添加文件夹</button></div><div class="mask-config__list">';
     if (!maskState.rawDirs.length) {
       html += '<div class="mask-config__hint mask-config__hint--center">尚未选择原片文件夹</div>';
     } else {
@@ -4735,7 +4735,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
           '<label class="mask-folder-row__check" title="全选/取消该文件夹全部素材"><input type="checkbox" data-rawall="' + i + '"><span class="mask-folder-row__box"></span></label>' +
           '<span class="mask-folder-row__name" title="' + escapeHtml(rd.path) + '">' + escapeHtml(rd.name) + '</span>' +
           '<span class="mask-folder-row__count" id="maskRawCount_' + i + '"></span>' +
-          '<button type="button" class="mask-folder-row__del" data-rawdel="' + i + '" title="移除该文件夹">' + icon('x', 13) + '</button>' +
+          '<button type="button" class="mask-folder-row__del vl-btn vl-btn--icon" data-rawdel="' + i + '" title="移除该文件夹">' + icon('x', 13) + '</button>' +
           '<span class="mask-folder-row__arrow"></span></div>';
         html += '<div class="mask-files" id="maskRawFiles_' + i + '" data-rawfiles="' + i + '"' + ((maskState.rawSel[rd.path] || []).length ? '' : ' style="display:none"') + '><div class="mask-files__loading">正在扫描…</div></div>';
       });
@@ -5258,7 +5258,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
             '<span class="log-entry__arrow">' + icon('chevron-right', 14) + '</span>' + icon('video', 14) +
             '<span class="log-entry__video-name" title="' + escapeHtml(e.outPath || e.video) + '">' + escapeHtml(e.video || '（未命名成片）') + '</span>' +
             '<span class="log-entry__clip-count">' + clips.length + ' 素材</span>' +
-            '<button type="button" class="mask-log-entry__del" data-delone="' + escapeHtml(e.video) + '" title="删除该成片">' + icon('trash-2', 14) + '</button></div>';
+            '<button type="button" class="mask-log-entry__del vl-btn vl-btn--icon" data-delone="' + escapeHtml(e.video) + '" title="删除该成片">' + icon('trash-2', 14) + '</button></div>';
           html += '<div class="log-entry__clips" style="display:none">';
           clips.forEach(function (c) {
             html += '<div class="log-entry__clip" data-clip="' + escapeHtml(c) + '" title="删除所有使用该素材的成片：' + escapeHtml(baseNameNoExt(c)) + '">' + icon('layers', 12) + '<span class="log-entry__clip-path" title="' + escapeHtml(c) + '">' + escapeHtml(baseNameNoExt(c)) + '</span></div>';
@@ -5604,7 +5604,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     var html = '<div class="config-bar__left">' +
       '<label class="config-bottombar__label">输出文件夹</label>' +
       '<input type="text" class="config-bottombar__input mask-bar__outdir" id="maskOutDir" value="' + escapeHtml(maskState.outputDir || '') + '" placeholder="' + escapeHtml(outPlaceholder) + '" spellcheck="false">' +
-      '<button type="button" class="mask-bar__pick" id="maskPickOutDir" title="选择成片输出文件夹">' + icon('folder', 14) + '</button>' +
+      '<button type="button" class="mask-bar__pick vl-btn vl-btn--icon" id="maskPickOutDir" title="选择成片输出文件夹">' + icon('folder', 14) + '</button>' +
       '</div>';
     html += '<div class="config-bar__right">' +
       '<span class="config-bottombar__warn mask-bar__hint" id="maskStartHint" style="display:none"></span>' +
