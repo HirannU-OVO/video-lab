@@ -35,15 +35,15 @@ body {
   width: 150px;
   flex: 0 0 150px;
   border-right: 1px solid var(--vl-alias-border-neutral-l1);
-  background: var(--vl-alias-bg-base-secondary);
+  background: var(--vl-panel-bg);
   display: flex;
   flex-direction: column;
   padding: 12px 8px;
   box-sizing: border-box;
 }
 .settings-nav__brand {
-  font-size: 15px;
-  font-weight: 700;
+  font-size: var(--vl-type-heading-sm-size);
+  font-weight: var(--vl-font-font-weight-bold);
   color: var(--vl-alias-text-brand, var(--vl-alias-brand-500));
   padding: 4px 10px 14px;
 }
@@ -60,7 +60,7 @@ body {
   border-radius: 6px;
   margin-bottom: 2px;
 }
-.settings-nav__item[aria-selected="true"] { font-weight: 600; }
+.settings-nav__item[aria-selected="true"] { font-weight: var(--vl-font-font-weight-semibold); }
 
 /* ─── 右侧内容 ─── */
 .settings-body {
@@ -192,21 +192,6 @@ body {
    的横向行容器，在 HTML 中早已没有消费者（改动前用量为 0）。该 class 名现由设置项的
    左栏容器复用，布局定义见上方「.form-group > .form-group__head」一节（块布局，
    主标题在上、副标题在下）。 */
-.cfg-open-btn {
-  flex: none;
-  padding: 4px 12px;
-  border: 1px solid var(--vl-alias-border-neutral-l2);
-  border-radius: var(--vl-alias-radius-sm);
-  background: transparent;
-  color: var(--vl-alias-text-secondary);
-  font-size: 12px;
-  cursor: pointer;
-}
-.cfg-open-btn:hover {
-  color: var(--vl-alias-text-default);
-  border-color: var(--vl-alias-border-neutral-l3);
-  background: var(--vl-alias-bg-overlay-l2);
-}
 .form-group__label small {
   display: block;
   font-size: 11px;
