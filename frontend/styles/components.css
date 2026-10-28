@@ -21,6 +21,9 @@
   .vl-btn {
     /* 尺寸档：xs 20px / sm 24px / 默认 28px / lg 32px */
     --vl-btn-h: 28px;
+    /* 垂直内距：默认 0（固定高度靠 --vl-btn-h）。
+       内容撑高的按钮（菜单项 / 列表项）设 --vl-btn-h: auto 并给这里一个值。 */
+    --vl-btn-py: 0;
     --vl-btn-px: 12px;
     --vl-btn-fs: 13px;
     /* 字重：默认 600。
@@ -55,6 +58,8 @@
     /* 边框宽度也走变量：实色按钮对齐正式版是**无边框**的（正式版 .config-btn 是 border: none），
        有 1px 边框会让同宽文字摊在更宽的按钮里、视觉上显得细一档。 */
     --vl-btn-border-width: 1px;
+    /* 圆角：默认 6px。图标按钮 / 紧凑按钮 / 圆形按钮各自覆盖。 */
+    --vl-btn-radius: var(--vl-static-radius-6);
     --vl-btn-color: var(--vl-alias-text-default);
     --vl-btn-bg-hover: var(--vl-alias-bg-base-secondary);
     --vl-btn-border-hover: var(--vl-btn-border);
@@ -81,9 +86,9 @@
     gap: 6px;
     min-width: 0;
     height: var(--vl-btn-h);
-    padding: 0 var(--vl-btn-px);
+    padding: var(--vl-btn-py) var(--vl-btn-px);
     border: var(--vl-btn-border-width) solid var(--vl-btn-border);
-    border-radius: var(--vl-static-radius-6);
+    border-radius: var(--vl-btn-radius);
     background: var(--vl-btn-bg);
     color: var(--vl-btn-color);
     box-shadow: var(--vl-btn-shadow);
@@ -97,14 +102,14 @@
     -webkit-user-select: none;
     user-select: none;
   }
-  .vl-btn:hover:where(:not([disabled]):not([aria-disabled="true"])) {
+  .vl-btn:hover:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) {
     background: var(--vl-btn-bg-hover);
     border-color: var(--vl-btn-border-hover);
     color: var(--vl-btn-color-hover);
     transform: translateY(var(--vl-btn-lift-hover));
     box-shadow: var(--vl-btn-shadow-hover);
   }
-  .vl-btn:active:where(:not([disabled]):not([aria-disabled="true"])) {
+  .vl-btn:active:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) {
     background: var(--vl-btn-bg-active);
     border-color: var(--vl-btn-border-active);
     color: var(--vl-btn-color-active);
@@ -131,8 +136,8 @@
     --vl-btn-border-disabled: var(--vl-alias-bg-brand);
     --vl-btn-color-disabled: var(--vl-alias-text-white);
   }
-  .vl-btn--primary:hover:where(:not([disabled]):not([aria-disabled="true"])) { background: var(--vl-alias-bg-brand-hover); border-color: var(--vl-alias-bg-brand-hover); }
-  .vl-btn--primary:active:where(:not([disabled]):not([aria-disabled="true"])) { background: var(--vl-alias-bg-brand-active); border-color: var(--vl-alias-bg-brand-active); }
+  .vl-btn--primary:hover:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) { background: var(--vl-alias-bg-brand-hover); border-color: var(--vl-alias-bg-brand-hover); }
+  .vl-btn--primary:active:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) { background: var(--vl-alias-bg-brand-active); border-color: var(--vl-alias-bg-brand-active); }
 
   .vl-btn--danger {
     background: var(--vl-alias-status-error-default);
@@ -145,14 +150,14 @@
     --vl-btn-border-disabled: var(--vl-alias-status-error-default);
     --vl-btn-color-disabled: var(--vl-alias-text-white);
   }
-  .vl-btn--danger:hover:where(:not([disabled]):not([aria-disabled="true"])) { background: var(--vl-alias-status-error-hover); border-color: var(--vl-alias-status-error-hover); }
-  .vl-btn--danger:active:where(:not([disabled]):not([aria-disabled="true"])) { background: var(--vl-alias-status-error-active); border-color: var(--vl-alias-status-error-active); }
+  .vl-btn--danger:hover:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) { background: var(--vl-alias-status-error-hover); border-color: var(--vl-alias-status-error-hover); }
+  .vl-btn--danger:active:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) { background: var(--vl-alias-status-error-active); border-color: var(--vl-alias-status-error-active); }
 
   .vl-btn--ghost { background: transparent; border-color: transparent; }
-  .vl-btn--ghost:hover:where(:not([disabled]):not([aria-disabled="true"])) { background: var(--vl-alias-bg-overlay-l1); }
+  .vl-btn--ghost:hover:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) { background: var(--vl-alias-bg-overlay-l1); }
 
   .vl-btn--subtle { background: var(--vl-alias-bg-base-secondary); border-color: transparent; color: var(--vl-alias-text-secondary); }
-  .vl-btn--subtle:hover:where(:not([disabled]):not([aria-disabled="true"])) { color: var(--vl-alias-text-default); background: var(--vl-alias-bg-base-tertiary); }
+  .vl-btn--subtle:hover:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) { color: var(--vl-alias-text-default); background: var(--vl-alias-bg-base-tertiary); }
 
   /* size */
   /* ── 从蓝本整合的变体（2026-10-26）────────────────────────
@@ -173,11 +178,11 @@
     --vl-btn-border-disabled: var(--vl-alias-bg-invert);
     --vl-btn-color-disabled: var(--vl-alias-text-white);
   }
-  .vl-btn--invert:hover:where(:not([disabled]):not([aria-disabled="true"])) {
+  .vl-btn--invert:hover:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) {
     background: var(--vl-alias-bg-invert-hover);
     border-color: var(--vl-alias-bg-invert-hover);
   }
-  .vl-btn--invert:active:where(:not([disabled]):not([aria-disabled="true"])) {
+  .vl-btn--invert:active:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) {
     background: var(--vl-alias-bg-invert-active);
     border-color: var(--vl-alias-bg-invert-active);
   }
@@ -193,7 +198,7 @@
     border-color: transparent;
     color: var(--vl-alias-text-secondary);
   }
-  .vl-btn--tertiary:hover:where(:not([disabled]):not([aria-disabled="true"])) {
+  .vl-btn--tertiary:hover:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) {
     background: var(--vl-alias-bg-overlay-l1);
     color: var(--vl-alias-text-default);
   }
@@ -208,7 +213,7 @@
     --vl-btn-border-disabled: var(--vl-alias-status-warning-default);
     --vl-btn-color-disabled: var(--vl-alias-text-white);
   }
-  .vl-btn--warning:hover:where(:not([disabled]):not([aria-disabled="true"])) {
+  .vl-btn--warning:hover:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) {
     background: var(--vl-alias-status-warning-surface-l3);
     border-color: var(--vl-alias-status-warning-surface-l3);
   }
@@ -756,11 +761,11 @@
     color: var(--vl-alias-text-default);
     border-color: var(--vl-alias-border-neutral-l2);
   }
-  .vl-btn--secondary:hover:where(:not([disabled]):not([aria-disabled="true"])) {
+  .vl-btn--secondary:hover:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) {
     background: var(--vl-alias-bg-overlay-l2);
     border-color: var(--vl-alias-border-neutral-l3);
   }
-  .vl-btn--secondary:active:where(:not([disabled]):not([aria-disabled="true"])) {
+  .vl-btn--secondary:active:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) {
     background: var(--vl-alias-bg-overlay-l3);
   }
   .vl-btn--brand {
@@ -768,11 +773,11 @@
     border-color: var(--vl-alias-bg-brand);
     color: var(--vl-alias-text-white);
   }
-  .vl-btn--brand:hover:where(:not([disabled]):not([aria-disabled="true"])) {
+  .vl-btn--brand:hover:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) {
     background: var(--vl-alias-bg-brand-hover);
     border-color: var(--vl-alias-bg-brand-hover);
   }
-  .vl-btn--brand:active:where(:not([disabled]):not([aria-disabled="true"])) {
+  .vl-btn--brand:active:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) {
     background: var(--vl-alias-bg-brand-active);
     border-color: var(--vl-alias-bg-brand-active);
   }
@@ -783,7 +788,7 @@
     padding-left: 0;
     padding-right: 0;
   }
-  .vl-btn--link:hover:where(:not([disabled]):not([aria-disabled="true"])) {
+  .vl-btn--link:hover:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) {
     color: var(--vl-alias-accent-blue);
     text-decoration: underline;
   }
@@ -792,7 +797,7 @@
     border-color: transparent;
     color: var(--vl-alias-status-error-default);
   }
-  .vl-btn--danger-subtle:hover:where(:not([disabled]):not([aria-disabled="true"])) {
+  .vl-btn--danger-subtle:hover:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) {
     background: var(--vl-alias-status-error-surface-l3);
   }
   .vl-btn--danger-strong {
@@ -800,11 +805,11 @@
     border-color: var(--vl-alias-status-error-default);
     color: var(--vl-alias-text-white);
   }
-  .vl-btn--danger-strong:hover:where(:not([disabled]):not([aria-disabled="true"])) {
+  .vl-btn--danger-strong:hover:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) {
     background: var(--vl-alias-status-error-hover);
     border-color: var(--vl-alias-status-error-hover);
   }
-  .vl-btn--danger-strong:active:where(:not([disabled]):not([aria-disabled="true"])) {
+  .vl-btn--danger-strong:active:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) {
     background: var(--vl-alias-status-error-active);
     border-color: var(--vl-alias-status-error-active);
   }

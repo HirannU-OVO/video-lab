@@ -25,12 +25,12 @@ var m = new URL(location.href).searchParams.get('token');
   <!-- 自制标题栏（frame:false）；data-main-titlebar 标记主窗口，仅此处使用品牌字体 -->
   <div class="win-titlebar" id="winTitlebar" data-main-titlebar data-region="win-titlebar">
     <!-- 视频处理工具入口：固定在**窗口最左上角**（品牌区之外，不参与居中计算） -->
-    <button class="win-titlebar__mode win-titlebar__entry" id="winToolToggle" title="视频处理工具（对已有视频做后处理：去黑屏 / 变速 / 转分辨率 / 叠加图片 …）">
+    <button class="win-titlebar__mode vl-btn vl-btn--ghost win-titlebar__entry" id="winToolToggle" title="视频处理工具（对已有视频做后处理：去黑屏 / 变速 / 转分辨率 / 叠加图片 …）">
       <i data-icon="video" data-size="13"></i><span class="win-titlebar__mode-label">视频处理</span>
     </button>
     <div class="win-titlebar__brand">
       <span class="win-titlebar__title">Video Lab</span>
-      <button class="win-titlebar__mode" id="winModeToggle" title="切换 配置管理 / 遮罩叠加 模式">
+      <button class="win-titlebar__mode vl-btn vl-btn--ghost" id="winModeToggle" title="切换 配置管理 / 遮罩叠加 模式">
         <i data-icon="layers" data-size="13"></i><span class="win-titlebar__mode-label" id="winModeLabel">配置管理</span>
       </button>
     </div>
@@ -96,22 +96,22 @@ var m = new URL(location.href).searchParams.get('token');
             <div class="sidebar__az-index" id="azIndexBar" title="拖动字母快速跳转" data-region="sidebar__az-index"></div>
             <div class="sidebar__tree" id="sidebarTree" data-region="sidebar__tree"></div>
             <div class="sidebar-menu" id="sidebarMenu" style="display:none" data-region="sidebar-menu">
-              <button class="sidebar-menu__item" id="menuRefreshConfigs" title="重新扫描工作路径下的所有配置，并清理重复的外部 * 配置">
+              <button class="sidebar-menu__item vl-btn vl-btn--ghost" id="menuRefreshConfigs" title="重新扫描工作路径下的所有配置，并清理重复的外部 * 配置">
                 <i data-icon="refresh-cw" data-size="14"></i>刷新配置列表
               </button>
-              <button class="sidebar-menu__item" id="menuMaskRescan" title="重新扫描当前遮罩项目的原片分组与遮罩素材（保留仍存在的勾选）；不涉及视频信息缓存，刷缓存请用下方「刷新预缓存」">
+              <button class="sidebar-menu__item vl-btn vl-btn--ghost" id="menuMaskRescan" title="重新扫描当前遮罩项目的原片分组与遮罩素材（保留仍存在的勾选）；不涉及视频信息缓存，刷缓存请用下方「刷新预缓存」">
                 <i data-icon="refresh-cw" data-size="14"></i>刷新素材列表
               </button>
-              <button class="sidebar-menu__item" id="menuResetPrecheck" title="刷新预缓存：更新变化的视频并清理失效缓存（含批量与遮罩素材）">
+              <button class="sidebar-menu__item vl-btn vl-btn--ghost" id="menuResetPrecheck" title="刷新预缓存：更新变化的视频并清理失效缓存（含批量与遮罩素材）">
                 <i data-icon="rotate-ccw" data-size="14"></i>刷新预缓存
               </button>
-              <button class="sidebar-menu__item" id="menuChoosePath" title="选择工作路径">
+              <button class="sidebar-menu__item vl-btn vl-btn--ghost" id="menuChoosePath" title="选择工作路径">
                 <i data-icon="folder" data-size="14"></i>选择路径
               </button>
-              <button class="sidebar-menu__item" id="menuOpenBrowser" title="在浏览器中打开">
+              <button class="sidebar-menu__item vl-btn vl-btn--ghost" id="menuOpenBrowser" title="在浏览器中打开">
                 <i data-icon="globe" data-size="14"></i>在浏览器中打开
               </button>
-              <button class="sidebar-menu__item" id="menuSettings" title="设置">
+              <button class="sidebar-menu__item vl-btn vl-btn--ghost" id="menuSettings" title="设置">
                 <i data-icon="settings" data-size="14"></i>设置
               </button>
             </div>
@@ -129,7 +129,7 @@ var m = new URL(location.href).searchParams.get('token');
 
       <!-- 左侧列表栏宽度调节：铆钉透明栏承载三竖线按钮，拖拽调整项目列表宽度 -->
       <div class="workspace-resizer sidebar-resizer" id="workspaceResizer" title="拖拽调整项目列表宽度">
-        <button class="sidebar-resize-btn" id="sidebarResizeBtn" title="拖拽调整项目列表宽度">
+        <button class="sidebar-resize-btn vl-btn" id="sidebarResizeBtn" title="拖拽调整项目列表宽度">
           <i data-icon="grip-lines" data-size="14"></i>
         </button>
       </div>
@@ -187,7 +187,7 @@ var m = new URL(location.href).searchParams.get('token');
                 </button>
               </div>
               <div class="right-panel__header-right">
-                <button class="right-panel__edit" id="btnExternalEdit" title="外部编辑">
+                <button class="right-panel__edit vl-btn vl-btn--sm" id="btnExternalEdit" title="外部编辑">
                   <i data-icon="pencil" data-size="13"></i>外部编辑
                 </button>
               </div>
