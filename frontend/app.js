@@ -2309,16 +2309,30 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
   function restorePreviewFromLog() {
     if (!state._sideBeforeLog) return;
     state._sideBeforeLog = false;
-    var rp1 = $('rightPanel');
-    if (rp1) { var _w1 = Math.round(rp1.getBoundingClientRect().width); if (_w1 > 0) state.previewLastWidth = _w1; rp1.style.width = ''; }
+    rememberPreviewWidth();
     document.body.setAttribute('data-preview-collapsed', '');
     state.previewCollapsed = true;
     var rb1 = $('previewCollapseRound'); if (rb1) rb1.setAttribute('title', '展开预览面板');
   }
+  /* 折叠前记录预览面板宽度，并清掉内联 width。
+     ⚠ ① 宽度必须用 getBoundingClientRect（**含边框**）：
+        right-panel 有 border-left: 1px，clientWidth 比实际少 1px，
+        拿 clientWidth 记忆、再用它写回 style.width，会「每折叠一次窄 1px」。
+     ⚠ ② 必须清掉内联 style.width：
+        折叠态的收缩是 `body[data-preview-collapsed] .right-panel { width: 0 }`，
+        而内联样式优先级高于它，不清掉的话面板只是 opacity:0、宽度纹丝不动。
+     ⚠ 三处调用（折叠按钮 / 退出日志恢复 / 品牌名片复位）必须共用本函数，
+        否则任一处后续漏改就会复发。 */
+  function rememberPreviewWidth() {
+    var rp = $('rightPanel');
+    if (!rp) return;
+    var w = Math.round(rp.getBoundingClientRect().width);
+    if (w > 0) state.previewLastWidth = w;
+    rp.style.width = '';
+  }
   // 强制折叠右侧预览面板（点击品牌名片复位时使用，回到启动态）
   function collapsePreviewPanel() {
-    var rp = $('rightPanel');
-    if (rp) { var _w2 = Math.round(rp.getBoundingClientRect().width); if (_w2 > 0) state.previewLastWidth = _w2; rp.style.width = ''; }
+    rememberPreviewWidth();
     document.body.setAttribute('data-preview-collapsed', '');
     state.previewCollapsed = true;
     state._sideBeforeLog = false;
@@ -3409,16 +3423,8 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
           state.previewCollapsed = false;
           if (roundBtn) roundBtn.setAttribute('title', '折叠预览面板');
         } else {
-          /* 折叠：
-             ⚠ ① 宽度必须用 offsetWidth / getBoundingClientRect（**含边框**）。
-                right-panel 有 border-left: 1px，clientWidth 比实际少 1px；
-                拿 clientWidth 记忆、再用它写回 style.width，会「每折叠一次窄 1px」。
-             ⚠ ② 必须清掉内联 style.width —— 折叠态的收缩是
-                `body[data-preview-collapsed] .right-panel { width: 0 }`，
-                而内联样式优先级高于它，不清掉的话面板只是 opacity:0、宽度纹丝不动。 */
-          var w = Math.round(rp.getBoundingClientRect().width);
-          if (w > 0) state.previewLastWidth = w;
-          rp.style.width = '';
+          // 折叠：记宽 + 清内联宽度（细节见 rememberPreviewWidth 的注释）
+          rememberPreviewWidth();
           document.body.setAttribute('data-preview-collapsed', '');
           state.previewCollapsed = true;
           if (roundBtn) roundBtn.setAttribute('title', '展开预览面板');
