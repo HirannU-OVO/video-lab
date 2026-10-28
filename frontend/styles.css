@@ -458,6 +458,12 @@ body {
   transform: translate(-50%, -50%);
   width: 16px;
   z-index: 80;
+  --vl-btn-bg: var(--vl-alias-bg-base-secondary);
+  --vl-btn-color: var(--vl-alias-text-tertiary);
+  --vl-btn-border: var(--vl-alias-border-neutral-l2);
+  --vl-btn-bg-hover: var(--vl-alias-bg-base-tertiary);
+  --vl-btn-color-hover: var(--vl-alias-text-default);
+  --vl-btn-border-hover: var(--vl-alias-border-neutral-l3);
 }
 
 /* 左侧栏滚动条：隐藏（不占位、不显示），滚动功能保留 */
@@ -1196,14 +1202,13 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   align-content: flex-start;
   gap: var(--vl-static-spacer-6);
 }
+/* 选中态：改为设基线变量，不再手写外观 */
 .date-branch-btn--active {
-  background: var(--vl-alias-brand-100);
-  border-color: var(--vl-alias-brand-300);
-  color: var(--vl-alias-brand-600);
-  font-weight: var(--vl-font-font-weight-medium);
-}
-.date-branch-btn--active:hover {
-  background: var(--vl-alias-brand-200);
+  --vl-btn-bg: var(--vl-alias-brand-100);
+  --vl-btn-border: var(--vl-alias-brand-300);
+  --vl-btn-color: var(--vl-alias-brand-600);
+  --vl-btn-fw: var(--vl-font-font-weight-medium);
+  --vl-btn-bg-hover: var(--vl-alias-brand-200);
 }
 .date-branch-btn__latest {
   display: inline-flex;
@@ -1440,6 +1445,10 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   --vl-btn-radius: var(--vl-static-radius-4);
   --vl-btn-border-width: 0;
   flex-shrink: 0;
+  --vl-btn-bg: transparent;
+  --vl-btn-color: var(--vl-alias-text-tertiary);
+  --vl-btn-bg-hover: var(--vl-alias-bg-base-tertiary);
+  --vl-btn-color-hover: var(--vl-alias-text-default);
 }
 /* Open path button */
 /* 外观已回归基线 .vl-btn，这里只保留布局 */
@@ -1449,6 +1458,10 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   --vl-btn-radius: var(--vl-static-radius-4);
   --vl-btn-border-width: 0;
   flex-shrink: 0;
+  --vl-btn-bg: transparent;
+  --vl-btn-color: var(--vl-alias-text-tertiary);
+  --vl-btn-bg-hover: var(--vl-alias-bg-base-tertiary);
+  --vl-btn-color-hover: var(--vl-alias-text-default);
 }
 /* Pre-check status column：外层列固定宽占位（布局不动），内层徽章贴合文字长度 */
 .config-path-row__precheck {
@@ -1577,6 +1590,10 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   --vl-btn-radius: 4px;
   --vl-btn-border-width: 0;
   flex-shrink: 0;
+  --vl-btn-bg: transparent;
+  --vl-btn-color: var(--vl-alias-text-tertiary);
+  --vl-btn-bg-hover: var(--vl-alias-bg-overlay-l1);
+  --vl-btn-color-hover: var(--vl-alias-text-default);
 }
 .config-path-subheader__refresh.is-spinning svg { animation: vl-refresh-spin 1s linear infinite; }
 @keyframes vl-refresh-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
@@ -1668,6 +1685,10 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   --vl-btn-radius: var(--vl-static-radius-4);
   --vl-btn-border-width: 0;
   flex-shrink: 0;
+  --vl-btn-bg: transparent;
+  --vl-btn-color: var(--vl-alias-text-tertiary);
+  --vl-btn-bg-hover: var(--vl-alias-bg-base-tertiary);
+  --vl-btn-color-hover: var(--vl-alias-text-default);
 }
 /* 框体下半：配置名（标题行 + 内容栏，与其他框体一致） */
 .config-editor__wm-field {
@@ -1714,6 +1735,10 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   --vl-btn-radius: 50%;
   --vl-btn-border-width: 0;
   flex-shrink: 0;
+  --vl-btn-bg: transparent;
+  --vl-btn-color: var(--vl-alias-text-tertiary);
+  --vl-btn-bg-hover: var(--vl-alias-status-error-surface-l1);
+  --vl-btn-color-hover: var(--vl-alias-status-error-default);
 }
 .config-exclude-add {
   display: flex;
@@ -4226,10 +4251,20 @@ button.is-vl-disabled {
   --vl-btn-h: 26px;
   --vl-btn-px: var(--vl-static-spacer-10);
   --vl-btn-gap: var(--vl-static-spacer-4);
+  --vl-btn-bg: var(--vl-alias-bg-base-secondary);
+  --vl-btn-color: var(--vl-alias-text-secondary);
+  --vl-btn-border: var(--vl-alias-border-neutral-l1);
+  --vl-btn-bg-hover: var(--vl-alias-bg-base-tertiary);
+  --vl-btn-border-hover: var(--vl-alias-border-neutral-l2);
 }
 /* 形态变量（外观仍由 .vl-btn 基线提供） */
 .right-panel__edit {
   --vl-btn-h: 24px;
   --vl-btn-px: var(--vl-static-spacer-8);
   --vl-btn-gap: 4px;
+  --vl-btn-bg: transparent;
+  --vl-btn-color: var(--vl-alias-text-secondary);
+  --vl-btn-border: var(--vl-alias-border-neutral-l1);
+  --vl-btn-bg-hover: var(--vl-alias-bg-overlay-l2);
+  --vl-btn-color-hover: var(--vl-alias-text-default);
 }
