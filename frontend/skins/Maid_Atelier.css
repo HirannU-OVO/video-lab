@@ -600,40 +600,30 @@ html[data-skin="Maid_Atelier"] .center-top__title {
    sort-toggle 为左侧列表「名称/时间」排序切换，preview-toggle 为右侧「实时/原始」切换，
    与中间「配置列表/日志」完全一致 */
 html[data-skin="Maid_Atelier"] :is([data-region="mode-toggle"], [data-region="sort-toggle"], [data-region="preview-toggle"]) {
-  /* 尺寸与配色全部走基线按钮变量（这几类已接 .vl-btn--sm / --xs + --ghost）。
-     ⚠ 只有「圆角、文字投影、选中态文字色」基线没有对应变量，才留在本规则里。 */
-  --vl-btn-h: 24px;
-  --vl-btn-px: 8px;
-  --vl-btn-bg: transparent;
-  --vl-btn-border: transparent;
-  --vl-btn-color: #d7def0;
-  --vl-btn-bg-hover: rgba(255, 252, 243, 0.08);
-  --vl-btn-color-hover: var(--vl-skin-maid-gold-soft);
-  --vl-btn-bg-active: rgba(255, 252, 243, 0.12);
-  --vl-btn-color-active: #fff7e6;
-  position: relative;   /* 仅供下面的金色下划线伪元素定位 */
-  border-radius: 4px;
+  /* 外观全部走 .vl-tab 变量（这三个是 tab 语义，接的就是 vl-tab，与 tool/task 页同一组件）。
+     ⚠ 不设尺寸（--vl-tab-h / -px / -fs）：三者尺寸不同，由各自页面类声明；
+        皮肤若在此设会一次覆盖三个。 */
+  --vl-tab-bg: transparent;
+  --vl-tab-color: #d7def0;
+  --vl-tab-border: transparent;
+  --vl-tab-bg-hover: rgba(255, 252, 243, 0.08);
+  --vl-tab-color-hover: var(--vl-skin-maid-gold-soft);
+  --vl-tab-border-hover: transparent;
+  --vl-tab-bg-active: rgba(255, 252, 243, 0.12);
+  /* 选中态：底色保持透明，只提亮文字（靠下方金色下划线标识选中） */
+  --vl-tab-bg-on: transparent;
+  --vl-tab-border-on: transparent;
+  --vl-tab-color-on: #fff7e6;
+  --vl-tab-bg-on-hover: rgba(255, 252, 243, 0.08);
+  --vl-tab-border-on-hover: transparent;
+  --vl-tab-bg-on-active: rgba(255, 252, 243, 0.12);
+  /* 选中下划线：由 .vl-tab 内置 ::after 绘制，皮肤只给颜色与尺寸 */
+  --vl-tab-underline-on: var(--vl-skin-maid-gold);
+  --vl-tab-underline-h: 2px;
+  --vl-tab-underline-w: 60%;
+  --vl-tab-underline-radius: 1px;
+  --vl-tab-underline-glow: 0 0 8px rgba(235, 204, 143, 0.45);
   text-shadow: 0 1px 3px rgba(4, 11, 35, 0.55);
-}
-/* 选中态（aria-pressed=true）：只把文字提亮一档，底色仍透明 */
-html[data-skin="Maid_Atelier"] :is([data-region="mode-toggle"], [data-region="sort-toggle"], [data-region="preview-toggle"])[aria-pressed="true"] {
-  --vl-btn-color: #fff7e6;
-  --vl-btn-color-hover: #fff7e6;
-}
-/* 激活态底部金色下划线 + 光晕（移植母本 tab[aria-selected='true']::after）
-   位置上移：紧挨文字下方（bottom:0，原 bottom:-7px 悬在按钮下方，再下移 2px 后的位置） */
-html[data-skin="Maid_Atelier"] :is([data-region="mode-toggle"], [data-region="sort-toggle"], [data-region="preview-toggle"])[aria-pressed="true"]::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  bottom: 0;
-  transform: translateX(-50%);
-  width: 60%;
-  height: 2px;
-  background: var(--vl-skin-maid-gold);
-  box-shadow: 0 0 8px rgba(235, 204, 143, 0.45);
-  border-radius: 1px;
-  pointer-events: none;
 }
 html[data-skin="Maid_Atelier"] .mode-toggle:disabled,
 html[data-skin="Maid_Atelier"] .mode-toggle:disabled:hover {

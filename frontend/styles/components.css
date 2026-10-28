@@ -64,6 +64,13 @@
     --vl-btn-bg-active: var(--vl-alias-bg-base-tertiary);
     --vl-btn-border-active: var(--vl-btn-border-hover);
     --vl-btn-color-active: var(--vl-btn-color-hover);
+    /* 选中态三要素（aria-pressed / aria-checked）：
+       默认取品牌色实底（与切换按钮原有的手写规则一致，白蓝/黑橙观感不变）；
+       皮肤或变体希望「选中仍透明、只提亮文字」时把前两项指成 transparent 即可
+       （女仆皮肤就是这样——它靠下方金色下划线标识选中，不用实底）。 */
+    --vl-btn-bg-pressed: var(--vl-alias-brand-500);
+    --vl-btn-border-pressed: var(--vl-alias-brand-500);
+    --vl-btn-color-pressed: var(--vl-alias-text-onaccent);
     --vl-btn-bg-disabled: var(--vl-alias-bg-base-tertiary);
     --vl-btn-border-disabled: var(--vl-alias-border-neutral-l1);
     --vl-btn-color-disabled: var(--vl-alias-text-disabled);
@@ -226,10 +233,15 @@
     cursor: not-allowed;
     opacity: var(--vl-btn-opacity-disabled);
   }
-  .vl-btn[aria-pressed="true"] {
-    background: var(--vl-alias-bg-base-secondary);
-    border-color: var(--vl-alias-accent-blue);
-    color: var(--vl-alias-accent-blue);
+  /* 选中态（aria-pressed=true / aria-checked=true）：用于「切换按钮」。
+     ⚠ 三项必须走变量：皮肤常需要「选中态仍透明、只提亮文字」（如女仆皮肤的切换按钮），
+        直接写属性的话皮肤只能靠类名去压，压不住就多出一块实色底。
+     变体或皮肤把 --vl-btn-*-pressed 指成自己需要的值即可。 */
+  .vl-btn[aria-pressed="true"],
+  .vl-btn[aria-checked="true"] {
+    background: var(--vl-btn-bg-pressed);
+    border-color: var(--vl-btn-border-pressed);
+    color: var(--vl-btn-color-pressed);
   }
   .vl-btn[data-loading="1"] { cursor: progress; opacity: .8; }
   .vl-btn[data-loading="1"]::before {
@@ -613,11 +625,20 @@
        装饰          → --vl-tab-underline-on（选中态下划线）、--vl-tab-underline-h、--vl-tab-underline-w
      下划线由本组件绘制（::after），皮肤只需设颜色 —— 避免每个皮肤各写一份伪元素规则。 */
   .vl-tab {
+    /* 尺寸档：默认 34px 高 / 12px 内距 / 16px 字号。
+       主窗口那类紧凑切换按钮（64px 行高里放 20~24px）用页面类把这几个变量改小即可。 */
+    --vl-tab-h: 34px;
+    --vl-tab-px: 12px;
+    --vl-tab-fs: 16px;
+    --vl-tab-gap: 6px;
+    --vl-tab-radius: var(--vl-static-radius-6);
+    --vl-tab-fw: normal;
     --vl-tab-bg: transparent;
     --vl-tab-color: var(--vl-alias-text-secondary);
     --vl-tab-border: var(--vl-alias-border-neutral-l2);
     --vl-tab-bg-hover: var(--vl-alias-bg-overlay-l1);
     --vl-tab-color-hover: var(--vl-alias-text-default-hover);
+    --vl-tab-border-hover: var(--vl-tab-border);
     --vl-tab-bg-active: var(--vl-alias-bg-base-tertiary);
     --vl-tab-bg-on: var(--vl-alias-brand-500);
     --vl-tab-color-on: var(--vl-alias-text-onaccent);
@@ -634,36 +655,44 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
-    height: 34px;
-    padding: 0 12px;
+    gap: var(--vl-tab-gap);
+    height: var(--vl-tab-h);
+    padding: 0 var(--vl-tab-px);
     border: 1px solid var(--vl-tab-border);
-    border-radius: var(--vl-static-radius-6);
+    border-radius: var(--vl-tab-radius);
     background: var(--vl-tab-bg);
     color: var(--vl-tab-color);
     font-family: var(--vl-font-family-base);
-    font-size: 16px;
+    font-size: var(--vl-tab-fs);
+    font-weight: var(--vl-tab-fw);
     cursor: pointer;
     transition: background .15s ease, color .15s ease, border-color .15s ease;
   }
-  .vl-tab:hover { background: var(--vl-tab-bg-hover); color: var(--vl-tab-color-hover); }
+  .vl-tab:hover { background: var(--vl-tab-bg-hover); color: var(--vl-tab-color-hover); border-color: var(--vl-tab-border-hover); }
   .vl-tab:active { background: var(--vl-tab-bg-active); }
-  .vl-tab[aria-selected="true"] {
+  /* 选中态：`aria-selected` 是 tab 的标准语义；
+     ⚠ 同时兼容 `aria-pressed`（主窗口那批切换按钮历史上用的是 aria-pressed，
+        逐个改语义风险大、收益小，故两者等价支持）。 */
+  .vl-tab[aria-selected="true"],
+  .vl-tab[aria-pressed="true"] {
     background: var(--vl-tab-bg-on);
     color: var(--vl-tab-color-on);
     border-color: var(--vl-tab-border-on);
   }
-  .vl-tab[aria-selected="true"]:hover {
+  .vl-tab[aria-selected="true"]:hover,
+  .vl-tab[aria-pressed="true"]:hover {
     background: var(--vl-tab-bg-on-hover);
     border-color: var(--vl-tab-border-on-hover);
   }
-  .vl-tab[aria-selected="true"]:active {
+  .vl-tab[aria-selected="true"]:active,
+  .vl-tab[aria-pressed="true"]:active {
     background: var(--vl-tab-bg-on-active);
     border-color: var(--vl-tab-bg-on-active);
   }
   .vl-tab:focus-visible { outline: 2px solid var(--vl-alias-accent-blue); outline-offset: 1px; }
   /* 选中态下划线：皮肤设 --vl-tab-underline-on 即可，全站 tab 统一生效 */
-  .vl-tab[aria-selected="true"]::after {
+  .vl-tab[aria-selected="true"]::after,
+  .vl-tab[aria-pressed="true"]::after {
     content: '';
     position: absolute;
     left: 50%;

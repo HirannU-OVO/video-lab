@@ -2306,7 +2306,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     if (!state._sideBeforeLog) return;
     state._sideBeforeLog = false;
     var rp1 = $('rightPanel');
-    if (rp1) state.previewLastWidth = rp1.clientWidth || state.previewLastWidth;
+    if (rp1) { var _w1 = Math.round(rp1.getBoundingClientRect().width); if (_w1 > 0) state.previewLastWidth = _w1; rp1.style.width = ''; }
     document.body.setAttribute('data-preview-collapsed', '');
     state.previewCollapsed = true;
     var rb1 = $('previewCollapseRound'); if (rb1) rb1.setAttribute('title', '展开预览面板');
@@ -2314,7 +2314,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
   // 强制折叠右侧预览面板（点击品牌名片复位时使用，回到启动态）
   function collapsePreviewPanel() {
     var rp = $('rightPanel');
-    if (rp) state.previewLastWidth = rp.clientWidth || state.previewLastWidth;
+    if (rp) { var _w2 = Math.round(rp.getBoundingClientRect().width); if (_w2 > 0) state.previewLastWidth = _w2; rp.style.width = ''; }
     document.body.setAttribute('data-preview-collapsed', '');
     state.previewCollapsed = true;
     state._sideBeforeLog = false;
@@ -3384,7 +3384,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       // 拖拽调宽交互只绑在按钮本体上；铆钉栏不可见、无功能（仅定位锚定）
       rz.addEventListener('mousedown', function (e) {
         e.preventDefault();
-        var startX = e.clientX, startW = sidebarEl.clientWidth;
+        var startX = e.clientX, startW = Math.round(sidebarEl.getBoundingClientRect().width);
         function onMove(ev) { var w = Math.max(285, Math.min(520, startW + (ev.clientX - startX))); sidebarEl.style.width = w + 'px'; }
         function onUp() { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); }
         document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
@@ -3400,7 +3400,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       function togglePreviewCollapsed() {
         var isCollapsed = document.body.hasAttribute('data-preview-collapsed');
         if (isCollapsed) {
-          // 展开：恢复记忆宽度
+          // 展开：恢复记忆宽度（写内联 width，因为折叠时已把它清掉）
           document.body.removeAttribute('data-preview-collapsed');
           rp.style.display = '';
           var targetW = Math.max(240, state.previewLastWidth || 320);
@@ -3408,8 +3408,16 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
           state.previewCollapsed = false;
           if (roundBtn) roundBtn.setAttribute('title', '折叠预览面板');
         } else {
-          // 折叠：记录当前宽度后隐藏
-          state.previewLastWidth = rp.clientWidth || state.previewLastWidth;
+          /* 折叠：
+             ⚠ ① 宽度必须用 offsetWidth / getBoundingClientRect（**含边框**）。
+                right-panel 有 border-left: 1px，clientWidth 比实际少 1px；
+                拿 clientWidth 记忆、再用它写回 style.width，会「每折叠一次窄 1px」。
+             ⚠ ② 必须清掉内联 style.width —— 折叠态的收缩是
+                `body[data-preview-collapsed] .right-panel { width: 0 }`，
+                而内联样式优先级高于它，不清掉的话面板只是 opacity:0、宽度纹丝不动。 */
+          var w = Math.round(rp.getBoundingClientRect().width);
+          if (w > 0) state.previewLastWidth = w;
+          rp.style.width = '';
           document.body.setAttribute('data-preview-collapsed', '');
           state.previewCollapsed = true;
           if (roundBtn) roundBtn.setAttribute('title', '展开预览面板');
@@ -3422,7 +3430,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
         e.preventDefault();
         // 拖拽期间禁用面板 width 过渡：style.width 逐帧即时生效，不等过渡动画
         rp.style.transition = 'none';
-        var startX = e.clientX, startW = rp.clientWidth;
+        var startX = e.clientX, startW = Math.round(rp.getBoundingClientRect().width);
         function onVMove(ev) {
           var w = Math.max(240, Math.min(720, startW - (ev.clientX - startX)));
           rp.style.width = w + 'px'; state.previewLastWidth = w;
@@ -4388,8 +4396,8 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       top.innerHTML = '<div class="center-top__header">' +
         '<span class="center-top__title">遮罩叠加</span>' +
         '<div class="center-top__toggles">' +
-        '<button class="mode-toggle vl-btn vl-btn--sm vl-btn--ghost" data-region="mode-toggle" aria-pressed="' + (maskState.view === 'config' ? 'true' : 'false') + '" data-maskview="config" id="maskViewConfig">' + icon('list', 12) + '配置</button>' +
-        '<button class="mode-toggle vl-btn vl-btn--sm vl-btn--ghost" data-region="mode-toggle" aria-pressed="' + (maskState.view === 'log' ? 'true' : 'false') + '" data-maskview="log" id="maskViewLog">' + icon('scroll-text', 12) + '日志</button>' +
+        '<button class="mode-toggle vl-tab" data-region="mode-toggle" aria-pressed="' + (maskState.view === 'config' ? 'true' : 'false') + '" data-maskview="config" id="maskViewConfig">' + icon('list', 12) + '配置</button>' +
+        '<button class="mode-toggle vl-tab" data-region="mode-toggle" aria-pressed="' + (maskState.view === 'log' ? 'true' : 'false') + '" data-maskview="log" id="maskViewLog">' + icon('scroll-text', 12) + '日志</button>' +
         '</div></div>' +
         '<div class="center-top__dates" id="maskDateBranches"></div>' +
         '<div class="center-top__ornament-host" id="maskOrnamentHost" aria-hidden="true"></div>';
@@ -4430,8 +4438,8 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     top.innerHTML = '<div class="center-top__header">' +
       '<span class="center-top__title">日期分支</span>' +
       '<div class="center-top__toggles">' +
-      '<button class="mode-toggle vl-btn vl-btn--sm vl-btn--ghost" data-region="mode-toggle" aria-pressed="true" data-mode="filelist" id="modeFilelist">' + icon('list', 12) + '配置列表</button>' +
-      '<button class="mode-toggle vl-btn vl-btn--sm vl-btn--ghost" data-region="mode-toggle" aria-pressed="false" data-mode="log" id="modeLog">' + icon('scroll-text', 12) + '日志</button>' +
+      '<button class="mode-toggle vl-tab" data-region="mode-toggle" aria-pressed="true" data-mode="filelist" id="modeFilelist">' + icon('list', 12) + '配置列表</button>' +
+      '<button class="mode-toggle vl-tab" data-region="mode-toggle" aria-pressed="false" data-mode="log" id="modeLog">' + icon('scroll-text', 12) + '日志</button>' +
       '</div></div>' +
       '<div class="center-top__dates" id="dateBranches"></div>';
     // 恢复右侧预览结构（遮罩模式重写过 rightPanelContent，行号/代码容器需重建）

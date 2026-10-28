@@ -540,6 +540,9 @@ body[data-preview-collapsed] .preview-resizer-anchor {
 body[data-preview-collapsed] .right-panel {
   width: 0;
   min-width: 0;
+  /* ⚠ 必须同时把左边框宽度归零：right-panel 有 border-left: 1px，
+     只设 width:0 时仍会留下 1px 宽的竖条（实测 offsetWidth = 1）。 */
+  border-left-width: 0;
   opacity: 0;
   pointer-events: none;
 }
@@ -704,32 +707,23 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   gap: 2px;
   flex-shrink: 0;
 }
+/* 切换按钮（mode-toggle / sort-toggle / preview-toggle）的选中态外观
+   已全部回归基线 .vl-btn[aria-pressed="true"]（消费 --vl-btn-*-pressed 变量）。
+   原先这里各写一份 background: brand-500/600 —— 皮肤想改选中态就得逐个类名覆盖，
+   女仆皮肤因此多出一块金色实底。现由皮肤设 --vl-btn-bg-pressed: transparent 即可。 */
+/* 外观全部走 .vl-tab 变量（尺寸档 + 配色），本类只声明差异值 */
 .sort-toggle {
-  height: 20px;
-  padding: 0 6px;
-  border: 1px solid transparent;
-  border-radius: var(--vl-static-radius-4);
-  background: transparent;
-  color: var(--vl-alias-text-tertiary);
-  font-size: 11px;
-  cursor: pointer;
+  --vl-tab-h: 20px;
+  --vl-tab-px: 6px;
+  --vl-tab-fs: 11px;
+  --vl-tab-gap: 0;                                  /* 图标紧贴文字 */
+  --vl-tab-radius: var(--vl-static-radius-4);
+  --vl-tab-bg: transparent;
+  --vl-tab-color: var(--vl-alias-text-tertiary);
+  --vl-tab-border: transparent;
+  --vl-tab-bg-hover: var(--vl-alias-bg-base-tertiary);
+  --vl-tab-color-hover: var(--vl-alias-text-secondary);
   white-space: nowrap;
-  transition: all 0.1s ease;
-  gap: 0;   /* ⚠ .vl-btn 自带 gap:6px，本按钮需图标紧贴文字 */
-}
-.sort-toggle:hover {
-  background: var(--vl-alias-bg-base-tertiary);
-  color: var(--vl-alias-text-secondary);
-}
-.sort-toggle[aria-pressed="true"] {
-  background: var(--vl-alias-brand-500);
-  border-color: var(--vl-alias-brand-500);
-  color: var(--vl-alias-text-onaccent);
-}
-.sort-toggle[aria-pressed="true"]:hover {
-  background: var(--vl-alias-brand-600);
-  border-color: var(--vl-alias-brand-600);
-  color: var(--vl-alias-text-onaccent);
 }
 .sort-toggle[aria-pressed="true"] .sort-toggle__arrow {
   color: inherit;
@@ -1199,33 +1193,24 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   gap: var(--vl-static-spacer-4);
 }
   /* @deprecated 用 .vl-btn--sm .vl-btn--ghost + [aria-pressed="true"] */
+/* 外观全部走 .vl-tab 变量；本类是三种切换按钮里唯一「常态有底 + 有边框」的 */
 .mode-toggle {
-  display: flex;
-  align-items: center;
-  gap: var(--vl-static-spacer-4);
-  height: 24px;
-  padding: 0 var(--vl-static-spacer-8);
-  border-radius: var(--vl-static-radius-4);
-  border: 1px solid var(--vl-alias-border-neutral-l1);
-  background: var(--vl-alias-bg-base-secondary);
-  color: var(--vl-alias-text-secondary);
-  cursor: pointer;
-  font-family: var(--vl-type-body-md-strong-family);
-  font-size: var(--vl-type-body-md-strong-size);
-  font-weight: var(--vl-type-body-md-strong-weight);
-  line-height: var(--vl-type-body-md-strong-line-height);
+  --vl-tab-h: 24px;
+  --vl-tab-px: var(--vl-static-spacer-8);
+  --vl-tab-fs: var(--vl-type-body-md-strong-size);
+  --vl-tab-fw: var(--vl-type-body-md-strong-weight);
+  --vl-tab-gap: var(--vl-static-spacer-4);
+  --vl-tab-radius: var(--vl-static-radius-4);
+  --vl-tab-bg: var(--vl-alias-bg-base-secondary);
+  --vl-tab-color: var(--vl-alias-text-secondary);
+  --vl-tab-border: var(--vl-alias-border-neutral-l1);
+  --vl-tab-bg-hover: var(--vl-alias-bg-base-tertiary);
+  --vl-tab-color-hover: var(--vl-alias-text-secondary);
+  --vl-tab-border-hover: var(--vl-alias-border-neutral-l2);
   transition: background 0.12s ease;
 }
-/* 未激活态悬浮变深灰（右上角 txt 切换一致）；激活态悬浮保持品牌色 */
-.mode-toggle:hover { background: var(--vl-alias-bg-base-tertiary); color: var(--vl-alias-text-secondary); border-color: var(--vl-alias-border-neutral-l2); }
-.mode-toggle[aria-pressed="true"]:hover { background: var(--vl-alias-brand-600); color: var(--vl-alias-text-onbrand); border-color: var(--vl-alias-brand-600); }
 .mode-toggle:disabled { opacity: .5; cursor: not-allowed; color: var(--vl-alias-text-disabled); background: var(--vl-alias-bg-base-secondary); }
 .mode-toggle:disabled:hover { background: var(--vl-alias-bg-base-secondary); }
-.mode-toggle[aria-pressed="true"] {
-  background: var(--vl-alias-brand-500);
-  color: var(--vl-alias-text-onbrand);
-  border-color: var(--vl-alias-brand-500);
-}
 .center-top__dates {
   flex: 1;
   padding: var(--vl-static-spacer-8) var(--vl-static-spacer-12);
@@ -2319,34 +2304,19 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   flex-shrink: 0;
 }
   /* @deprecated 同 .mode-toggle */
+/* 外观全部走 .vl-tab 变量 */
 .preview-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 20px;
-  padding: 0 8px;
-  border: 1px solid transparent;
-  border-radius: var(--vl-static-radius-4);
-  background: transparent;
-  color: var(--vl-alias-text-tertiary);
-  font-size: 12px;
-  cursor: pointer;
+  --vl-tab-h: 20px;
+  --vl-tab-px: 8px;
+  --vl-tab-fs: 12px;
+  --vl-tab-gap: 4px;
+  --vl-tab-radius: var(--vl-static-radius-4);
+  --vl-tab-bg: transparent;
+  --vl-tab-color: var(--vl-alias-text-tertiary);
+  --vl-tab-border: transparent;
+  --vl-tab-bg-hover: var(--vl-alias-bg-base-tertiary);
+  --vl-tab-color-hover: var(--vl-alias-text-secondary);
   white-space: nowrap;
-  transition: all 0.1s ease;
-}
-.preview-toggle:hover {
-  background: var(--vl-alias-bg-base-tertiary);
-  color: var(--vl-alias-text-secondary);
-}
-.preview-toggle[aria-pressed="true"] {
-  background: var(--vl-alias-brand-500);
-  border-color: var(--vl-alias-brand-500);
-  color: var(--vl-alias-text-onaccent);
-}
-.preview-toggle[aria-pressed="true"]:hover {
-  background: var(--vl-alias-brand-600);
-  border-color: var(--vl-alias-brand-600);
-  color: var(--vl-alias-text-onaccent);
 }
 .right-panel__badge {
   font-family: var(--vl-font-family-mono);
