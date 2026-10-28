@@ -281,14 +281,18 @@ body {
   width: 46px;
   --vl-btn-h: 100%;
   --vl-btn-border-width: 0;
-  --vl-btn-radius: 0;
   --vl-btn-bg: transparent;
   --vl-btn-color: var(--vl-alias-text-default);
-  --vl-btn-radius: 0;   /* 标题栏按钮为通高矩形，不吃基线的 6px 圆角 */;
+  --vl-btn-radius: 0;   /* 标题栏按钮为通高矩形，不吃基线的 6px 圆角 */
   --vl-btn-py: 0;
   --vl-btn-px: 0;
 }
-.win-titlebar__btn--close:hover { background: var(--vl-alias-status-error-default); color: var(--vl-alias-text-onaccent); }
+
+/* 关闭按钮：悬浮变红（仅此按钮，避免最小化/最大化也被染红） */
+.win-titlebar__btn--close {
+  --vl-btn-bg-hover: var(--vl-alias-status-error-default);
+  --vl-btn-color-hover: var(--vl-alias-text-onaccent);
+}
 .win-titlebar svg { width: 13px; height: 13px; display: block; }
 /* 标题栏模式切换按钮（主窗口）：图标品牌色 + 当前模式名，随皮肤变量适配 */
 /* 外观已回归基线 .vl-btn，这里只保留布局 */
@@ -546,10 +550,14 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   --vl-btn-radius: 50%;
   --vl-btn-bg: var(--vl-alias-bg-base-secondary);
   --vl-btn-color: var(--vl-alias-text-secondary);
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--vl-alias-text-default) 14%, transparent);
-  z-index: 40; /* 高于 .center-global-search(30)：折叠态搜索栏横向铺到右缘时不被其盖住 */;
+  --vl-btn-shadow: 0 2px 8px color-mix(in srgb, var(--vl-alias-text-default) 14%, transparent);
+  z-index: 40; /* 高于 .center-global-search(30)：折叠态搜索栏横向铺到右缘时不被其盖住 */
   --vl-btn-py: 0;
   --vl-btn-px: 0;
+  /* 悬浮按钮统一上浮幅度（与 .vl-btn--lift 一致） */
+  --vl-btn-lift-hover: -1px;
+  --vl-btn-lift-active: 0;
+  --vl-btn-shadow-hover: 0 4px 12px color-mix(in srgb, var(--vl-alias-text-default) 22%, transparent);
 }
 .preview-collapse-round .preview-collapse__icon,
 .preview-collapse-round svg { width: 12px; height: 12px; }
@@ -620,7 +628,7 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   --vl-btn-bg: var(--vl-alias-bg-base-secondary);
   --vl-btn-color: var(--vl-alias-text-secondary);
   flex-shrink: 0;
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--vl-alias-text-default) 14%, transparent);
+  --vl-btn-shadow: 0 2px 8px color-mix(in srgb, var(--vl-alias-text-default) 14%, transparent);
   --vl-btn-py: 0;
   --vl-btn-px: 0;
 }
@@ -1020,28 +1028,27 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
 /* Sidebar actions */
 /* 左下角圆形菜单按钮：悬浮在列表栏上，无色边框；常态背景色底 + 文字色 icon，
    hover 变主题底 + 白 icon 并轻微上抬（与任务列表右下按钮同风格），颜色全走主题变量 */
+/* 侧栏悬浮圆钮（置顶 / 菜单）：外观全部走 .vl-btn 基线变量，
+   position/left/bottom/z-index 属布局保留。
+   ⚠ 与菜单按钮共用本类的历史已拆开：菜单带文字，用 --text 变体（见下）。 */
 .sidebar-menu-btn {
+  --vl-btn-h: 38px;
+  --vl-btn-px: 0;
+  --vl-btn-radius: 50%;
+  --vl-btn-border-width: 0;
+  --vl-btn-bg: var(--vl-alias-bg-base-default);
+  --vl-btn-color: var(--vl-alias-text-default);
+  --vl-btn-bg-hover: var(--vl-alias-bg-base-secondary);
+  --vl-btn-color-hover: var(--vl-alias-text-default);
+  --vl-btn-shadow: 0 4px 14px color-mix(in srgb, #000 16%, transparent);
+  --vl-btn-shadow-hover: 0 6px 18px color-mix(in srgb, #000 22%, transparent);
   position: absolute;
   left: 12px;
   bottom: 12px;
   z-index: 60;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  border: none;
-  background: var(--vl-alias-bg-base-default);
-  color: var(--vl-alias-text-default);
-  cursor: pointer;
-  box-shadow: 0 4px 14px color-mix(in srgb, var(--vl-alias-text-default) 12%, transparent);
-  transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
-}
-.sidebar-menu-btn:hover {
-  background: var(--vl-alias-brand-500);
-  color: var(--vl-alias-text-onaccent);
-  transform: translateY(-2px);
+  /* 悬浮按钮统一上浮幅度（与 .vl-btn--lift 一致） */
+  --vl-btn-lift-hover: -1px;
+  --vl-btn-lift-active: 0;
 }
 /* 跳转至顶端按钮：与菜单按钮同款式，置于其正上方（间隔 8px） */
 #sidebarToTop {
@@ -1083,13 +1090,6 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
 }
 .sidebar-menu__item svg { flex-shrink: 0; color: var(--vl-alias-text-default); }
 /* 外观走 .vl-btn 基线变量 */
-.btn-external-edit {
-  --vl-btn-bg: transparent;
-  --vl-btn-color: var(--vl-alias-text-secondary);
-  --vl-btn-border: var(--vl-alias-border-neutral-l1);
-  --vl-btn-bg-hover: var(--vl-alias-bg-overlay-l2);
-  --vl-btn-color-hover: var(--vl-alias-text-default);
-}
 
 /* ── Center Panel ── */
 .center-panel {
@@ -1867,7 +1867,7 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
      否则文字在按钮内偏扁、视觉上比正式版细一档。 */
 .config-btn {
   --vl-btn-fs: var(--vl-type-body-md-size);
-  line-height: normal;
+  --vl-btn-lh: normal;
 }
 /* 配置栏按钮 hover：统一向上轻抬（与状态色变亮叠加） */
 /* .config-btn:hover 的上浮反馈已由基线 .vl-btn--lift 提供（上移 1px + 投影） */
@@ -2814,15 +2814,7 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   --vl-btn-color-disabled: var(--vl-alias-text-onaccent);
 }
 /* 弹窗禁用按钮（如分支移除中无对应模式 TXT）：灰显不可点，hover 不再变色 */
-.modal-btn--disabled,
 /* 页面用类名表达禁用（不是 disabled 属性）：消费基线的禁用变量，避免与基线分叉 */
-.modal-btn--disabled:hover {
-  background: var(--vl-btn-bg-disabled);
-  border-color: var(--vl-btn-border-disabled);
-  color: var(--vl-btn-color-disabled);
-  opacity: var(--vl-btn-opacity-disabled);
-  cursor: not-allowed;
-}
 /* 项目设置弹窗：窄宽两行布局——说明文字左对齐、复选框/分组数输入/水印按钮组右对齐 */
 .modal-card--wm { width: 380px; }
 .modal__wm-body {
@@ -3106,41 +3098,27 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   border-radius: var(--vl-static-radius-8);
   box-shadow: 0 12px 32px color-mix(in srgb, var(--vl-alias-text-default) 16%, transparent);
 }
-.ctx-menu button {
-  display: block;
+/* 右键菜单项：改用类选择器 + 基线变量。
+   ⚠ 原先是 `.ctx-menu button`（类型选择器，特异性 0,1,1 高于 .vl-btn 的 0,1,0），
+     会直接压死组件变量，所以必须换成类选择器。 */
+.ctx-menu__item {
+  --vl-btn-h: auto;
+  --vl-btn-py: 6px;
+  --vl-btn-px: 12px;
+  --vl-btn-fs: var(--vl-type-body-base-size);
+  --vl-btn-radius: var(--vl-static-radius-6);
+  --vl-btn-border-width: 0;
+  --vl-btn-bg: transparent;
+  --vl-btn-color: var(--vl-alias-text-default);
+  --vl-btn-bg-hover: var(--vl-alias-brand-100);
+  --vl-btn-color-hover: var(--vl-alias-brand-600);
+  display: flex;
   width: 100%;
   text-align: left;
-  padding: 6px 12px;
-  border: none;
-  border-radius: var(--vl-static-radius-6);
-  background: transparent;
-  color: var(--vl-alias-text-default);
-  font-size: var(--vl-type-body-base-size);
-  cursor: pointer;
+  justify-content: flex-start;
   white-space: nowrap;
 }
-.ctx-menu button:hover {
-  background: var(--vl-alias-brand-100);
-  color: var(--vl-alias-brand-600);
-}
-.ctx-menu button:disabled {
-  color: var(--vl-alias-text-disabled);
-  cursor: default;
-  background: transparent;
-}
-.ctx-menu button:disabled:hover {
-  color: var(--vl-alias-text-disabled);
-  background: transparent;
-}
 /* 变灰项仍可点击（点击弹 toast 说明）：同 disabled 的灰显外观，但保留可点光标 */
-.ctx-menu .ctx-menu__btn--disabled {
-  color: var(--vl-alias-text-disabled);
-  background: transparent;
-}
-.ctx-menu .ctx-menu__btn--disabled:hover {
-  color: var(--vl-alias-text-disabled);
-  background: transparent;
-}
 /* 带子菜单的项：右侧箭头提示 */
 .ctx-menu__item--has-sub {
   display: flex;
@@ -3164,22 +3142,10 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   border-radius: var(--vl-static-radius-8);
   box-shadow: 0 12px 32px color-mix(in srgb, var(--vl-alias-text-default) 16%, transparent);
 }
-.ctx-menu__sub button {
-  display: block;
+/* 子菜单项：同根菜单项，复用同一个类 */
+.ctx-menu__sub .ctx-menu__item {
   width: 100%;
-  text-align: left;
-  padding: 6px 12px;
-  border: none;
-  border-radius: var(--vl-static-radius-6);
-  background: transparent;
-  color: var(--vl-alias-text-default);
-  font-size: var(--vl-type-body-base-size);
-  cursor: pointer;
-  white-space: nowrap;
-}
-.ctx-menu__sub button:hover {
-  background: var(--vl-alias-brand-100);
-  color: var(--vl-alias-brand-600);
+  justify-content: flex-start;
 }
 
 /* ═══ 更新提示条 ═══ 悬浮于底部状态栏上方、水平居中；配色全部走主题变量，不写死 */
@@ -3343,22 +3309,6 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   --vl-btn-px: 0;
 }
 /* 遮罩「缩到后台」按钮（仅预检测全量探测时显示） */
-.busy-min-btn {
-  position: absolute;
-  right: var(--vl-static-spacer-12);
-  bottom: var(--vl-static-spacer-10);
-  padding: 5px 16px;
-  border: 1px solid var(--vl-alias-brand-500);
-  border-radius: var(--vl-alias-radius-sm);
-  background: var(--vl-alias-brand-500);
-  color: var(--vl-alias-text-onbrand);
-  font-size: var(--vl-type-body-sm-size);
-  cursor: pointer;
-}
-.busy-min-btn:hover {
-  background: var(--vl-alias-brand-400);
-  border-color: var(--vl-alias-brand-400);
-}
 /* 预检测遮罩左侧：红色「取消预检测」按钮（点击后二次确认） */
 .busy-cancel-btn {
   position: absolute;
@@ -4226,7 +4176,17 @@ button.is-vl-disabled {
   --vl-btn-color-hover: var(--vl-alias-text-default);
 }
 
+.sidebar-menu-btn--text {
+  --vl-btn-px: 12px;
+  --vl-btn-gap: 6px;
+  --vl-btn-radius: 19px;
+  width: auto;
+}
 }
 
 /* 形态变量（外观仍由 .vl-btn 基线提供） */
+
+/* 菜单按钮：图标 + 文字，不能用正方形（--icon）形态 ——
+   历史上与置顶按钮共用 .sidebar-menu-btn，导致文字被 38×38 的方块挤爆，
+   这也是「有/无女仆皮肤长得不一样」的根源（皮肤用 ::after 硬塞文字）。 */
 /* 形态变量（外观仍由 .vl-btn 基线提供） */

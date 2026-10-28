@@ -450,10 +450,14 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       var b = document.createElement('button');
       b.type = 'button';
       b.textContent = it.label;
+      /* 右键菜单项也是按钮：接入基线并给稳定锚点，外观由 .vl-btn 变量提供
+         （原先完全没有类名，只靠页面层 `.ctx-menu button` 类型选择器手写） */
+      b.className = 'ctx-menu__item vl-btn vl-btn--ghost';
+      b.setAttribute('data-region', 'ctx-menu-item');
       m.appendChild(b);
       if (it.disabled) {
       // 置灰项仍可点击：点击关闭菜单并以 toast 提示不可用原因（仅告知，不开大窗）
-      b.className = 'ctx-menu__btn--disabled';
+      b.className = 'ctx-menu__item vl-btn vl-btn--ghost is-vl-disabled';
       if (it.title) b.title = it.title;
       b.addEventListener('click', function () { close(); toast(it.title || it.label + '不可用', true); });
       return;
