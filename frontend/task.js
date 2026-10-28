@@ -370,9 +370,9 @@
       '<span class="task-card__tag"></span>' +
       '<span class="task-card__time"></span>' +
       '<span class="task-card__lock"></span>' +
-      '<button class="task-card__pause">' + icon('pause', 12) + '暂停</button>' +
-      '<button class="task-card__stop">' + icon('stop', 12) + '停止</button>' +
-      '<button class="task-card__rerun" title="使用开始任务时的配置重新制作，删除上次失败的成片与日志">' + icon('rotate-ccw', 12) + '重新开始</button>' +
+      '<button class="task-card__pause vl-btn">' + icon('pause', 12) + '暂停</button>' +
+      '<button class="task-card__stop vl-btn">' + icon('stop', 12) + '停止</button>' +
+      '<button class="task-card__rerun vl-btn" title="使用开始任务时的配置重新制作，删除上次失败的成片与日志">' + icon('rotate-ccw', 12) + '重新开始</button>' +
       '<button class="task-card__continue" title="仅续跑失败或未完成的成片，不删除已成功产物">' + icon('play', 12) + '继续制作</button>' +
       '<button class="task-card__del" title="从列表中移除该任务">' + icon('x', 12) + '</button>';
     card.appendChild(header);

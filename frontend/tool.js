@@ -213,7 +213,7 @@
       + '改宽/高按比例联动</span></label>'
       + '<label class="tl-field"><span class="tl-field__label">宽</span>'
       + '<input class="vl-input vl-input--sm tl-num" type="number" data-step="resize" data-key="width" value="' + esc(v.width) + '" min="16" step="2"></label>'
-      + '<button type="button" class="tl-link" data-link="resize" title="比例锁">'
+      + '<button type="button" class="tl-link vl-btn" data-link="resize" title="比例锁">'
       + icon('link', 13) + '</button>'
       + '<label class="tl-field"><span class="tl-field__label">高</span>'
       + '<input class="vl-input vl-input--sm tl-num" type="number" data-step="resize" data-key="height" value="' + esc(v.height) + '" min="16" step="2"></label>';
@@ -249,7 +249,7 @@
     } else if (type === 'file') {
       input = '<span class="tl-field__row">'
         + '<input class="vl-input vl-input--sm tl-path" type="text" data-step="' + stepId + '" data-key="' + sc.key + '" value="' + esc(v) + '" placeholder="选择文件…">'
-        + '<button type="button" class="tl-mini" data-pick="' + stepId + ':' + sc.key + '">' + iconEl('image', 14) + '选择</button>'
+        + '<button type="button" class="tl-mini vl-btn" data-pick="' + stepId + ':' + sc.key + '">' + iconEl('image', 14) + '选择</button>'
         + '</span>';
     } else {
       input = '<input class="vl-input vl-input--sm tl-path" type="text" data-step="' + stepId + '" data-key="' + sc.key + '" value="' + esc(v) + '">';

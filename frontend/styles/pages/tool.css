@@ -108,23 +108,34 @@
     .tl-path { min-width: 0; }
     .tl-num { width: 84px; }
     /* 转分辨率的锁链按钮：锁定=主题色竖链，解绑=灰链 */
-    .tl-link {
-      display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
-      width: 26px; height: 25px; border-radius: var(--vl-static-radius-6);
-      border: 1px solid var(--vl-alias-border-neutral-l2); background: transparent; color: var(--vl-alias-text-tertiary);
-      cursor: pointer; transition: color .15s ease, border-color .15s ease;
-    }
-    .tl-link:hover { background: var(--vl-alias-bg-overlay-l1); }
+.tl-link {
+  --vl-btn-h: 25px;
+  --vl-btn-px: 0;
+  --vl-btn-radius: var(--vl-static-radius-6);
+  --vl-btn-bg: transparent;
+  --vl-btn-color: var(--vl-alias-text-tertiary);
+  --vl-btn-border: var(--vl-alias-border-neutral-l2);
+  --vl-btn-bg-hover: var(--vl-alias-bg-overlay-l1);
+  --vl-btn-bg-active: var(--vl-alias-bg-overlay-l2);
+  width: 26px;   /* 非正方形按钮，宽度单独给 */
+  flex-shrink: 0;
+}
     .tl-link svg { transition: transform .15s ease; }
     .tl-link--on { color: var(--vl-alias-brand-500); border-color: var(--vl-alias-brand-500); }
     .tl-link--on svg { transform: rotate(-45deg); }
-    .tl-mini {
-      display: inline-flex; align-items: center; gap: 4px;
-      height: 25px; padding: 0 8px; border-radius: var(--vl-static-radius-6); border: 1px solid var(--vl-alias-border-neutral-l2);
-      background: transparent; color: var(--vl-alias-text-secondary); cursor: pointer; font-size: var(--vl-type-body-xs-size);
-      font-family: var(--vl-font-family-base);
-    }
-    .tl-mini:hover { background: var(--vl-alias-bg-overlay-l1); color: var(--vl-alias-text-default-hover); }
+.tl-mini {
+  --vl-btn-h: 25px;
+  --vl-btn-px: 8px;
+  --vl-btn-gap: 4px;
+  --vl-btn-fs: var(--vl-type-body-xs-size);
+  --vl-btn-radius: var(--vl-static-radius-6);
+  --vl-btn-bg: transparent;
+  --vl-btn-color: var(--vl-alias-text-secondary);
+  --vl-btn-border: var(--vl-alias-border-neutral-l2);
+  --vl-btn-bg-hover: var(--vl-alias-bg-overlay-l1);
+  --vl-btn-color-hover: var(--vl-alias-text-default-hover);
+  --vl-btn-bg-active: var(--vl-alias-bg-overlay-l2);
+}
     .tl-ro { padding: 4px 0; font-size: var(--vl-type-body-sm-size); color: var(--vl-alias-text-tertiary); line-height: 1.6; }
 
     /* ── 输出设置 ── */
