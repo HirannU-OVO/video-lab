@@ -453,6 +453,8 @@ body {
   --vl-btn-bg-hover: var(--vl-alias-bg-base-tertiary);
   --vl-btn-color-hover: var(--vl-alias-text-default);
   --vl-btn-border-hover: var(--vl-alias-border-neutral-l3);
+  --vl-btn-lift-hover: 0;   /* 拖拽把柄不上浮（会与拖拽手感冲突） */
+  --vl-btn-lift-active: 0;
 }
 
 /* 左侧栏滚动条：隐藏（不占位、不显示），滚动功能保留 */
@@ -558,6 +560,9 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   --vl-btn-lift-hover: -1px;
   --vl-btn-lift-active: 0;
   --vl-btn-shadow-hover: 0 4px 12px color-mix(in srgb, var(--vl-alias-text-default) 22%, transparent);
+  /* 悬浮/按下配色：与同步状态的侧栏拖拽条同档 */
+  --vl-btn-bg-hover: var(--vl-alias-bg-base-tertiary);
+  --vl-btn-color-hover: var(--vl-alias-text-default);
 }
 .preview-collapse-round .preview-collapse__icon,
 .preview-collapse-round svg { width: 12px; height: 12px; }
@@ -631,6 +636,9 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   --vl-btn-shadow: 0 2px 8px color-mix(in srgb, var(--vl-alias-text-default) 14%, transparent);
   --vl-btn-py: 0;
   --vl-btn-px: 0;
+  /* 悬浮/按下配色：与同步状态的侧栏拖拽条同档 */
+  --vl-btn-bg-hover: var(--vl-alias-bg-base-tertiary);
+  --vl-btn-color-hover: var(--vl-alias-text-default);
 }
 .sidebar__new-config svg {
   display: block; /* 图标以块级参与 flex 居中，避免内联基线导致的竖向偏移 */

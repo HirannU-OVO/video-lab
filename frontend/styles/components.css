@@ -47,6 +47,10 @@
        给「带内阴影/外发光」的按钮（如皮肤里的金边按钮）用。 */
     --vl-btn-shadow: none;
     --vl-btn-shadow-hover: none;
+    /* 按下投影：默认跟随悬浮投影。
+       ⚠ :active 必须把 hover 设过的属性全部覆盖一遍，否则鼠标按住后移出按钮时
+         :hover 失效、未覆盖的属性（如 box-shadow）会突然回退 → 视觉上闪一下。 */
+    --vl-btn-shadow-active: var(--vl-btn-shadow-hover);
     /* ── 全部视觉状态的唯一出口 ────────────────────────────────
        ⚠ 按钮本体的 background / border-color / color **只消费下面这些变量**，
          任何变体、页面类、皮肤都**不允许再写 background / border / color 本身**。
@@ -69,11 +73,19 @@
     --vl-btn-color: var(--vl-alias-text-default);
     --vl-btn-bg-hover: var(--vl-alias-bg-base-secondary);
     --vl-btn-border-hover: var(--vl-btn-border);
+    /* 悬浮/按下时的边框宽度（默认沿用常态宽度）。
+       提供变量是为了让「悬浮去掉边框」这类需求也能走变量，而不是在皮肤里写 border: none
+       —— 那样会在鼠标移出时 :hover 失效、边框突然回来，看起来像闪一下。 */
+    --vl-btn-border-width-hover: var(--vl-btn-border-width);
     /* 文字色也走变量：皮肤常需要「悬浮时文字变亮」（如女仆皮肤的浅金→亮金），
        若只允许改背景，皮肤就只能用类名覆盖 color —— 那正是要消灭的写法。 */
     --vl-btn-color-hover: var(--vl-btn-color);
-    --vl-btn-bg-active: var(--vl-alias-bg-base-tertiary);
+    /* ⚠ 默认「按下 = 悬浮」，只有需要按下更深的按钮才自己覆盖。
+       历史上 active 默认取 bg-base-tertiary，与 hover 的 bg-base-secondary 不同，
+       导致按下的瞬间背景突变（看起来像闪一下）。 */
+    --vl-btn-bg-active: var(--vl-btn-bg-hover);
     --vl-btn-border-active: var(--vl-btn-border-hover);
+    --vl-btn-border-width-active: var(--vl-btn-border-width-hover);
     --vl-btn-color-active: var(--vl-btn-color-hover);
     /* 选中态三要素（aria-pressed / aria-checked）：
        默认取品牌色实底（与切换按钮原有的手写规则一致，白蓝/黑橙观感不变）；
@@ -111,15 +123,23 @@
   .vl-btn:hover:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) {
     background: var(--vl-btn-bg-hover);
     border-color: var(--vl-btn-border-hover);
+    border-width: var(--vl-btn-border-width-hover);
     color: var(--vl-btn-color-hover);
     transform: translateY(var(--vl-btn-lift-hover));
     box-shadow: var(--vl-btn-shadow-hover);
   }
-  .vl-btn:active:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) {
+  /* 按下态：:active 只在「指针仍在元素内」时生效 —— 鼠标按住拖出按钮，
+     Chrome 会取消 :active，样式立刻回退到常态（看起来闪一下）。
+     所以再用 JS 维护一个 .is-pressed 类（pointerdown 加、全局 pointerup 移除），
+     让「按住后无论指针在哪」都保持同一视觉。 */
+  .vl-btn:active:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)),
+  .vl-btn.is-pressed:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) {
     background: var(--vl-btn-bg-active);
     border-color: var(--vl-btn-border-active);
+    border-width: var(--vl-btn-border-width-active);
     color: var(--vl-btn-color-active);
     transform: translateY(var(--vl-btn-lift-active));
+    box-shadow: var(--vl-btn-shadow-active);
   }
   /* 悬浮浮起变体：主窗口配置栏那类「彩色实色 + 悬浮上浮 + 投影」的按钮用它。
      ⚠ 颜色由各自的语义变体（--primary / 页面自定义色）给，这里只管「浮起」这一件事。 */

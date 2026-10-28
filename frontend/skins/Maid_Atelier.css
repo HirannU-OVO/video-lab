@@ -402,20 +402,23 @@ html[data-skin="Maid_Atelier"] [data-region="sidebar__root"] > [data-region="sid
 }
 /* 置顶按钮：移到蕾丝横幅上方（bottom 大于 swag 高度，不再与之重叠），
    恢复初始底色（同基础样式背景色 + 投影）+ 淡金色亮边框以融入蓝金主题 */
+/* 置顶悬浮钮：外观走基线变量（原先写属性，导致移出按钮时 hover 失效回退） */
 html[data-skin="Maid_Atelier"] [data-region="sidebar__root"] > [data-region="sidebar__footer"] #sidebarToTop {
-  left: 15px;
-  bottom: calc(var(--vl-skin-maid-swag-height, 72px) + 73px);
-  background: var(--vl-alias-bg-base-default);
-  border: 1px solid rgba(242, 217, 143, 0.55);
-  box-shadow: 0 4px 14px color-mix(in srgb, var(--vl-alias-text-default) 12%, transparent),
-    inset 0 0 4px rgba(242, 217, 143, 0.12);
+  --vl-btn-bg: var(--vl-alias-bg-base-default);
+  --vl-btn-border: rgba(242, 217, 143, 0.55);
+  --vl-btn-shadow: 0 4px 14px color-mix(in srgb, var(--vl-alias-text-default) 12%, transparent),     inset 0 0 4px rgba(242, 217, 143, 0.12);
+  /* ⚠ hover/active 变量必须定义在**基础规则**里，不能写在 :hover 里 ——
+     写在 :hover 里时，鼠标移出按钮该变量即失效，
+     而 --vl-btn-bg-active 默认引用它，于是「按住拖出」会回退成常态色（闪一下）。
+     变量本身不会主动生效，只有 :hover / .is-pressed 时才被消费。 */
+  --vl-btn-bg-hover: var(--vl-alias-brand-500);
+  --vl-btn-color-hover: var(--vl-alias-text-onaccent);
+  --vl-btn-border-width-hover: 0;
 }
 /* 置顶按钮 hover：避免被上方 id 固定底色规则压制，显式恢复主题底色 hover */
-html[data-skin="Maid_Atelier"] [data-region="sidebar__root"] > [data-region="sidebar__footer"] #sidebarToTop:hover {
-  background: var(--vl-alias-brand-500);
-  color: var(--vl-alias-text-onaccent);
-  border: none;
-}
+/* ⚠ 只声明变量：写 background/color/border 会在鼠标移出时让 :hover 失效、
+   样式回退到基础态（表现为「按住拖动时按钮闪一下」）。
+   改成变量后 :active 会自动跟随 --vl-btn-*-hover（基线默认 active = hover）。 */
 /* 菜单按钮 → 列表下方设置名片（母本 [data-maid-sidebar-footer] [data-slot='sidebar.settings']
    样式：border-image 金框饰图 + 左右 34px 边框 + 中央 fill + 米色 Georgia 文字） */
 html[data-skin="Maid_Atelier"] [data-region="sidebar__root"] > [data-region="sidebar__footer"] #sidebarMenuBtn {
@@ -447,6 +450,12 @@ html[data-skin="Maid_Atelier"] [data-region="sidebar__root"] > [data-region="sid
   letter-spacing: 0.02em;
   filter: drop-shadow(0 4px 10px rgba(2, 8, 28, 0.26));
   transition: color 150ms ease, filter 150ms ease, transform 150ms ease;
+  /* ⚠ hover/active 变量必须定义在**基础规则**里，不能写在 :hover 里 ——
+     写在 :hover 里时，鼠标移出按钮该变量即失效，
+     而 --vl-btn-bg-active 默认引用它，于是「按住拖出」会回退成常态色（闪一下）。
+     变量本身不会主动生效，只有 :hover / .is-pressed 时才被消费。 */
+  --vl-btn-color-hover: #fff8e8;
+  --vl-btn-bg-hover: transparent;
 }
 html[data-skin="Maid_Atelier"] [data-region="sidebar__root"] > [data-region="sidebar__footer"] #sidebarMenuBtn::after {
   content: '菜单';
@@ -456,12 +465,10 @@ html[data-skin="Maid_Atelier"] [data-region="sidebar__root"] > [data-region="sid
   color: #e8c77f;
   filter: drop-shadow(0 1px 2px rgba(2, 7, 24, 0.62));
 }
+/* ⚠ 文字/底色走变量；border-image 与 filter 令牌表达不了，保留属性 */
 html[data-skin="Maid_Atelier"] [data-region="sidebar__root"] > [data-region="sidebar__footer"] #sidebarMenuBtn:hover {
-  color: #fff8e8;
-  background: none;
   border-image-source: url('assets/sidebar-settings-frame.webp');
   filter: brightness(1.1) drop-shadow(0 5px 12px rgba(2, 8, 28, 0.3));
-  transform: translateY(-1px);
 }
 /* 二级菜单（sidebar-menu）置顶：皮肤把菜单迁移到 sidebarRoot 直接子后，
    高于 corners(z4)/footer(z8)，不被边缘蕾丝装饰遮住 */

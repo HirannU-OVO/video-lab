@@ -503,3 +503,26 @@
   }
   root.VL.ui.toastRender = toastRender;
 })(typeof window !== 'undefined' ? window : globalThis);
+
+
+  /* 按下态托管：:active 在鼠标拖出元素后会被浏览器取消，导致「按住拖动」时按钮闪一下。
+     这里用 pointerdown 标记 + 全局 pointerup 清除，保证按住期间（无论指针在哪）样式一致。
+     ⚠ 全局监听 pointerup / pointercancel，即使指针已离开按钮也能捕获到松手。 */
+  (function bindPressedState() {
+    if (typeof document === "undefined") return;
+    function clearAll() {
+      var list = document.querySelectorAll(".is-pressed");
+      for (var i = 0; i < list.length; i++) list[i].classList.remove("is-pressed");
+    }
+    document.addEventListener("pointerdown", function (e) {
+      var el = e.target && e.target.closest ? e.target.closest(".vl-btn") : null;
+      if (!el) return;
+      if (el.hasAttribute("disabled") || el.getAttribute("aria-disabled") === "true") return;
+      if (el.classList.contains("is-vl-disabled")) return;
+      el.classList.add("is-pressed");
+    }, true);
+    document.addEventListener("pointerup", clearAll, true);
+    document.addEventListener("pointercancel", clearAll, true);
+    /* 兜底：窗口失焦（如 Alt+Tab）时也清除，避免卡在按下态 */
+    window.addEventListener("blur", clearAll);
+  })();
