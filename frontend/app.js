@@ -56,8 +56,8 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     if (p) h += '<div class="config-watermark__path" title="' + escapeHtml(p) + '">' + escapeHtml(baseNameNoExt(p)) + '</div>';
     else h += '<div class="config-watermark__path config-watermark__path--empty" data-region="watermark-path" data-empty="1" title="点击更换水印">未设置水印</div>';
     if (showActions) {
-      h += '<button type="button" class="config-watermark__btn' + (p ? '' : ' is-vl-disabled') + '" data-wm="open" title="打开文件"' + (p ? '' : ' data-why="未设置主流水印"') + '>' + icon('image', 15) + '</button>';
-      h += '<button type="button" class="config-watermark__btn' + (p ? '' : ' is-vl-disabled') + '" data-wm="folder" title="打开文件夹"' + (p ? '' : ' data-why="未设置主流水印"') + '>' + icon('folder-open', 15) + '</button>';
+      h += '<button type="button" class="config-watermark__btn vl-btn vl-btn--icon' + (p ? '' : ' is-vl-disabled') + '" data-wm="open" title="打开文件"' + (p ? '' : ' data-why="未设置主流水印"') + '>' + icon('image', 15) + '</button>';
+      h += '<button type="button" class="config-watermark__btn vl-btn vl-btn--icon' + (p ? '' : ' is-vl-disabled') + '" data-wm="folder" title="打开文件夹"' + (p ? '' : ' data-why="未设置主流水印"') + '>' + icon('folder-open', 15) + '</button>';
     }
     return h + '</div>';
   }
@@ -602,12 +602,12 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
             lastGroupKey = groupKey;
           }
           var dupCls = (state.highlightDup && txt.dup) ? ' tree-txt-item--dup' : '';
-          html += '<div class="tree-txt-item' + (isActive ? ' tree-txt-item--active' : '') + dupCls + '" data-region="tree-item"' + (isActive ? ' data-state="active"' : '') + ' data-project="' + escapeHtml(proj.name) + '" data-name="' + escapeHtml(txt.name) + '">';
+          html += '<div class="tree-txt-item vl-btn vl-btn--ghost' + (isActive ? ' tree-txt-item--active' : '') + dupCls + '" data-region="tree-item"' + (isActive ? ' data-state="active"' : '') + ' data-project="' + escapeHtml(proj.name) + '" data-name="' + escapeHtml(txt.name) + '">';
           html += icon('file-text', 16, 'tree-txt-item__icon');
-          html += '<span class="tree-txt-item__name">' + escapeHtml(txt.name) + '</span>';
+          html += '<span class="tree-txt-item vl-btn vl-btn--ghost__name">' + escapeHtml(txt.name) + '</span>';
           // 复刻子项无配置日期，不显示 latest；徽章显示其日志数
-          if (!isReplica) html += '<span class="tree-txt-item__date">' + escapeHtml(txt.latest) + '</span>';
-          html += '<span class="tree-txt-item__badge">' + txt.count + '</span></div>';
+          if (!isReplica) html += '<span class="tree-txt-item vl-btn vl-btn--ghost__date">' + escapeHtml(txt.latest) + '</span>';
+          html += '<span class="tree-txt-item vl-btn vl-btn--ghost__badge">' + txt.count + '</span></div>';
         });
         html += '</div>';
       }
@@ -957,7 +957,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     var html = '<div class="config-editor' + (silent ? ' config-editor--static' : '') + '" data-region="config-editor"' + (silent ? ' data-static="1"' : '') + '>';
     html += '<div class="config-editor__col config-editor__col--paths">';
     html += '<div class="config-path-subheader"><span class="config-path-subheader__sort">排序</span><span class="config-path-subheader__nopoll">取消轮询</span><span class="config-path-subheader__path">路径</span><span class="config-path-subheader__check">预检测结果'
-      + '<button type="button" class="config-path-subheader__refresh" id="btnRefreshPrecache" title="刷新预缓存：更新变化的视频并清理失效缓存（含批量与遮罩素材）">' + icon('refresh-cw', 12) + '</button>'
+      + '<button type="button" class="config-path-subheader__refresh vl-btn vl-btn--icon" id="btnRefreshPrecache" title="刷新预缓存：更新变化的视频并清理失效缓存（含批量与遮罩素材）">' + icon('refresh-cw', 12) + '</button>'
       + '</span><span class="config-path-subheader__browse"></span><span class="config-path-subheader__open"></span><span class="config-path-subheader__remove"></span></div>';
     html += '<div class="config-editor__path-list" id="pathList">';
     folders.forEach(function (f, idx) {
@@ -968,10 +968,10 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       html += '<span class="config-path-row__precheck" data-index="' + idx + '"><span class="config-path-row__badge precheck--pending">检测中…</span></span>';
       html += '<button class="config-path-row__browse vl-btn vl-btn--icon" title="修改路径">' + icon('pencil', 14) + '</button>';
       html += '<button class="config-path-row__open vl-btn vl-btn--icon" title="打开文件夹">' + icon('folder-open', 14) + '</button>';
-      html += '<button class="config-path-row__remove" title="移除路径">' + icon('x', 14) + '</button></div>';
+      html += '<button class="config-path-row__remove vl-btn vl-btn--icon" title="移除路径">' + icon('x', 14) + '</button></div>';
     });
     html += '</div>';
-    html += '<button class="config-path-add" id="btnAddPath" title="添加路径">' + icon('plus', 14) + '添加路径</button></div>';
+    html += '<button class="config-path-add vl-btn vl-btn--sm" id="btnAddPath" title="添加路径">' + icon('plus', 14) + '添加路径</button></div>';
     html += '<div class="config-resizer" data-region="config-resizer"></div>';
     html += '<div class="config-editor__bottom">';
     html += '<div class="config-editor__col config-editor__col--exclude">';
@@ -1537,7 +1537,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
   }
   function pathRowHtml(value) {
     var v = value == null ? '' : String(value);
-    return '<span class="config-path-row__drag" draggable="true" title="按住拖动排序">' + icon('grip-vertical', 14) + '</span><label class="config-path-row__checkbox" title="勾选 = 不轮询（添加 = 前缀）"><input type="checkbox" class="config-path-row__check"><span class="config-path-row__check-mark"></span></label><input type="text" class="config-path-row__input" value="' + escapeHtml(v) + '" title="' + escapeHtml(v) + '"><span class="config-path-row__precheck"><span class="config-path-row__badge precheck--pending">检测中…</span></span><button class="config-path-row__browse vl-btn vl-btn--icon" title="修改路径">' + icon('pencil', 14) + '</button><button class="config-path-row__open vl-btn vl-btn--icon" title="打开文件夹">' + icon('folder-open', 14) + '</button><button class="config-path-row__remove" title="移除路径">' + icon('x', 14) + '</button>';
+    return '<span class="config-path-row__drag" draggable="true" title="按住拖动排序">' + icon('grip-vertical', 14) + '</span><label class="config-path-row__checkbox" title="勾选 = 不轮询（添加 = 前缀）"><input type="checkbox" class="config-path-row__check"><span class="config-path-row__check-mark"></span></label><input type="text" class="config-path-row__input" value="' + escapeHtml(v) + '" title="' + escapeHtml(v) + '"><span class="config-path-row__precheck"><span class="config-path-row__badge precheck--pending">检测中…</span></span><button class="config-path-row__browse vl-btn vl-btn--icon" title="修改路径">' + icon('pencil', 14) + '</button><button class="config-path-row__open vl-btn vl-btn--icon" title="打开文件夹">' + icon('folder-open', 14) + '</button><button class="config-path-row__remove vl-btn vl-btn--icon" title="移除路径">' + icon('x', 14) + '</button>';
   }
   function addPathRow(path) {
     var p = String(path == null ? '' : path).trim();

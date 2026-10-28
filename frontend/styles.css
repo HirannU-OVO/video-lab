@@ -925,19 +925,24 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
 .tree-project__name.is-filled .tree-project__icon { color: var(--vl-alias-text-onaccent); }
 
 /* TXT tree item (simplified, no version tree) */
+/* 配置文件项：外观走 .vl-btn 变量（状态由基线提供），缩进与间距属布局 */
 .tree-txt-item {
-  display: flex;
-  align-items: center;
-  gap: var(--vl-static-spacer-6);
-  padding: var(--vl-static-spacer-8) var(--vl-static-spacer-10);
+  --vl-btn-h: auto;
+  --vl-btn-py: var(--vl-static-spacer-8);
+  --vl-btn-px: var(--vl-static-spacer-10);
+  --vl-btn-fs: 13px;
+  --vl-btn-gap: var(--vl-static-spacer-6);
+  --vl-btn-radius: var(--vl-static-radius-6);
+  --vl-btn-border-width: 0;
+  --vl-btn-bg: transparent;
+  --vl-btn-color: var(--vl-alias-text-secondary);
+  --vl-btn-bg-hover: var(--vl-alias-bg-base-tertiary);
+  --vl-btn-color-hover: var(--vl-alias-text-default);
   margin-left: var(--vl-static-spacer-20);
-  border-radius: var(--vl-static-radius-6);
-  font-size: 13px;
-  line-height: 20px;
-  color: var(--vl-alias-text-secondary);
-  cursor: pointer;
-  user-select: none;
-  transition: background 0.1s ease;
+  justify-content: flex-start;
+  /* ⚠ 必须保留 display:flex：父容器是 column flex + stretch，
+     靠它撑满整行；.vl-btn 是 inline-flex，改成它会让列表项按内容收缩。 */
+  display: flex;
 }
 /* 名称排序按首字母、时间排序按月份分组：左侧大写字母/月份标签 + 向右延伸的分组线 */
 .tree-txt-group {
@@ -984,21 +989,22 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   from { opacity: 0; transform: translateY(-3px); }
   to { opacity: 1; transform: none; }
 }
-.tree-txt-item:hover { background: var(--vl-alias-bg-base-tertiary); }
+/* 选中态：改为设基线变量 */
 .tree-txt-item--active {
-  background: var(--vl-alias-brand-100);
-  color: var(--vl-alias-brand-600);
-  font-weight: var(--vl-font-font-weight-medium);
+  --vl-btn-bg: var(--vl-alias-brand-100);
+  --vl-btn-color: var(--vl-alias-brand-600);
+  --vl-btn-fw: var(--vl-font-font-weight-medium);
+  --vl-btn-bg-hover: var(--vl-alias-brand-200);
 }
-.tree-txt-item--active:hover { background: var(--vl-alias-brand-200); }
+/* 首字母索引高亮：改为设基线变量（outline 为形态差异保留） */
 .tree-txt-item--az {
-  background: var(--vl-alias-brand-100);
-  color: var(--vl-alias-brand-600);
-  font-weight: var(--vl-font-font-weight-medium);
+  --vl-btn-bg: var(--vl-alias-brand-100);
+  --vl-btn-color: var(--vl-alias-brand-600);
+  --vl-btn-fw: var(--vl-font-font-weight-medium);
+  --vl-btn-bg-hover: var(--vl-alias-brand-200);
   outline: 1px solid var(--vl-alias-brand-300);
   outline-offset: -1px;
 }
-.tree-txt-item--az:hover { background: var(--vl-alias-brand-200); }
 .tree-txt-item--az .tree-txt-item__icon { color: var(--vl-alias-brand-600); }
 .tree-txt-item--az .tree-txt-item__badge {
   background: var(--vl-alias-brand-200);
@@ -2645,55 +2651,42 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   flex-shrink: 0;
   color: var(--vl-alias-text-tertiary);
 }
+/* 重复配置警告：改为设基线变量 */
 .tree-txt-item--dup {
-  background: var(--vl-alias-status-alert-surface-l1);
-}
-.tree-txt-item--dup:hover {
-  background: var(--vl-alias-status-alert-surface-l2);
+  --vl-btn-bg: var(--vl-alias-status-alert-surface-l1);
+  --vl-btn-bg-hover: var(--vl-alias-status-alert-surface-l2);
 }
 .tree-txt-item--dup .tree-txt-item__name {
   color: var(--vl-alias-status-warning-default);
 }
 
+/* 「添加路径」虚线按钮：外观走 .vl-btn 变量；虚线是形态差异，保留 border-style */
 .config-path-add {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--vl-static-spacer-4);
-  height: 32px;
+  --vl-btn-h: 32px;
+  --vl-btn-px: 0;
+  --vl-btn-gap: var(--vl-static-spacer-4);
+  --vl-btn-radius: var(--vl-static-radius-6);
+  --vl-btn-bg: transparent;
+  --vl-btn-border: var(--vl-alias-border-neutral-l2);
+  --vl-btn-color: var(--vl-alias-text-secondary);
+  --vl-btn-bg-hover: var(--vl-alias-brand-100);
+  --vl-btn-border-hover: var(--vl-alias-brand-500);
+  --vl-btn-color-hover: var(--vl-alias-brand-500);
   margin: var(--vl-static-spacer-8);
-  border: 1px dashed var(--vl-alias-border-neutral-l2);
-  border-radius: var(--vl-static-radius-6);
-  background: transparent;
-  color: var(--vl-alias-text-tertiary);
-  font-size: var(--vl-type-body-md-size);
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: all 0.1s ease;
-}
-.config-path-add:hover {
-  border-color: var(--vl-alias-brand-500);
-  color: var(--vl-alias-brand-500);
-  background: var(--vl-alias-brand-100);
+  border-style: dashed;
 }
 
+/* 图标按钮：外观走 .vl-btn 变量；hover 用危险色 */
 .config-path-row__remove {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border: none;
-  border-radius: var(--vl-static-radius-4);
-  background: transparent;
-  color: var(--vl-alias-text-tertiary);
-  cursor: pointer;
+  --vl-btn-h: 20px;
+  --vl-btn-px: 0;
+  --vl-btn-radius: var(--vl-static-radius-4);
+  --vl-btn-border-width: 0;
+  --vl-btn-bg: transparent;
+  --vl-btn-color: var(--vl-alias-text-tertiary);
+  --vl-btn-bg-hover: var(--vl-alias-status-error-surface-l1);
+  --vl-btn-color-hover: var(--vl-alias-status-error-default);
   flex-shrink: 0;
-  transition: all 0.1s ease;
-}
-.config-path-row__remove:hover {
-  background: var(--vl-alias-status-error-surface-l1);
-  color: var(--vl-alias-status-error-default);
 }
 
 .log-entry__replica {
