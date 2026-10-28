@@ -243,11 +243,13 @@
   --vl-btn-border-active: var(--vl-alias-bg-invert-active);
   }
   .vl-btn--invert[disabled],
-  .vl-btn--invert[aria-disabled="true"] {
-    background: var(--vl-alias-bg-invert-disabled);
-    border-color: transparent;
-    color: var(--vl-alias-text-disabled);
-  }
+.vl-btn--invert[aria-disabled="true"] {
+  /* 禁用态：改为声明基线禁用变量，不再直接写属性 ——
+     否则页面/皮肤对 --invert 的禁用色定制会永久失效。 */
+  --vl-btn-bg-disabled: var(--vl-alias-bg-invert-disabled);
+  --vl-btn-border-disabled: transparent;
+  --vl-btn-color-disabled: var(--vl-alias-text-disabled);
+}
 
   .vl-btn--tertiary {
   --vl-btn-bg: transparent;

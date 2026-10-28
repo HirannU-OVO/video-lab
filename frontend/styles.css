@@ -257,7 +257,6 @@ body {
      整体右移一半宽度，使**标题本身**保持视觉居中（视频处理入口在最左角，不参与此处计算） */
   transform: translateX(calc(-50% + 48px));
 }
-.win-titlebar__mode { width: 88px; justify-content: flex-start; }
 [data-main-titlebar] .win-titlebar__title {
   position: static;
   transform: none;
@@ -546,7 +545,6 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   position: absolute;
   top: 5px;
   right: 8px;
-  width: 26px;
   --vl-btn-h: 26px;
   --vl-btn-border: var(--vl-alias-border-neutral-l2);
   --vl-btn-radius: 50%;
@@ -3376,7 +3374,6 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   padding: 16px;
   pointer-events: none; /* 提示层不拦截点击，列表/按钮均可交互 */
 }
-.boot-guide__btn { pointer-events: auto; }
 .boot-guide__inner {
   display: flex;
   flex-direction: column;
@@ -4224,5 +4221,3 @@ button.is-vl-disabled {
 
 /* 菜单按钮：图标 + 文字，不能用正方形（--icon）形态 ——
    历史上与置顶按钮共用 .sidebar-menu-btn，导致文字被 38×38 的方块挤爆，
-   这也是「有/无女仆皮肤长得不一样」的根源（皮肤用 ::after 硬塞文字）。 */
-/* 形态变量（外观仍由 .vl-btn 基线提供） */
