@@ -1876,6 +1876,8 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
 .config-btn {
   --vl-btn-fs: var(--vl-type-body-md-size);
   --vl-btn-lh: normal;
+  /* 底栏操作按钮文字比常规按钮粗一档（正式版即 500） */
+  --vl-btn-fw: var(--vl-font-font-weight-medium);
 }
 /* 配置栏按钮 hover：统一向上轻抬（与状态色变亮叠加） */
 /* .config-btn:hover 的上浮反馈已由基线 .vl-btn--lift 提供（上移 1px + 投影） */

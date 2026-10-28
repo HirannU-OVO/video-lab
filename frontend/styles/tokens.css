@@ -472,13 +472,12 @@
   --vl-static-icon-size-24: 24px;
 
   /* font */
-  /* 主字体：Arial 优先。
-   · 不再依赖 macOS 专属字体名（SF Pro Text），避免「漏设就退化到别处」的不一致；
-   · 中文交给系统黑体（Windows 微软雅黑 / macOS 苹方），西文统一 Arial；
-   · 与 <button> 的 UA 默认字体一致，裸按钮也不再显得突兀。 */
---vl-font-family-base: Arial, "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", sans-serif;
-  --vl-font-family-heading: Arial, "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", sans-serif;
-  --vl-font-font-family-metric: Arial, "Microsoft YaHei", "PingFang SC", sans-serif;
+  /* 主字体。
+   ⚠ 这里的首选名是 macOS 字体，Windows 上不存在 —— 会按 font-family 列表逐级 fallback
+     （system-ui → Segoe UI）。**声明值不等于实际渲染字体**，改这几个名字会真实改变观感。 */
+--vl-font-family-base: "SF Pro Text", "PingFang SC", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --vl-font-family-heading: "SF Pro", "PingFang SC", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --vl-font-font-family-metric: "Inter", "SF Pro Text", "PingFang SC", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --vl-font-family-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --vl-font-font-weight-default: 400;
   --vl-font-font-weight-code: 450;

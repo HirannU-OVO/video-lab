@@ -29,15 +29,15 @@
     /* 行高：默认 1（固定高度按钮靠 --vl-btn-h 撑）。
        内容撑高的整行元素（列表项/配置项）设 --vl-btn-h: auto 后，
        行高直接决定内容盒高度 —— 不设的话会比原设计矮一截。 */
-    --vl-btn-lh: 1;
+    --vl-btn-lh: normal;   /* 与未设样式的按钮一致：normal，不用 1（1 会把行距压紧、内容撑高的按钮变矮） */
     --vl-btn-px: 12px;
-    --vl-btn-fs: 13px;
+    --vl-btn-fs: 13.3333px;   /* = 40/3，Chrome 给 <button> 的 UA 默认字号；写 13px 会比正式版小一点 */
     /* 字重：默认 600。
        ⚠ 与正式版的关系：正式版的 .config-btn 没声明 font-family，按钮回落到 <button> 的
          UA 默认字体（Arial），Arial 在 12px/500 下比我们的 SF Pro Text 明显粗一档。
          我们保留 font-family: inherit（与全站统一，不让按钮单独用 Arial），
          改为把字重提高半档（600 实测偏粗，550 最接近）。 */
-    --vl-btn-fw: 500;
+    --vl-btn-fw: 500;   /* 与正式版 .config-btn 一致（500）。常规按钮若需 400 由页面类覆盖 */
     /* 悬浮 / 按下的**位移与投影**反馈：默认无（普通按钮不该跳），
        需要「悬浮浮起」观感的用 --lift 变体，或由页面/皮肤给变量。
        ⚠ 与尺寸、颜色分开：这样「悬浮反馈」是全站一致的能力，各按钮只调数值。 */
@@ -110,7 +110,7 @@
     background: var(--vl-btn-bg);
     color: var(--vl-btn-color);
     box-shadow: var(--vl-btn-shadow);
-    font-family: inherit;
+    font-family: Arial, "Microsoft YaHei", "PingFang SC", sans-serif;   /* 与正式版按钮一致（UA 默认 Arial）；正文仍用主字体令牌 */
     font-size: var(--vl-btn-fs);
     font-weight: var(--vl-btn-fw);
     line-height: var(--vl-btn-lh);
