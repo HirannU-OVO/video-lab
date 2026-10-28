@@ -314,7 +314,8 @@ body {
   -webkit-app-region: no-drag;
 }
 .win-titlebar__mode i,
-.win-titlebar__mode svg { color: var(--vl-alias-brand-500); }
+/* 图标色跟随按钮文字色（用 currentColor），皮肤改按钮色时图标自动跟随 */
+.win-titlebar__mode svg { color: currentColor; }
 .win-titlebar__mode-label { white-space: nowrap; max-width: 76px; overflow: hidden; text-overflow: ellipsis; }
 
 /* 自制标题栏为 fixed 顶层，各窗口容器顶部让位 34px */
@@ -398,7 +399,6 @@ body {
   border-color: var(--vl-alias-brand-200);
   color: var(--vl-alias-brand-600);
 }
-.btn-toggle-dup--active:hover { background: var(--vl-alias-brand-200); }
 
 /* 外观走 .vl-btn 基线变量（原属性值 1:1 转为变量，状态由基线提供） */
 .btn-refresh {
@@ -1188,8 +1188,6 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   --vl-tab-border-hover: var(--vl-alias-border-neutral-l2);
   transition: background 0.12s ease;
 }
-.mode-toggle:disabled { opacity: .5; cursor: not-allowed; color: var(--vl-alias-text-disabled); background: var(--vl-alias-bg-base-secondary); }
-.mode-toggle:disabled:hover { background: var(--vl-alias-bg-base-secondary); }
 .center-top__dates {
   flex: 1;
   padding: var(--vl-static-spacer-8) var(--vl-static-spacer-12);
@@ -3566,10 +3564,18 @@ body[data-mask="1"] .right-panel__subtitle { display: none; }
   white-space: nowrap;
 }
 /* 外观走 .vl-btn 基线变量（原属性值 1:1 转为变量，状态由基线提供） */
+/* 遮罩配置小按钮：外观走 .vl-btn 变量 */
 .mask-config__addbtn {
-  --vl-btn-h: 22px; padding: 0 8px; border-radius: 4px;
-  --vl-btn-border: var(--vl-alias-border-neutral-l2); background: transparent;
-  --vl-btn-color: var(--vl-alias-text-secondary); cursor: pointer;
+  --vl-btn-h: 22px;
+  --vl-btn-px: 8px;
+  --vl-btn-gap: 4px;
+  --vl-btn-radius: 4px;
+  --vl-btn-fs: var(--vl-type-body-xs-size);
+  --vl-btn-border: var(--vl-alias-border-neutral-l2);
+  --vl-btn-bg: transparent;
+  --vl-btn-color: var(--vl-alias-text-secondary);
+  --vl-btn-bg-hover: var(--vl-alias-bg-overlay-l1);
+  --vl-btn-color-hover: var(--vl-alias-text-default);
 }
 .mask-config__hint { font-size: var(--vl-type-body-xs-size); color: var(--vl-alias-text-tertiary); padding: 4px 0 8px; }
 /* 居中大字提示：遮罩主题/日志空态使用（暂无遮罩日志、正在扫描遮罩主题等），放大并水平居中 */
@@ -3630,9 +3636,17 @@ body[data-mask="1"] .right-panel__subtitle { display: none; }
 .mask-folder-row__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: var(--vl-font-font-weight-medium); color: var(--vl-alias-text-default); }
 .mask-folder-row__count { flex-shrink: 0; font-size: var(--vl-type-body-xs-size); color: var(--vl-alias-text-tertiary); font-variant-numeric: tabular-nums; }
 /* 外观走 .vl-btn 基线变量（原属性值 1:1 转为变量，状态由基线提供） */
+/* 圆形删除小按钮：外观走 .vl-btn 变量（圆形是形态差异） */
 .mask-folder-row__del {
-  flex-shrink: 0; width: 20px; height: 20px; padding: 0; border: none; border-radius: 50%;
-  --vl-btn-bg: transparent; color: var(--vl-alias-text-tertiary); cursor: pointer;
+  --vl-btn-h: 20px;
+  --vl-btn-px: 0;
+  --vl-btn-border-width: 0;
+  --vl-btn-radius: 50%;
+  --vl-btn-bg: transparent;
+  --vl-btn-color: var(--vl-alias-text-tertiary);
+  --vl-btn-bg-hover: var(--vl-alias-status-error-surface-l1);
+  --vl-btn-color-hover: var(--vl-alias-status-error-default);
+  flex-shrink: 0;
 }
 .mask-folder-row__arrow {
   flex-shrink: 0; width: 12px; height: 12px;
@@ -3734,9 +3748,16 @@ body[data-mask="1"] .right-panel__subtitle { display: none; }
 /* 遮罩模式：顶部无日期分支，解除 center-top 批量占位的最小高度，消除空栏 */
 body[data-mask="1"] .center-top { min-height: 0; max-height: none; }
 /* 外观走 .vl-btn 基线变量（原属性值 1:1 转为变量，状态由基线提供） */
+/* 图标按钮：外观走 .vl-btn 变量 */
 .mask-bar__pick {
-  width: 26px; height: 26px; padding: 0; border: 1px solid var(--vl-alias-border-neutral-l2); border-radius: 4px;
-  --vl-btn-bg: transparent; color: var(--vl-alias-text-secondary); cursor: pointer;
+  --vl-btn-h: 26px;
+  --vl-btn-px: 0;
+  --vl-btn-radius: 4px;
+  --vl-btn-border: var(--vl-alias-border-neutral-l2);
+  --vl-btn-bg: transparent;
+  --vl-btn-color: var(--vl-alias-text-secondary);
+  --vl-btn-bg-hover: var(--vl-alias-bg-overlay-l1);
+  --vl-btn-color-hover: var(--vl-alias-text-default);
 }
 .mask-bar__hint { color: var(--vl-alias-status-error-default); font-size: var(--vl-type-body-md-size); font-weight: var(--vl-font-font-weight-regular); }
 
@@ -3909,9 +3930,17 @@ body[data-mask="1"] .center-top { min-height: 0; max-height: none; }
 .mask-log-entry__head { display: flex; align-items: center; gap: 6px; }
 .mask-log-entry__video { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--vl-type-body-xs-size); color: var(--vl-alias-text-default); }
 /* 外观走 .vl-btn 基线变量（原属性值 1:1 转为变量，状态由基线提供） */
+/* 圆形删除小按钮：外观走 .vl-btn 变量 */
 .mask-log-entry__del {
-  flex-shrink: 0; width: 18px; height: 18px; padding: 0; border: none; border-radius: 50%;
-  --vl-btn-bg: transparent; color: var(--vl-alias-text-tertiary); cursor: pointer;
+  --vl-btn-h: 18px;
+  --vl-btn-px: 0;
+  --vl-btn-border-width: 0;
+  --vl-btn-radius: 50%;
+  --vl-btn-bg: transparent;
+  --vl-btn-color: var(--vl-alias-text-tertiary);
+  --vl-btn-bg-hover: var(--vl-alias-status-error-surface-l1);
+  --vl-btn-color-hover: var(--vl-alias-status-error-default);
+  flex-shrink: 0;
 }
 .mask-log-entry__clip {
   display: inline-flex; align-items: center; gap: 4px;
@@ -4052,10 +4081,12 @@ body[data-mask="1"] .center-top { min-height: 0; max-height: none; }
 .toast--warn .toast__text { color: var(--vl-alias-text-default); }
 .toast--info { border-color: var(--vl-skin-toast-border, var(--vl-alias-border-neutral-l2, #d0d0d0)); color: var(--vl-alias-text-default); }
 /* 统一灰显按钮（模拟 disabled 外观，但保留可点 → 点击弹 toast 说明，见 app.js/task.js 全局委托） */
+/* 「灰显但仍可点」语义：改为设基线禁用变量，不再手写外观 */
 button.is-vl-disabled {
-  color: var(--vl-alias-text-disabled);
-  background: transparent;
-  border-color: var(--vl-alias-border-neutral-l2);
+  --vl-btn-bg: transparent;
+  --vl-btn-color: var(--vl-alias-text-disabled);
+  --vl-btn-border: var(--vl-alias-border-neutral-l2);
+  --vl-btn-opacity-disabled: .6;
   opacity: .6;
 }
 
@@ -4085,11 +4116,18 @@ button.is-vl-disabled {
 }
 .vl-pop__actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
 /* 外观走 .vl-btn 基线变量（原属性值 1:1 转为变量，状态由基线提供） */
+/* 气泡弹窗按钮：外观走 .vl-btn 变量（原 padding 5px 14px 用 h:auto + py/px 表达） */
 .vl-pop__btn {
-  --vl-btn-border: var(--vl-alias-border-neutral-l2);
-  --vl-btn-bg: var(--vl-alias-bg-base-default); color: var(--vl-alias-text-default);
+  --vl-btn-h: auto;
   --vl-btn-py: 5px;
-  --vl-btn-px: 14px;;
+  --vl-btn-px: 14px;
+  --vl-btn-fs: 13px;
+  --vl-btn-gap: 0;
+  --vl-btn-radius: 6px;
+  --vl-btn-border: var(--vl-alias-border-neutral-l2);
+  --vl-btn-bg: var(--vl-alias-bg-base-default);
+  --vl-btn-color: var(--vl-alias-text-default);
+  --vl-btn-bg-hover: var(--vl-alias-bg-overlay-l1);
 }
 /* 外观走 .vl-btn 基线变量 */
 .vl-pop__btn--primary {

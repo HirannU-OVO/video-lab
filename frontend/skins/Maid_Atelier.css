@@ -865,13 +865,13 @@ html[data-skin="Maid_Atelier"] .sidebar-resize-btn svg {
 }
 /* 女仆皮肤：三竖线按钮右移 1.5px（净 -8.5px，骑在金边框中间）与实色背景（不透明，不透背景） */
 html[data-skin="Maid_Atelier"] .sidebar-resize-btn {
+  /* 改用变量而非直接写 background，否则会压死页面层的 --vl-btn-bg */
+  --vl-btn-bg: #142a59;
+  --vl-btn-bg-hover: #1c326b;
   transform: translate(-50%, -50%) translateX(-8.5px);
-  background: #142a59;
 }
 /* 女仆皮肤：按钮 hover 同样使用实色，避免常态实色↔hover 半透明渐变切换时出现"丢背景"闪变 */
-html[data-skin="Maid_Atelier"] .sidebar-resize-btn:hover {
-  background: #1c326b;
-}
+/* 悬浮色已在 --vl-btn-bg-hover 声明 */
 /* 界面右上角圆形折叠按钮 + 侧栏「新增配置」按钮：蓝金渐变（同侧栏置顶按钮风格）
    ⚠ 外观全部走基线按钮变量；两者只在「悬浮是否上移」上不同，故分开声明。 */
 html[data-skin="Maid_Atelier"] :is([data-region="preview-collapse"], [data-region="new-config"]) {

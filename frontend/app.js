@@ -902,14 +902,14 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
   // 日志模式下：顶部展示该配置的日志文件日期分支（每日期一个），按钮带 data-date 与 data-file
   function buildLogDateBranches(c, silent) {
     if (!state.activeTxt || !state.activeVersion) { c.innerHTML = ''; return; }
-    c.innerHTML = '<span class="date-branch-btn">…</span>';
+    c.innerHTML = '<span class="date-branch-btn vl-btn vl-btn--sm">…</span>';
     var token = state.activeProject + '\u0000' + state.activeTxt;
     state._logBranchToken = token;
     call('list_log_files', state.activeVersion.path, state.activeTxt).then(function (files) {
       if (state._logBranchToken !== token) return;
       files = files || [];
       state.logFiles = files;
-      if (!files.length) { state.activeLogDate = null; state.activeLogPath = null; c.innerHTML = '<span class="date-branch-btn">无日志</span>'; updateModeToggle(); return; }
+      if (!files.length) { state.activeLogDate = null; state.activeLogPath = null; c.innerHTML = '<span class="date-branch-btn vl-btn vl-btn--sm">无日志</span>'; updateModeToggle(); return; }
       // 定位当前选中分支：从配置切入时按配置文件版本定位当日对应日志；否则按残留定位
       var fromConfig = state._fromConfig; state._fromConfig = false;
       var active = fromConfig ? logTargetForVersion(files) : null;
@@ -923,7 +923,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       }
       // 无配置可定位：默认选中最新一天的日志（后端已按日期降序，首个即最新 —— 复刻与普通项目一致）
       if (!active) active = files.length ? files[0] : null;
-      if (!active) { state.activeLogDate = null; state.activeLogPath = null; c.innerHTML = '<span class="date-branch-btn">无日志</span>'; updateModeToggle(); return; }
+      if (!active) { state.activeLogDate = null; state.activeLogPath = null; c.innerHTML = '<span class="date-branch-btn vl-btn vl-btn--sm">无日志</span>'; updateModeToggle(); return; }
       var had = state.activeLogPath === active.path;
       state.activeLogDate = active.date;
       state.activeLogPath = active.path;
@@ -936,7 +936,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       c.innerHTML = html;
       updateModeToggle();
       if (!had && state.mode === 'log' && state.activeTxt) buildCenterBottom();
-    }).catch(function () { c.innerHTML = '<span class="date-branch-btn">无日志</span>'; updateModeToggle(); });
+    }).catch(function () { c.innerHTML = '<span class="date-branch-btn vl-btn vl-btn--sm">无日志</span>'; updateModeToggle(); });
   }
   function buildCenterBottom(silent) {
     if (maskOn()) return; // 遮罩模式：批量中心内容渲染拒绝
@@ -5412,7 +5412,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     if (!c) return;
     var branches = maskLogBranchList(allLogs);
     if (!(allLogs || []).length) {
-      c.innerHTML = '<span class="date-branch-btn">无日志</span>';
+      c.innerHTML = '<span class="date-branch-btn vl-btn vl-btn--sm">无日志</span>';
       maskState.maskLogBranch = '';
       maskState._branchSetSig = '';
       return;

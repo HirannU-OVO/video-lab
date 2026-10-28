@@ -159,8 +159,15 @@
   .vl-btn--danger:hover:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) { background: var(--vl-alias-status-error-hover); border-color: var(--vl-alias-status-error-hover); }
   .vl-btn--danger:active:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) { background: var(--vl-alias-status-error-active); border-color: var(--vl-alias-status-error-active); }
 
-  .vl-btn--ghost { background: transparent; border-color: transparent; }
-  .vl-btn--ghost:hover:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) { background: var(--vl-alias-bg-overlay-l1); }
+  /* ⚠ 只声明变量：写 background/border-color 会把页面层给 ghost 按钮设的
+     --vl-btn-bg / --vl-btn-border 压死（历史事故：侧栏 tree-txt-item 的选中态全部失效）。 */
+.vl-btn--ghost {
+  --vl-btn-bg: transparent;
+  --vl-btn-border: transparent;
+  --vl-btn-bg-hover: var(--vl-alias-bg-overlay-l1);
+  --vl-btn-color-hover: var(--vl-alias-text-default);
+}
+  /* ghost 悬浮色已在 --vl-btn-bg-hover 里声明 */
 
   .vl-btn--subtle { background: var(--vl-alias-bg-base-secondary); border-color: transparent; color: var(--vl-alias-text-secondary); }
   .vl-btn--subtle:hover:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) { color: var(--vl-alias-text-default); background: var(--vl-alias-bg-base-tertiary); }
@@ -224,13 +231,19 @@
     border-color: var(--vl-alias-status-warning-surface-l3);
   }
   /* 纯图标按钮：正方形，宽度随尺寸档位（蓝本纯图标按钮的 sm/lg 宽度 24/32） */
-  .vl-btn--icon { padding: 0; width: var(--vl-btn-h); }
+  /* ⚠ 用变量而非 padding:0：写死会让页面层设的 --vl-btn-px 对图标按钮永久失效
+     （与历史上 gap:6px 写死同型的事故）。宽度跟高度走，保证正方形。 */
+.vl-btn--icon {
+  --vl-btn-px: 0;
+  --vl-btn-py: 0;
+  width: var(--vl-btn-h);
+}
   .vl-btn--icon.vl-btn--xs { width: 20px; }
   .vl-btn--icon.vl-btn--sm { width: 24px; }
   .vl-btn--icon.vl-btn--lg { width: 32px; }
 
-  .vl-btn--xs { --vl-btn-h: 20px; --vl-btn-px: 6px; --vl-btn-fs: 11px; border-radius: var(--vl-static-radius-4); }
-  .vl-btn--sm { --vl-btn-h: 24px; --vl-btn-px: 8px; --vl-btn-fs: 12px; border-radius: var(--vl-static-radius-4); }
+  .vl-btn--xs { --vl-btn-h: 20px; --vl-btn-px: 6px; --vl-btn-fs: 11px; --vl-btn-radius: var(--vl-static-radius-4); }
+  .vl-btn--sm { --vl-btn-h: 24px; --vl-btn-px: 8px; --vl-btn-fs: 12px; --vl-btn-radius: var(--vl-static-radius-4); }
   .vl-btn--lg { --vl-btn-h: 32px; --vl-btn-px: var(--vl-static-spacer-16); --vl-btn-fs: var(--vl-type-body-base-size); }
   /* state（属性表达，不新增状态类） */
   /* 禁用态取历史惯例（蓝本次要按钮 / 页面开关 / 蓝本分页项三者一致）：
