@@ -403,17 +403,28 @@ html[data-skin="Maid_Atelier"] [data-region="sidebar__root"] > [data-region="sid
 /* 置顶按钮：移到蕾丝横幅上方（bottom 大于 swag 高度，不再与之重叠），
    恢复初始底色（同基础样式背景色 + 投影）+ 淡金色亮边框以融入蓝金主题 */
 /* 置顶悬浮钮：外观走基线变量（原先写属性，导致移出按钮时 hover 失效回退） */
+/* 女仆皮肤的悬浮置顶钮是**单独设计**的（深蓝底 + 金边 + 内发光），
+   ⚠ 这里刻意用属性而不是 --vl-btn-* 变量：
+     下方那条给「菜单按钮」设透明的规则用的是共用类 .sidebar-menu-btn，
+     特异性(0,4,1) 高于 .vl-btn，会连置顶按钮一起压成透明/无边框。
+     属性写在本选择器(0,5,1)里优先级足够，能稳定赢过它。
+     实测对照：正式版 background=rgb(9,19,51)、border=1px solid 金边。 */
 html[data-skin="Maid_Atelier"] [data-region="sidebar__root"] > [data-region="sidebar__footer"] #sidebarToTop {
-  --vl-btn-bg: var(--vl-alias-bg-base-default);
-  --vl-btn-border: rgba(242, 217, 143, 0.55);
-  --vl-btn-shadow: 0 4px 14px color-mix(in srgb, var(--vl-alias-text-default) 12%, transparent),     inset 0 0 4px rgba(242, 217, 143, 0.12);
-  /* ⚠ hover/active 变量必须定义在**基础规则**里，不能写在 :hover 里 ——
-     写在 :hover 里时，鼠标移出按钮该变量即失效，
-     而 --vl-btn-bg-active 默认引用它，于是「按住拖出」会回退成常态色（闪一下）。
-     变量本身不会主动生效，只有 :hover / .is-pressed 时才被消费。 */
-  --vl-btn-bg-hover: var(--vl-alias-brand-500);
-  --vl-btn-color-hover: var(--vl-alias-text-onaccent);
-  --vl-btn-border-width-hover: 0;
+  left: 15px;
+  bottom: calc(var(--vl-skin-maid-swag-height, 72px) + 73px);
+  background: var(--vl-alias-bg-base-default);
+  border: 1px solid rgba(242, 217, 143, 0.55);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--vl-alias-text-default) 12%, transparent),
+    inset 0 0 4px rgba(242, 217, 143, 0.12);
+}
+
+/* ⚠ 与 .is-pressed 合并：:hover/:active 在鼠标拖出按钮后会失效，
+   靠 JS 托管的 .is-pressed 保持按下态。 */
+html[data-skin="Maid_Atelier"] [data-region="sidebar__root"] > [data-region="sidebar__footer"] #sidebarToTop:hover,
+html[data-skin="Maid_Atelier"] [data-region="sidebar__root"] > [data-region="sidebar__footer"] #sidebarToTop.is-pressed {
+  background: var(--vl-alias-brand-500);
+  color: var(--vl-alias-text-onaccent);
+  border: none;
 }
 /* 置顶按钮 hover：避免被上方 id 固定底色规则压制，显式恢复主题底色 hover */
 /* ⚠ 只声明变量：写 background/color/border 会在鼠标移出时让 :hover 失效、

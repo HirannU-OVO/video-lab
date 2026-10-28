@@ -4184,12 +4184,6 @@ button.is-vl-disabled {
   --vl-btn-color-hover: var(--vl-alias-text-default);
 }
 
-.sidebar-menu-btn--text {
-  --vl-btn-px: 12px;
-  --vl-btn-gap: 6px;
-  --vl-btn-radius: 19px;
-  width: auto;
-}
 }
 
 /* 形态变量（外观仍由 .vl-btn 基线提供） */
