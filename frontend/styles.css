@@ -2578,17 +2578,27 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   background: var(--vl-alias-status-success-default);
 }
 /* 外观走 .vl-btn 基线变量（原属性值 1:1 转为变量，状态由基线提供） */
+/* 图标+文字次级按钮（与右上「外部编辑」同一套配色，仅高度不同）。
+   ⚠ 补齐 hover / active 变量：原先未设，落到基线默认（实色次级底），
+     与外部编辑按钮的「透明底 + 淡色悬浮」观感不一致。 */
+/* 图标+文字次级按钮（与右上「外部编辑」同一套配色，仅高度不同）。
+   ⚠ 原先未设 hover/active，落到基线默认（实底次级/三级底），反馈本来就很明显；
+     后来被改成 overlay 半透明档反而「看着没反馈」，这里恢复实底。 */
 .status-bar__tasks-btn {
-  --vl-btn-gap: 4px;
   --vl-btn-h: 18px;
-  --vl-btn-border: var(--vl-alias-border-neutral-l2);
-  --vl-btn-radius: var(--vl-static-radius-4);
-  --vl-btn-bg: transparent;
-  --vl-btn-color: var(--vl-alias-text-secondary);
+  --vl-btn-px: 8px;
+  --vl-btn-gap: 4px;
   --vl-btn-fs: var(--vl-type-body-xs-size);
   --vl-btn-lh: 18px;
   --vl-btn-py: 0;
-  --vl-btn-px: 8px;
+  --vl-btn-radius: var(--vl-static-radius-4);
+  --vl-btn-bg: transparent;
+  --vl-btn-color: var(--vl-alias-text-secondary);
+  --vl-btn-border: var(--vl-alias-border-neutral-l2);
+  --vl-btn-bg-hover: var(--vl-alias-bg-base-secondary);
+  --vl-btn-color-hover: var(--vl-alias-text-default);
+  --vl-btn-bg-active: var(--vl-alias-bg-base-tertiary);
+  --vl-btn-color-active: var(--vl-alias-text-default);
 }
 /* 外观全部回归基线 .vl-count（原为品牌色底 + 反色字 + 10px 字号） */
 
@@ -4173,15 +4183,24 @@ button.is-vl-disabled {
   --vl-btn-border-hover: var(--vl-alias-border-neutral-l2);
 }
 
+/* 图标+文字次级按钮（与右下「任务」按钮同一套配色，仅高度不同）。
+   统一后：透明底、neutral-l2 边框、hover=overlay-l2、按下=overlay-l3（明显下沉反馈）。 */
+/* 图标+文字次级按钮（与右下「任务」按钮同一套配色，仅高度不同）。
+   ⚠ 反馈强度：用**实底**（hover=次级底、按下=三级底）而不是 overlay 半透明档。
+     半透明 overlay-l2(10%)→l3(12%) 视觉上几乎无差，等同「没有点击反馈」。 */
 .right-panel__edit {
   --vl-btn-h: 24px;
   --vl-btn-px: var(--vl-static-spacer-8);
   --vl-btn-gap: 4px;
+  --vl-btn-fs: var(--vl-type-body-xs-size);
+  --vl-btn-radius: var(--vl-static-radius-4);
   --vl-btn-bg: transparent;
   --vl-btn-color: var(--vl-alias-text-secondary);
-  --vl-btn-border: var(--vl-alias-border-neutral-l1);
-  --vl-btn-bg-hover: var(--vl-alias-bg-overlay-l2);
+  --vl-btn-border: var(--vl-alias-border-neutral-l2);
+  --vl-btn-bg-hover: var(--vl-alias-bg-base-secondary);
   --vl-btn-color-hover: var(--vl-alias-text-default);
+  --vl-btn-bg-active: var(--vl-alias-bg-base-tertiary);
+  --vl-btn-color-active: var(--vl-alias-text-default);
 }
 
 }

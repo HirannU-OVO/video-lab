@@ -50,7 +50,7 @@
     /* 按下投影：默认跟随悬浮投影。
        ⚠ :active 必须把 hover 设过的属性全部覆盖一遍，否则鼠标按住后移出按钮时
          :hover 失效、未覆盖的属性（如 box-shadow）会突然回退 → 视觉上闪一下。 */
-    --vl-btn-shadow-active: var(--vl-btn-shadow-hover);
+    --vl-btn-shadow-active: var(--vl-btn-shadow);   /* 按下投影收到常态（下沉感） */
     /* ── 全部视觉状态的唯一出口 ────────────────────────────────
        ⚠ 按钮本体的 background / border-color / color **只消费下面这些变量**，
          任何变体、页面类、皮肤都**不允许再写 background / border / color 本身**。
@@ -83,7 +83,7 @@
     /* ⚠ 默认「按下 = 悬浮」，只有需要按下更深的按钮才自己覆盖。
        历史上 active 默认取 bg-base-tertiary，与 hover 的 bg-base-secondary 不同，
        导致按下的瞬间背景突变（看起来像闪一下）。 */
-    --vl-btn-bg-active: var(--vl-btn-bg-hover);
+    --vl-btn-bg-active: var(--vl-alias-bg-base-tertiary);
     --vl-btn-border-active: var(--vl-btn-border-hover);
     --vl-btn-border-width-active: var(--vl-btn-border-width-hover);
     --vl-btn-color-active: var(--vl-btn-color-hover);
@@ -197,7 +197,10 @@
   --vl-btn-bg: transparent;
   --vl-btn-border: transparent;
   --vl-btn-bg-hover: var(--vl-alias-bg-overlay-l1);
+  /* 按下深一档：透明底按钮若也取 tertiary 会显得很重，用 overlay-l2 更自然 */
+  --vl-btn-bg-active: var(--vl-alias-bg-overlay-l2);
   --vl-btn-color-hover: var(--vl-alias-text-default);
+  --vl-btn-color-active: var(--vl-alias-text-default);
 }
   /* ghost 悬浮色已在 --vl-btn-bg-hover 里声明 */
 

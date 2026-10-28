@@ -1545,17 +1545,21 @@ html[data-skin="Maid_Atelier"] [data-region="titlebar-btn"] {
   --vl-btn-color-hover: #fff7e6;
 }
 /* 标题栏模式切换按钮：女仆皮肤金色适配（文字亮金、hover 金辉、图标取金色阶） */
+/* 标题栏「视频处理入口 / 模式切换」：颜色走基线变量。
+   ⚠ 原先 :hover 直接写 background/color，会压死 --vl-btn-bg-active，
+     导致「按下与悬浮同色」，用户看不到点击反馈。
+     改法：把 hover 值搬进基础规则的 --vl-btn-*-hover，另给更浓一档的 -active。 */
 html[data-skin="Maid_Atelier"] .win-titlebar__mode {
-  color: var(--vl-skin-maid-gold-light);
-}
-html[data-skin="Maid_Atelier"] .win-titlebar__mode:hover {
-  background: var(--vl-skin-maid-gold-glow);
-  color: #fff7e6;
+  --vl-btn-color: var(--vl-skin-maid-gold-light);
+  --vl-btn-bg-hover: var(--vl-skin-maid-gold-glow);
+  --vl-btn-color-hover: #fff7e6;
+  /* 按下：同一金色但浓度加一档（hover 14% → active 26%），形成明显下沉反馈 */
+  --vl-btn-bg-active: rgba(242, 217, 143, 0.26);
+  --vl-btn-color-active: #fff7e6;
 }
 html[data-skin="Maid_Atelier"] .win-titlebar__mode i,
-html[data-skin="Maid_Atelier"] .win-titlebar__mode svg {
-  color: #d9b65c;
-}
+/* 图标跟随按钮文字色，按下/悬浮时一起变化 */
+html[data-skin="Maid_Atelier"] .win-titlebar__mode svg { color: currentColor; }
 /* 关闭按钮：悬浮变红（覆盖上面的通用档位） */
 html[data-skin="Maid_Atelier"] [data-region="titlebar-btn"][data-close] {
   --vl-btn-bg-hover: #d34a3f;
