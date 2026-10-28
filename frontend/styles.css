@@ -946,6 +946,7 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
      看起来分成几块。这里是整行列表项，必须左对齐、由 __name 吃满剩余宽度。 */
   justify-content: flex-start;
   align-items: center;
+  --vl-btn-lh: 20px;   /* 原设计行高，决定整行高度 */
 }
 /* 名称排序按首字母、时间排序按月份分组：左侧大写字母/月份标签 + 向右延伸的分组线 */
 .tree-txt-group {
@@ -1118,6 +1119,7 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   width: 100%;
   text-align: left;
   justify-content: flex-start;
+  --vl-btn-lh: normal;   /* 原设计继承正文行高 */
 }
 .sidebar-menu__item svg { flex-shrink: 0; color: var(--vl-alias-text-default); }
 .btn-external-edit { background: transparent; color: var(--vl-alias-text-secondary); border-color: var(--vl-alias-border-neutral-l1); }
@@ -2677,6 +2679,7 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   --vl-btn-color-hover: var(--vl-alias-brand-500);
   margin: var(--vl-static-spacer-8);
   border-style: dashed;
+  flex-shrink: 0;
 }
 
 /* 图标按钮：外观走 .vl-btn 变量；hover 用危险色 */

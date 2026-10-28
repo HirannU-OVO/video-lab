@@ -604,10 +604,10 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
           var dupCls = (state.highlightDup && txt.dup) ? ' tree-txt-item--dup' : '';
           html += '<div class="tree-txt-item vl-btn vl-btn--ghost' + (isActive ? ' tree-txt-item--active' : '') + dupCls + '" data-region="tree-item"' + (isActive ? ' data-state="active"' : '') + ' data-project="' + escapeHtml(proj.name) + '" data-name="' + escapeHtml(txt.name) + '">';
           html += icon('file-text', 16, 'tree-txt-item__icon');
-          html += '<span class="tree-txt-item vl-btn vl-btn--ghost__name">' + escapeHtml(txt.name) + '</span>';
+          html += '<span class="tree-txt-item__name">' + escapeHtml(txt.name) + '</span>';
           // 复刻子项无配置日期，不显示 latest；徽章显示其日志数
-          if (!isReplica) html += '<span class="tree-txt-item vl-btn vl-btn--ghost__date">' + escapeHtml(txt.latest) + '</span>';
-          html += '<span class="tree-txt-item vl-btn vl-btn--ghost__badge">' + txt.count + '</span></div>';
+          if (!isReplica) html += '<span class="tree-txt-item__date">' + escapeHtml(txt.latest) + '</span>';
+          html += '<span class="tree-txt-item__badge">' + txt.count + '</span></div>';
         });
         html += '</div>';
       }

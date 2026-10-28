@@ -24,6 +24,12 @@
     /* 垂直内距：默认 0（固定高度靠 --vl-btn-h）。
        内容撑高的按钮（菜单项 / 列表项）设 --vl-btn-h: auto 并给这里一个值。 */
     --vl-btn-py: 0;
+    /* 图标与文字的间距：默认 6px（与历史按钮一致）。 */
+    --vl-btn-gap: 6px;
+    /* 行高：默认 1（固定高度按钮靠 --vl-btn-h 撑）。
+       内容撑高的整行元素（列表项/配置项）设 --vl-btn-h: auto 后，
+       行高直接决定内容盒高度 —— 不设的话会比原设计矮一截。 */
+    --vl-btn-lh: 1;
     --vl-btn-px: 12px;
     --vl-btn-fs: 13px;
     /* 字重：默认 600。
@@ -83,7 +89,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
+    gap: var(--vl-btn-gap);
     min-width: 0;
     height: var(--vl-btn-h);
     padding: var(--vl-btn-py) var(--vl-btn-px);
@@ -95,7 +101,7 @@
     font-family: inherit;
     font-size: var(--vl-btn-fs);
     font-weight: var(--vl-btn-fw);
-    line-height: 1;
+    line-height: var(--vl-btn-lh);
     white-space: nowrap;
     cursor: pointer;
     transition: background-color .16s ease, border-color .16s ease, color .16s ease, opacity .16s ease, transform .16s ease, box-shadow .16s ease;
