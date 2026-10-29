@@ -965,7 +965,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       + '</span><span class="config-path-subheader__browse"></span><span class="config-path-subheader__open"></span><span class="config-path-subheader__remove"></span></div>';
     html += '<div class="config-editor__path-list" id="pathList">';
     folders.forEach(function (f, idx) {
-      html += '<div class="config-path-row" data-index="' + idx + '" data-orig="' + escapeHtml(f.path) + '" data-orig-idx="' + idx + '">';
+      html += '<div class="config-path-row" data-region="config-path-row" data-index="' + idx + '" data-orig="' + escapeHtml(f.path) + '" data-orig-idx="' + idx + '">';
       html += '<span class="config-path-row__drag" draggable="true" title="按住拖动排序">' + icon('grip-vertical', 14) + '</span>';
       html += '<label class="config-path-row__checkbox" title="勾选 = 不轮询（添加 = 前缀）"><input type="checkbox" class="config-path-row__check" ' + (f.nonround ? 'checked' : '') + '><span class="config-path-row__check-mark"></span></label>';
       html += '<input type="text" class="config-path-row__input" value="' + escapeHtml(f.path) + '" title="' + escapeHtml(f.path) + '">';
@@ -4725,7 +4725,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       return;
     }
     var p = maskState.project;
-    var html = '<div class="mask-config">';
+    var html = '<div class="mask-config" data-region="mask-config">';
     html += '<div class="mask-config__cols">';
     // ── 左栏：遮罩主题（标题固定，列表独立滚动） ──
     if (maskNeedMask()) {
@@ -5126,7 +5126,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
               '<div class="mask-group-files"' + (anySel ? '' : ' style="display:none"') + '>';
             g.files.forEach(function (f, fi) {
               var sel = maskState.maskSel[f.full] === true;
-              html += '<label class="mask-group-file" data-full="' + escapeHtml(f.full) + '"><input type="checkbox" data-grpfile="' + gi + '_' + fi + '" data-dur="' + (f.dur || 0) + '"' + (sel ? ' checked' : '') + '>' +
+              html += '<label class="mask-group-file" data-region="mask-group-file" data-full="' + escapeHtml(f.full) + '"><input type="checkbox" data-grpfile="' + gi + '_' + fi + '" data-dur="' + (f.dur || 0) + '"' + (sel ? ' checked' : '') + '>' +
                 '<span class="mask-group-file__box"></span>' +
                 '<span class="mask-group-file__name" title="' + escapeHtml(f.full) + '">' + (f.sub ? escapeHtml(maskDisplayName(f.sub)) + '/' : '') + escapeHtml(maskDisplayName(f.name)) + '</span>' +
                 '<span class="mask-group-file__meta">' + maskFmtDur(f.dur) + '</span></label>';

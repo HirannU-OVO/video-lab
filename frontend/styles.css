@@ -71,7 +71,6 @@ samp,
 /* ── Forms ─────────────────────────────────────────────────── */
 /* ===== Input / Search ===== */
   /* @deprecated 用 .vl-input */
-    .vl-input-group { display: flex; align-items: center; gap: var(--vl-static-spacer-8); min-height: 32px; padding: 0 var(--vl-static-spacer-12); background: var(--vl-alias-bg-base-default); border: 1px solid var(--vl-alias-border-neutral-l1); border-radius: var(--vl-static-radius-8); color: var(--vl-alias-text-default); width: 100%; font-family: var(--vl-type-body-base-family); font-size: var(--vl-type-body-base-size); line-height: var(--vl-type-body-base-line-height); }
     .vl-input-group:focus-within { border-color: var(--vl-alias-border-contrast); background: var(--vl-alias-bg-base-default); }
     .vl-input-group input { flex: 1; background: transparent; border: none; outline: none; color: var(--vl-alias-text-default); font: inherit; min-width: 0; }
     .vl-input-group input[type="number"] { appearance: textfield; -moz-appearance: textfield; }

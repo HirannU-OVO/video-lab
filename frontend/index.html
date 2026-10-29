@@ -61,7 +61,7 @@ var m = new URL(location.href).searchParams.get('token');
   <!-- 设置面板：改为在主窗口内以 iframe 内嵌设置页（原独立窗口已取消）——
        同源、共用 preload（主窗口已开 nodeIntegrationInSubFrames），打开即显示、关闭仅隐藏，
        避免独立窗口每次重建都重新加载整套皮肤资源（64KB CSS + 1.7MB 图片） -->
-  <div id="settingsDim" class="settings-dim" style="display:none">
+  <div id="settingsDim" class="settings-dim" data-region="settings-dim" style="display:none">
     <iframe id="settingsFrame" class="settings-frame" src="settings.html" title="设置"></iframe>
   </div>
   <!-- 首次引导（工作路径缺失时）：同为内嵌面板，独立引导窗口已取消 -->

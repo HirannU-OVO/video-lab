@@ -1409,7 +1409,32 @@
 
     .vl-backdrop { position: relative; background: var(--vl-alias-bg-overlay-l4); border: 1px solid var(--vl-alias-border-neutral-l1); padding: var(--vl-static-spacer-32) var(--vl-static-spacer-24); display: flex; align-items: center; justify-content: center; }
 
-    .vl-input-group__icon { color: var(--vl-alias-icon-secondary); display: inline-flex; align-items: center; }
+    /* 输入框组（带前后缀的输入容器）。
+     ⚠ 从页面层移入基线：原先写在 styles.css 里，页面层一改样式皮肤就跟着失效。
+     外观全部走变量，皮肤（女仆的玻璃拟态）靠这几个变量定制。 */
+  .vl-input-group {
+    --vl-input-group-bg: var(--vl-alias-bg-base-default);
+    --vl-input-group-border-color: var(--vl-alias-border-neutral-l1);
+    --vl-input-group-focus-bg: var(--vl-input-group-bg);
+    --vl-input-group-focus-border-color: var(--vl-input-group-border-color);
+    --vl-input-group-focus-shadow: none;
+    display: flex; align-items: center; gap: var(--vl-static-spacer-8);
+    min-height: 32px; padding: 0 var(--vl-static-spacer-12);
+    background: var(--vl-input-group-bg);
+    border: 1px solid var(--vl-input-group-border-color);
+    border-radius: var(--vl-static-radius-8);
+    color: var(--vl-alias-text-default);
+    width: 100%;
+    font-family: var(--vl-type-body-base-family);
+    font-size: var(--vl-type-body-base-size);
+    line-height: var(--vl-type-body-base-line-height);
+  }
+  .vl-input-group:focus-within {
+    background: var(--vl-input-group-focus-bg);
+    border-color: var(--vl-input-group-focus-border-color);
+    box-shadow: var(--vl-input-group-focus-shadow);
+  }
+  .vl-input-group__icon { color: var(--vl-alias-icon-secondary); display: inline-flex; align-items: center; }
 
     
 

@@ -293,13 +293,25 @@
     .task-card__continue:hover { background: var(--vl-alias-brand-500); color: var(--vl-alias-text-onbrand); }
     .task-card__continue svg { flex-shrink: 0; }
     /* 行级删除按钮：样式与配置模式排除字段删除按钮（.config-exclude-row__remove）完全一致 */
-    .task-card__del {
-      flex-shrink: 0; width: 20px; height: 20px; padding: 0;
-      border: none;   /* 描边由 --vl-btn-* 变体控制 */ border-radius: 50%;
-      background: transparent; color: var(--vl-alias-text-tertiary);
-      cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
-      transition: all 0.1s ease;
-    }
+.task-card__del {
+  --vl-btn-h: 20px;
+  --vl-btn-px: 0;
+  --vl-btn-py: 0;
+  --vl-btn-radius: 50%;
+  --vl-btn-border-width: 0;
+  --vl-btn-bg: transparent;
+  --vl-btn-color: var(--vl-alias-text-tertiary);
+  --vl-btn-bg-hover: var(--vl-alias-bg-overlay-l1);
+  --vl-btn-color-hover: var(--vl-alias-status-error-default);
+  --vl-btn-bg-active: var(--vl-alias-bg-overlay-l2);
+  width: 20px;
+  flex-shrink: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.1s ease;
+}
     .task-card__del:hover { background: var(--vl-alias-status-error-surface-l1); color: var(--vl-alias-status-error-default); }
     .task-card__del svg { flex-shrink: 0; }
     .task-card__body { border-top: 1px solid var(--vl-alias-border-neutral-l1); }
