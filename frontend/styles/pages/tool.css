@@ -17,8 +17,8 @@
       --vl-sh-bg: transparent;
       --vl-sh-pad-y: 0;
       --vl-sh-pad-x: 0;
-      margin: 12px 0 4px;
-      font-size: 11px;
+      margin: var(--vl-static-spacer-12) var(--vl-static-spacer-0) var(--vl-static-spacer-4);
+      font-size: var(--vl-font-size-11);
       letter-spacing: 0.02em;
       display: flex;
       align-items: center;
@@ -52,7 +52,7 @@
     /* 差异：工具页 tab 更矮更窄、下边框与下方内容区连成一片（只上圆角）；外观与全部交互状态由基线 .vl-tab 提供 */
     .tl-tab {
       height: 32px;
-      padding: 0 14px;
+      padding: var(--vl-static-spacer-0) var(--vl-static-spacer-14);
       border-color: transparent;
       border-bottom: none;
       border-radius: var(--vl-static-radius-6) var(--vl-static-radius-6) 0 0;
@@ -155,7 +155,7 @@
        其余（实心底色 / hover / 按下 / 焦点 / 禁用底色）由基线 .vl-btn--primary 提供 */
     .tl-run {
       height: 32px;
-      padding: 0 18px;
+      padding: var(--vl-static-spacer-0) var(--vl-static-spacer-18);
       font-size: var(--vl-type-body-sm-size);
     }
     .tl-run:disabled { background: var(--vl-alias-bg-brand-disabled); }

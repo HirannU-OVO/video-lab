@@ -16,9 +16,9 @@
   .tray-menu { padding: 4px; border: 1px solid var(--vl-alias-border-neutral-l1); border-radius: var(--vl-static-radius-8); background: var(--vl-alias-bg-base-default); }
   .tray-menu button {
     display: block; width: 100%; text-align: left;
-    padding: 7px 12px; border: none; border-radius: var(--vl-static-radius-6);
+    padding: var(--vl-static-spacer-7) 12px; border: none; border-radius: var(--vl-static-radius-6);
     background: transparent; color: var(--vl-alias-text-default);
-    font-size: 12px; font-family: var(--vl-font-family-base);
+    font-size: var(--vl-font-size-12); font-family: var(--vl-font-family-base);
     cursor: pointer; white-space: nowrap;
   }
   .tray-menu button:hover { background: var(--vl-alias-bg-overlay-l2); }
@@ -28,6 +28,6 @@
 .tray-menu__head { display: flex; align-items: center; gap: 6px; padding: 5px 12px 6px; margin-bottom: 2px; white-space: nowrap; border-bottom: 1px solid var(--vl-alias-border-neutral-l1); }
   .tray-menu__head::before {
     content: ''; flex: 0 0 auto;
-    width: 6px; height: 6px; border-radius: 50%; background: #f97316;
+    width: 6px; height: 6px; border-radius: 50%; background: var(--vl-alias-status-preview-solid);
   }
 }

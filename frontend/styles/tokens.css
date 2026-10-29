@@ -163,6 +163,9 @@
   /* ── 排版刻度与语义档名 ── */
   /* 刻度：按实际取值建档 */
   --vl-font-size-10: 10px;
+  /* 页面层实际用到的其余字号档 */
+  --vl-font-size-9: 9px;
+  --vl-font-size-17: 17px;
   --vl-font-size-11: 11px;
   --vl-font-size-12: 12px;
   --vl-font-size-13: 13px;
@@ -425,6 +428,8 @@
   /* radius */
   --vl-static-radius-0: 0px;
   --vl-static-radius-2: 2px;
+  --vl-static-radius-1: 1px;
+  --vl-static-border-width: 1px;
   --vl-static-radius-4: 4px;
   --vl-static-radius-6: 6px;
   --vl-static-radius-8: 8px;
@@ -434,6 +439,11 @@
   --vl-static-radius-20: 20px;
   --vl-static-radius-24: 24px;
   --vl-static-radius-32: 32px;
+  /* 阴影档位（值取自页面层原有硬编码，替换后视觉不变） */
+  --vl-static-shadow-thumb: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --vl-static-shadow-popup: 0 6px 20px rgba(0, 0, 0, 0.18);
+  --vl-static-shadow-card: 0 8px 24px rgba(0, 0, 0, 0.18);
+  --vl-static-shadow-dialog: 0 18px 48px color-mix(in srgb, #000 42%, transparent);
   --vl-static-radius-full: 999px;
   /* 状态层强度 */
   --vl-static-state-hover: 8%;
@@ -456,6 +466,17 @@
   --vl-static-spacer-10: 10px;
   --vl-static-spacer-12: 12px;
   --vl-static-spacer-16: 16px;
+  /* 页面层实际用到的其余间距档（补齐后页面层不再需要写数字间距） */
+  --vl-static-spacer-1: 1px;
+  --vl-static-spacer-5: 5px;
+  --vl-static-spacer-7: 7px;
+  --vl-static-spacer-9: 9px;
+  --vl-static-spacer-11: 11px;
+  --vl-static-spacer-14: 14px;
+  --vl-static-spacer-18: 18px;
+  --vl-static-spacer-22: 22px;
+  --vl-static-spacer-26: 26px;
+  --vl-static-spacer-34: 34px;
   --vl-static-spacer-20: 20px;
   --vl-static-spacer-24: 24px;
   --vl-static-spacer-32: 32px;

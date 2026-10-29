@@ -4,7 +4,7 @@
 /* -*- coding: utf-8 -*-
    Video Lab — 设置窗口样式（复用各皮肤的 CSS 变量） */
 html, body {
-  margin: 0;
+  margin: var(--vl-static-spacer-0);
   height: 100%;
   overflow: hidden;
 }
@@ -13,7 +13,7 @@ body {
   background: var(--vl-alias-bg-base-default);
   color: var(--vl-alias-text-default);
   font-family: var(--vl-font-family-base);
-  font-size: 14px;
+  font-size: var(--vl-font-size-14);
 }
 
 .settings-shell {
@@ -38,14 +38,14 @@ body {
   background: var(--vl-panel-bg);
   display: flex;
   flex-direction: column;
-  padding: 12px 8px;
+  padding: var(--vl-static-spacer-12) var(--vl-static-spacer-8);
   box-sizing: border-box;
 }
 .settings-nav__brand {
   font-size: var(--vl-type-heading-sm-size);
   font-weight: var(--vl-font-font-weight-bold);
   color: var(--vl-alias-text-brand, var(--vl-alias-brand-500));
-  padding: 4px 10px 14px;
+  padding: var(--vl-static-spacer-4) var(--vl-static-spacer-10) var(--vl-static-spacer-14);
 }
 /* 差异：导航项形态 —— 无边框填充块、内距 9px 12px、圆角 6px、字号 14px；
    状态色（悬浮 / 选中 / 按下 / 聚焦）一律由基线 .vl-option 提供，
@@ -54,11 +54,11 @@ body {
   --vl-option-bg-selected: var(--vl-alias-bg-brand);
   --vl-option-color-selected: var(--vl-alias-text-onaccent);
   --vl-option-bg-selected-active: var(--vl-alias-bg-brand-active);
-  font-size: 14px;
+  font-size: var(--vl-font-size-14);
   text-align: left;
-  padding: 9px 12px;
-  border-radius: 6px;
-  margin-bottom: 2px;
+  padding: var(--vl-static-spacer-9) var(--vl-static-spacer-12);
+  border-radius: var(--vl-static-radius-6);
+  margin-bottom: var(--vl-static-spacer-2);
 }
 .settings-nav__item[aria-selected="true"] { font-weight: var(--vl-font-font-weight-semibold); }
 
@@ -73,7 +73,7 @@ body {
 .settings-view {
   flex: 1;
   overflow-y: auto;
-  padding: 18px 22px;
+  padding: var(--vl-static-spacer-18) var(--vl-static-spacer-22);
   display: none;
 }
 .settings-view.is-active { display: block; }
@@ -100,7 +100,7 @@ body {
      的副标题与右栏「令牌」行、"更新检查"的副标题与右栏第二行都出现这种错觉）。拉开一点更清晰。 */
   gap: 0 32px;
   /* 用上下 padding 留白 + 底线分隔：线与上下内容距离均匀，整列是一条连续的条目列表。 */
-  padding: 11px 0;
+  padding: var(--vl-static-spacer-11) var(--vl-static-spacer-0);
   border-bottom: 1px solid var(--vl-alias-border-neutral-l1);
 }
 /* 左栏：主标题 + 副标题作为一个整体（内部块布局、间距恒定），整体与右栏垂直居中。
@@ -186,7 +186,7 @@ body {
   font-size: var(--vl-type-body-base-size);
   font-weight: var(--vl-font-font-weight-medium);
   color: var(--vl-alias-text-secondary);
-  margin-bottom: 6px;
+  margin-bottom: var(--vl-static-spacer-6);
 }
 /* 此处原有一份 `.form-group__head { display: flex; ... }` 定义 —— 那是"标题 + 右侧按钮"
    的横向行容器，在 HTML 中早已没有消费者（改动前用量为 0）。该 class 名现由设置项的
@@ -196,7 +196,7 @@ body {
   display: block;
   font-size: var(--vl-type-body-sm-size);
   color: var(--vl-alias-text-tertiary);
-  margin-top: 2px;
+  margin-top: var(--vl-static-spacer-2);
 }
 /* 无标题设置项的说明行：分组头已经说明了这组是什么，设置项就不必再起一个同义标题
    （如分组「任务通知」下的设置项再写一遍「任务通知」纯属重复）。
@@ -214,11 +214,11 @@ body {
 
 /* 多值输入（提取前缀/后缀）：回车添加的 tags 列表，可拖拽排序、点击删除 */
 .multi-tags {
-  margin-top: 8px;
+  margin-top: var(--vl-static-spacer-8);
   border: 1px solid var(--vl-panel-border);
   border-radius: var(--vl-static-radius-6);
   background: var(--vl-panel-bg);
-  padding: 4px 6px 0;
+  padding: var(--vl-static-spacer-4) var(--vl-static-spacer-6) var(--vl-static-spacer-0);
   max-height: 180px;
   overflow-y: auto;
 }
@@ -226,8 +226,8 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 6px;
-  margin-bottom: 4px;
+  padding: var(--vl-static-spacer-4) var(--vl-static-spacer-6);
+  margin-bottom: var(--vl-static-spacer-4);
   border: 1px solid var(--vl-alias-border-neutral-l2);
   border-radius: var(--vl-static-radius-4);
   background: var(--vl-alias-bg-base-secondary);
@@ -262,10 +262,10 @@ body {
   border: none;
   background: transparent;
   color: var(--vl-alias-text-disabled);
-  font-size: 11px;
+  font-size: var(--vl-font-size-11);
   line-height: 1;
-  padding: 5px 6px;
-  border-radius: 4px;
+  padding: var(--vl-static-spacer-5) var(--vl-static-spacer-6);
+  border-radius: var(--vl-static-radius-4);
   cursor: pointer;
   transition: transform .15s ease, color .15s ease;
 }
@@ -342,11 +342,11 @@ body {
   /* ⚠ 只给宽度与线型，**不给颜色**：border 简写含 border-color，而页面层（pages）
      的层序高于组件层（components），简写会把基线的选中态描边压掉。
      颜色统一由基线 .vl-option 的 border-color 消费变量给出。 */
-  border-width: 1px;
+  border-width: var(--vl-static-border-width);
   border-style: solid;
-  padding: 7px 12px;
-  border-radius: 8px;
-  font-size: 13px;
+  padding: var(--vl-static-spacer-7) var(--vl-static-spacer-12);
+  border-radius: var(--vl-static-radius-8);
+  font-size: var(--vl-font-size-13);
 }
 .theme-item__swatch { display: inline-flex; align-items: center; flex-shrink: 0; }
 .theme-item__bg,
@@ -367,13 +367,13 @@ body {
   display: block;
   font-size: var(--vl-type-body-sm-size);
   color: var(--vl-alias-text-tertiary);
-  margin-bottom: 6px;
+  margin-bottom: var(--vl-static-spacer-6);
 }
 .producer-preview {
   position: relative;
   border: 1px dashed var(--vl-alias-border-neutral-l2);
   border-radius: var(--vl-static-radius-8);
-  padding: 7px 12px; /* 高度与输入框一致，横向保留原 12px */
+  padding: var(--vl-static-spacer-7) 12px; /* 高度与输入框一致，横向保留原 var(--vl-static-spacer-12) */;
   background: var(--vl-alias-bg-overlay-l1);
 }
 .producer-preview__value {
@@ -480,49 +480,49 @@ body {
 /* 直接随右侧视图自然流动，由 .settings-view 整体滚动，不留底部空档 */
 .changelog-box { padding: 0 2px 12px 0; }
 .changelog-box h1 {
-  margin: 2px 0 10px;
-  font-size: 18px;
+  margin: var(--vl-static-spacer-2) var(--vl-static-spacer-0) var(--vl-static-spacer-10);
+  font-size: var(--vl-font-size-18);
   font-weight: 700;
   color: var(--vl-alias-text-default);
 }
 .changelog-box h2 {
-  margin: 18px 0 6px;
-  padding-bottom: 4px;
+  margin: var(--vl-static-spacer-18) var(--vl-static-spacer-0) var(--vl-static-spacer-6);
+  padding-bottom: var(--vl-static-spacer-4);
   border-bottom: 1px solid var(--vl-alias-border-neutral-l1);
-  font-size: 16px;
-  font-weight: 600;
+  font-size: var(--vl-font-size-16);
+  font-weight: var(--vl-font-font-weight-strong);
   color: var(--vl-alias-text-default);
 }
 .changelog-box h3 {
-  margin: 12px 0 4px;
-  font-size: 14px;
-  font-weight: 600;
+  margin: var(--vl-static-spacer-12) var(--vl-static-spacer-0) var(--vl-static-spacer-4);
+  font-size: var(--vl-font-size-14);
+  font-weight: var(--vl-font-font-weight-strong);
   color: var(--vl-alias-text-brand, var(--vl-alias-brand-600));
 }
 .changelog-box h4 {
-  margin: 10px 0 2px;
-  font-size: 13px;
-  font-weight: 600;
+  margin: var(--vl-static-spacer-10) var(--vl-static-spacer-0) var(--vl-static-spacer-2);
+  font-size: var(--vl-font-size-13);
+  font-weight: var(--vl-font-font-weight-strong);
   color: var(--vl-alias-text-default);
 }
 .changelog-box ul {
-  margin: 4px 0 8px;
-  padding-left: 18px;
+  margin: var(--vl-static-spacer-4) var(--vl-static-spacer-0) var(--vl-static-spacer-8);
+  padding-left: var(--vl-static-spacer-18);
 }
 .changelog-box li {
-  margin: 3px 0;
+  margin: var(--vl-static-spacer-3) var(--vl-static-spacer-0);
   line-height: 1.55;
   color: var(--vl-alias-text-secondary);
 }
 .changelog-box p { margin: 4px 0; color: var(--vl-alias-text-secondary); line-height: 1.55; }
 .changelog-box pre {
-  margin: 6px 0;
-  padding: 8px 10px;
+  margin: var(--vl-static-spacer-6) var(--vl-static-spacer-0);
+  padding: var(--vl-static-spacer-8) var(--vl-static-spacer-10);
   background: var(--vl-alias-bg-base-secondary);
   border: 1px solid var(--vl-alias-border-neutral-l1);
   border-radius: var(--vl-static-radius-4, 6px);
   font-family: var(--vl-font-family-mono), Consolas, monospace;
-  font-size: 12px;
+  font-size: var(--vl-font-size-12);
   overflow-x: auto;
   color: var(--vl-alias-text-default);
 }
@@ -533,7 +533,7 @@ body {
 .changelog-box table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 13px; }
 .changelog-box th, .changelog-box td { border: 1px solid var(--vl-alias-border-neutral-l2); padding: 6px 10px; text-align: left; color: var(--vl-alias-text-secondary); }
 .changelog-box th { background: var(--vl-alias-bg-overlay-l2); color: var(--vl-alias-text-default); font-weight: 600; }
-.changelog-box code { background: var(--vl-alias-bg-base-secondary); border: 1px solid var(--vl-alias-border-neutral-l1); border-radius: 4px; padding: 1px 5px; font-family: var(--vl-font-family-mono), Consolas, monospace; font-size: 12px; color: var(--vl-alias-text-default); }
+.changelog-box code { background: var(--vl-alias-bg-base-secondary); border: 1px solid var(--vl-alias-border-neutral-l1); border-radius: 4px; padding: 1px 5px; font-family: var(--vl-font-family-mono), Consolas, monospace; font-size: var(--vl-font-size-12); color: var(--vl-alias-text-default); }
 .changelog-box a { color: var(--vl-alias-text-brand, var(--vl-alias-brand-500)); text-decoration: none; }
 .changelog-box a:hover { text-decoration: underline; }
 .changelog-box blockquote { margin: 8px 0; padding: 6px 12px; border-left: 3px solid var(--vl-alias-brand-500); background: var(--vl-alias-bg-overlay-l1); border-radius: 0 6px 6px 0; }
@@ -543,7 +543,7 @@ body {
 /* 关于页 · 版本卡（版本号 / 更新源 / 检查更新）：一屏内看清「这是哪版、能不能升」 */
 .about-hero {
   display: flex; align-items: center; flex-wrap: wrap; gap: 14px;
-  padding: 16px 18px; margin: 2px 0 6px;
+  padding: var(--vl-static-spacer-16) 18px; margin: var(--vl-static-spacer-2) var(--vl-static-spacer-0) var(--vl-static-spacer-6);
   background: var(--vl-alias-bg-overlay-l1, var(--vl-alias-bg-base-secondary));
   border: 1px solid var(--vl-alias-border-neutral-l1);
   border-radius: var(--vl-static-radius-8, 10px);
@@ -558,23 +558,23 @@ body {
 .about-hero__name { font-size: 15px; font-weight: 600; color: var(--vl-alias-text-default); }
 .about-hero__ver { display: flex; align-items: baseline; gap: 10px; margin-top: 1px; flex-wrap: wrap; }
 .about-hero__v {
-  font-size: 22px; font-weight: 700; line-height: 1.2;
+  font-size: var(--vl-font-size-22); font-weight: 700; line-height: 1.2;
   color: var(--vl-alias-text-default); font-variant-numeric: tabular-nums;
 }
 /* 名片栏内的更新源：左侧「检查更新源：」标签 + 右侧竖排两个紧凑 radio
    ⚠ 标签**顶部对齐**（不是垂直居中）：它与应用名同一行起排，视觉上更稳 */
 .about-hero__pick {
   flex: 0 0 auto; display: flex; align-items: flex-start; gap: 10px;
-  padding: 3px 4px 0 14px; margin: 0;
+  padding: var(--vl-static-spacer-3) var(--vl-static-spacer-4) var(--vl-static-spacer-0) 14px; margin: var(--vl-static-spacer-0);
 }
 .about-hero__pick-label {
-  font-size: 12px; color: var(--vl-alias-text-tertiary); white-space: nowrap;
+  font-size: var(--vl-font-size-12); color: var(--vl-alias-text-tertiary); white-space: nowrap;
   line-height: 1.35;
 }
 /* 分隔竖线放在「标签」与「两个选项」之间（不是整组的左侧） */
 .about-hero__pick-opts {
   display: flex; flex-direction: column; gap: 1px;
-  padding-left: 10px;
+  padding-left: var(--vl-static-spacer-10);
   border-left: 1px solid var(--vl-alias-border-neutral-l1);
 }
 .about-hero__pick-opts .vl-radio { margin: 0; }
