@@ -24,12 +24,36 @@
       background: var(--vl-alias-bg-overlay-l2); color: var(--vl-alias-text-secondary);
     }
     /* 补齐交互状态（基于原样式改造） */
-    .task-tab--alert:active { background: var(--vl-alias-status-error-surface-l2, var(--vl-alias-status-error-surface-l1)); }
+    .task-tab--alert:active {
+  --vl-tab-bg-active: var(--vl-alias-status-error-surface-l2, var(--vl-alias-status-error-surface-l1));
+}
     .task-tab[aria-selected="true"] .task-tab__count { background: color-mix(in srgb, var(--vl-alias-text-onaccent) 24%, transparent); color: var(--vl-alias-text-onaccent); }
     /* 已停止 tab：新增报错任务时浅红底提醒，点击查看后消除 */
-    .task-tab--alert { background: var(--vl-alias-status-error-surface-l1); border-color: var(--vl-alias-status-error-default); color: var(--vl-alias-status-error-default); }
+    /* 「已停止」告警态：改为只声明 --vl-tab-* 变量。
+   原先直接写 background/border-color/color —— 属性写法会压过皮肤的 --vl-tab-* 变量，
+   于是女仆皮肤下这个 tab 露出原始红框红字（切过去重建后类被丢才显得正常）。
+   取值与原属性 1:1 对应，白蓝 / 黑橙观感不变。 */
+.task-tab--alert {
+  --vl-tab-bg: var(--vl-alias-status-error-surface-l1);
+  --vl-tab-border: var(--vl-alias-status-error-default);
+  --vl-tab-color: var(--vl-alias-status-error-default);
+  --vl-tab-bg-hover: var(--vl-alias-status-error-surface-l1);
+  --vl-tab-color-hover: var(--vl-alias-status-error-default);
+  --vl-tab-bg-active: var(--vl-alias-status-error-surface-l2, var(--vl-alias-status-error-surface-l1));
+  /* 选中态：原先 .task-tab--alert 未覆盖，这里补齐，让「已停止」被选中时同样是红的 */
+  --vl-tab-bg-on: var(--vl-alias-status-error-surface-l1);
+  --vl-tab-border-on: var(--vl-alias-status-error-default);
+  --vl-tab-color-on: var(--vl-alias-status-error-default);
+  --vl-tab-bg-on-hover: var(--vl-alias-status-error-surface-l1);
+  --vl-tab-border-on-hover: var(--vl-alias-status-error-default);
+  --vl-tab-color-on-hover: var(--vl-alias-status-error-default);
+  --vl-tab-bg-on-active: var(--vl-alias-status-error-surface-l2, var(--vl-alias-status-error-surface-l1));
+}
     .task-tab--alert .task-tab__count { background: var(--vl-alias-status-error-default); color: var(--vl-alias-text-onaccent); }
-    .task-tab--alert:hover { background: var(--vl-alias-status-error-surface-l1); color: var(--vl-alias-status-error-default); }
+    .task-tab--alert:hover {
+  --vl-tab-bg-hover: var(--vl-alias-status-error-surface-l1);
+  --vl-tab-color-hover: var(--vl-alias-status-error-default);
+}
     /* 右下角悬浮按钮：正在运行=「全部继续（左）/全部暂停（右）」；已完成/已停止=清除列表；不带品牌色，用背景色 */
     /* 圆形悬浮操作按钮：形态与矩形按钮差异过大，不套用 vl-btn，
        但**状态色与反馈一律走变量** → 皮肤将来写
