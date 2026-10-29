@@ -693,7 +693,7 @@ html[data-skin="Maid_Atelier"] .task-tab:nth-child(2)::before {
   pointer-events: none;
 }
 /* 任务窗口 tab 栏背景：参考主界面日志分支标题行的牛皮纸（top-trim 布纹）材质 */
-html[data-skin="Maid_Atelier"] .task-tab {
+html[data-skin="Maid_Atelier"] [data-region="task-tabs"] {
   background:
     url('assets/top-trim-tile.webp') center -2px / auto 149px repeat-x,
     rgba(8, 20, 50, 0.9);
