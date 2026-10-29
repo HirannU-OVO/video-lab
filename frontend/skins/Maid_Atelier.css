@@ -675,13 +675,13 @@ html[data-skin="Maid_Atelier"] .vl-tab {
   transition: color 0.15s ease, background 0.15s ease;
 }
 /* 选中态下划线由组件层 .vl-tab 绘制，颜色见上方 --vl-tab-underline-on */
-html[data-skin="Maid_Atelier"] [data-region="task-tabs"][aria-selected="true"] .task-tab__count {
+html[data-skin="Maid_Atelier"] .task-tab[aria-selected="true"] .task-tab__count {
   background: rgba(255, 247, 230, 0.16);
   color: #fff7e6;
 }
 /* 三 tab 之间的悬浮细金分隔线：整高渐隐（上下不再留空），绝对定位不参与排布，hover/激活背景不影响 */
-html[data-skin="Maid_Atelier"] [data-region="task-tabs"]:nth-child(1)::before,
-html[data-skin="Maid_Atelier"] [data-region="task-tabs"]:nth-child(2)::before {
+html[data-skin="Maid_Atelier"] .task-tab:nth-child(1)::before,
+html[data-skin="Maid_Atelier"] .task-tab:nth-child(2)::before {
   content: '';
   position: absolute;
   top: 0;
@@ -693,7 +693,7 @@ html[data-skin="Maid_Atelier"] [data-region="task-tabs"]:nth-child(2)::before {
   pointer-events: none;
 }
 /* 任务窗口 tab 栏背景：参考主界面日志分支标题行的牛皮纸（top-trim 布纹）材质 */
-html[data-skin="Maid_Atelier"] [data-region="task-tabs"] {
+html[data-skin="Maid_Atelier"] .task-tab {
   background:
     url('assets/top-trim-tile.webp') center -2px / auto 149px repeat-x,
     rgba(8, 20, 50, 0.9);
@@ -1385,7 +1385,7 @@ html[data-skin="Maid_Atelier"] [data-region="config-editor"] {
   to { opacity: 1; transform: none; }
 }
 /* 配置间切换静默：不重放进场动画（与徽章 --static 同思路） */
-html[data-skin="Maid_Atelier"] [data-region="config-editor"][data-region="config-editor"][data-static] {
+html[data-skin="Maid_Atelier"] [data-region="config-editor"][data-static] {
   animation: none;
 }
 

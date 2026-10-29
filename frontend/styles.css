@@ -166,25 +166,6 @@ samp,
   font-feature-settings: "tnum" 1, "lnum" 1;
 }
 
-.vl-input-group {
-  display: flex;
-  align-items: center;
-  gap: var(--vl-static-spacer-8);
-  min-height: 32px;
-  padding: var(--vl-static-spacer-0) var(--vl-static-spacer-12);
-  background: var(--vl-alias-bg-base-default);
-  border: 1px solid var(--vl-alias-border-neutral-l1);
-  border-radius: var(--vl-static-radius-8);
-  color: var(--vl-alias-text-default);
-  width: 100%;
-  font-family: var(--vl-type-body-base-family);
-  font-size: var(--vl-type-body-base-size);
-  line-height: var(--vl-type-body-base-line-height);
-}
-.vl-input-group:focus-within {
-  border-color: var(--vl-alias-border-contrast);
-  background: var(--vl-alias-bg-base-default);
-}
 .vl-input-group input {
   flex: 1;
   background: transparent;
@@ -3423,7 +3404,7 @@ body[data-mask="1"] .right-panel__subtitle { display: none; }
 /* 侧栏：遮罩叠加项目列表 */
 .mask-proj-head {
   display: flex; align-items: center; gap: 6px;
-  padding: var(--vl-static-spacer-8) var(--vl-static-spacer-12) 6px; border-bottom: var(--vl-static-spacer-1) solid var(--vl-alias-border-neutral-l1);
+  padding: var(--vl-static-spacer-8) var(--vl-static-spacer-12) 6px; border-bottom: var(--vl-static-border-width) solid var(--vl-alias-border-neutral-l1);
 }
 .mask-proj-head__title { flex: 1; font-size: var(--vl-type-body-sm-size); font-weight: var(--vl-font-font-weight-strong); color: var(--vl-alias-text-default); }
 .mask-proj-head__exit { flex-shrink: 0; }
@@ -3679,7 +3660,7 @@ body[data-mask="1"] .right-panel__subtitle { display: none; }
 
 .mask-wm-row {
   display: flex; align-items: center; gap: 6px;
-  padding: var(--vl-static-spacer-6) 8px; border: var(--vl-static-spacer-1) solid var(--vl-alias-border-neutral-l2); border-radius: var(--vl-static-spacer-6);
+  padding: var(--vl-static-spacer-6) 8px; border: var(--vl-static-border-width) solid var(--vl-alias-border-neutral-l2); border-radius: var(--vl-static-spacer-6);
   background: var(--vl-alias-bg-base-secondary);
 }
 .mask-wm-row__path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--vl-type-body-sm-size); color: var(--vl-alias-text-default); }
@@ -3867,7 +3848,7 @@ body[data-mask="1"] .center-top { min-height: 0; max-height: none; }
 .mask-logs { margin-bottom: 8px; }
 .mask-log-item {
   display: flex; align-items: center; gap: 6px;
-  padding: var(--vl-static-spacer-5) 8px; border: var(--vl-static-spacer-1) solid var(--vl-alias-border-neutral-l1); border-radius: var(--vl-static-spacer-4);
+  padding: var(--vl-static-spacer-5) 8px; border: var(--vl-static-border-width) solid var(--vl-alias-border-neutral-l1); border-radius: var(--vl-static-spacer-4);
   cursor: pointer; user-select: none; margin-bottom: 2px;
 }
 .mask-log-item:hover { background: var(--vl-alias-bg-overlay-l1); }

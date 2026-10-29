@@ -1416,7 +1416,7 @@
     --vl-input-group-bg: var(--vl-alias-bg-base-default);
     --vl-input-group-border-color: var(--vl-alias-border-neutral-l1);
     --vl-input-group-focus-bg: var(--vl-input-group-bg);
-    --vl-input-group-focus-border-color: var(--vl-input-group-border-color);
+    --vl-input-group-focus-border-color: var(--vl-alias-border-contrast);
     --vl-input-group-focus-shadow: none;
     display: flex; align-items: center; gap: var(--vl-static-spacer-8);
     min-height: 32px; padding: 0 var(--vl-static-spacer-12);

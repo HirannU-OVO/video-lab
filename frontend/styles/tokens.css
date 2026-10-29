@@ -159,7 +159,7 @@
 :root {
   /* ── 旧主令牌块独有项（合并前定义在文件前段，收敛时并入本块） ── */
   --vl-alias-bg-input-default: #FFFFFF;
-  --vl-font-family-mono: var(--vl-font-family-mono);
+  /* （已移除自引用死代码：var(--vl-font-family-mono) 指回自身，循环引用无效） */
   /* ── 排版刻度与语义档名 ── */
   /* 刻度：按实际取值建档 */
   --vl-font-size-10: 10px;

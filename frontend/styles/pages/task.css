@@ -5,7 +5,7 @@
     body { display: flex; flex-direction: column; overflow: hidden; padding-top: 34px; }
     .task-header {
       display: flex; align-items: center; gap: 10px;
-      padding: var(--vl-static-spacer-8) 12px; flex-shrink: var(--vl-static-spacer-0);
+      padding: var(--vl-static-spacer-8) 12px; flex-shrink: 0;
       border-bottom: 1px solid var(--vl-alias-border-neutral-l1);
       background: var(--vl-alias-bg-base-secondary);
     }
