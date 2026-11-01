@@ -814,8 +814,10 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   transform-origin: left center;
   transition: transform 0.32s ease;
 }
-.tree-project__name.is-filled { color: var(--vl-alias-text-onaccent); }
-.tree-project__name.is-filled::before { transform: scaleX(1); }
+.tree-project__name.is-filled,
+[data-region="tree-project__name"][data-state="filled"] { color: var(--vl-alias-text-onaccent); }
+.tree-project__name.is-filled::before,
+[data-region="tree-project__name"][data-state="filled"]::before { transform: scaleX(1); }
 /* 展开/切换填充动画：一次性动画类驱动，避免依赖过渡触发时序 */
 .tree-project__name.is-filling::before { animation: az-fill 0.32s ease both; }
 @keyframes az-fill {
@@ -876,7 +878,9 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
 }
 /* 展开填充态：本行子元素（箭头/图标）跟随激活文字色，避免被主题底色盖住看不清 */
 .tree-project__name.is-filled .tree-arrow,
-.tree-project__name.is-filled .tree-project__icon { color: var(--vl-alias-text-onaccent); }
+.tree-project__name.is-filled .tree-project__icon,
+[data-region="tree-project__name"][data-state="filled"] .tree-arrow,
+[data-region="tree-project__name"][data-state="filled"] .tree-project__icon { color: var(--vl-alias-text-onaccent); }
 
 /* TXT tree item (simplified, no version tree) */
 /* 配置文件项：外观走 .vl-btn 变量（状态由基线提供），缩进与间距属布局 */
@@ -2274,10 +2278,13 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
 }
 /* 右侧成片块高亮：整段换浅主题色底（行号与代码行同步） */
 .right-panel__code-line.log-target,
-.right-panel__line-num.log-target {
+.right-panel__line-num.log-target,
+.right-panel__code-line[data-state="target"],
+.right-panel__line-num[data-state="target"] {
   background: var(--vl-alias-brand-100);
 }
-.right-panel__code-line.log-target.code-line--log-video {
+.right-panel__code-line.log-target.code-line--log-video,
+.right-panel__code-line[data-state="target"].code-line--log-video {
   background: var(--vl-alias-brand-200);
 }
 /* 日志简化模式：每个成片块为圆角容器；常态金边框+透明底，高亮时金边加亮+浅蓝填充；

@@ -574,7 +574,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     sortedProjects().forEach(function (proj) {
       var expanded = (proj.name === state.expandedProject);
       html += '<div class="tree-project">';
-      html += '<div class="tree-project__name' + (expanded ? ' tree-project__name--sticky is-filled' : '') + '" data-project="' + escapeHtml(proj.name) + '">';
+      html += '<div class="tree-project__name' + (expanded ? ' tree-project__name--sticky is-filled' : '') + '" data-region="tree-project__name"' + (expanded ? ' data-state="filled"' : '') + ' data-project="' + escapeHtml(proj.name) + '">';
       html += '<span class="tree-arrow' + (expanded ? ' tree-arrow--open' : '') + '"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M6 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
       html += icon('folder', 16, 'tree-project__icon');
       html += escapeHtml(proj.name);
@@ -2498,7 +2498,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     if (!n || n < 1) return;
     var end = Number(endLine);
     if (!end || end < n) end = n;
-    content.querySelectorAll('.right-panel__line-num.log-target, .right-panel__code-line.log-target, .log-block--active').forEach(function (el) { el.classList.remove('log-target', 'log-block--active'); });
+    content.querySelectorAll('.right-panel__line-num.log-target, .right-panel__code-line.log-target, .log-block--active, [data-state="target"]').forEach(function (el) { el.classList.remove('log-target', 'log-block--active'); el.removeAttribute('data-state'); });
     if (state.logViewMode === 'simple') {
       // 简化模式：以成片块为高亮单元（圆角金边浅蓝方块）
       content.querySelectorAll('.log-block').forEach(function (blk) {
@@ -2512,7 +2512,10 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       for (var r = n; r <= end; r++) {
         if (skip[r]) continue;
         var num = content.querySelector('.right-panel__line-num[data-row="' + r + '"]');
-        if (num) num.classList.add('log-target'); // 原始模式：仅高亮行号列
+        if (num) {
+          num.classList.add('log-target'); // 原始模式：仅高亮行号列
+          num.setAttribute('data-state', 'target');
+        }
       }
     }
     // 高亮块提至首行：按 DOM 实际位置滚动到预览顶部（行高估算会因简化模式成片块的
@@ -2999,11 +3002,12 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     var pname = state.expandedProject;
     if (!pname) return;
     var tree = $('sidebarTree');
-    var header = tree && tree.querySelector('.tree-project__name.is-filled');
+    var header = tree && (tree.querySelector('.tree-project__name.is-filled') || tree.querySelector('[data-region="tree-project__name"][data-state="filled"]'));
     state.expandedProject = null;
     var azBar = $('azIndexBar'); if (azBar) azBar.classList.remove('is-show');
     if (!header) return;
     header.classList.remove('is-filled');
+    header.removeAttribute('data-state');
     var bdg = header.querySelector('.tree-project__badge');
     if (bdg) {
       bdg.classList.remove('tree-project__badge--static'); bdg.removeAttribute('data-static');
@@ -3092,6 +3096,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
         if (!willExpand) {
           // 折叠：项目名反向收回 + azbar 收回；配置区整体从上到下渐隐，重建后仅展开项目下方的项目渐显
           projectHeader.classList.remove('is-filled');
+          projectHeader.removeAttribute('data-state');
           var bdgFold = projectHeader.querySelector('.tree-project__badge');
           if (bdgFold) {
             // 摘除切换配置时加的 --static（animation:none 特异性高于 --leave 的滑出动画），
@@ -3127,10 +3132,11 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
         //。
         var doExpand = function () {
           state.expandedProject = pname;
-          var oldHeader = $('sidebarTree').querySelector('.tree-project__name.is-filled');
+          var oldHeader = $('sidebarTree').querySelector('.tree-project__name.is-filled') || $('sidebarTree').querySelector('[data-region="tree-project__name"][data-state="filled"]');
           var oldWrap = $('sidebarTree').querySelector('.tree-project__items');
           if (oldHeader) {
             oldHeader.classList.remove('is-filled');
+            oldHeader.removeAttribute('data-state');
             var bdgOld = oldHeader.querySelector('.tree-project__badge');
             if (bdgOld) {
               // 与折叠分支一致：先摘除 --static 再播 --leave 收回动画
@@ -3157,6 +3163,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
             if (newHeader) {
               // 一次性动画类驱动填充（remove 后重加即可重新播放），避免过渡触发时序导致部分项目直接变色
               newHeader.classList.add('is-filled');
+              newHeader.setAttribute('data-state', 'filled');
               if (newHeader.classList.contains('is-filling')) newHeader.classList.remove('is-filling');
               void newHeader.offsetWidth;
               newHeader.classList.add('is-filling');

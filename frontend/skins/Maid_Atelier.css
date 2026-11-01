@@ -675,13 +675,13 @@ html[data-skin="Maid_Atelier"] .vl-tab {
   transition: color 0.15s ease, background 0.15s ease;
 }
 /* 选中态下划线由组件层 .vl-tab 绘制，颜色见上方 --vl-tab-underline-on */
-html[data-skin="Maid_Atelier"] .task-tab[aria-selected="true"] .task-tab__count {
+html[data-skin="Maid_Atelier"] [data-region="task-tab"][aria-selected="true"] .task-tab__count {
   background: rgba(255, 247, 230, 0.16);
   color: #fff7e6;
 }
 /* 三 tab 之间的悬浮细金分隔线：整高渐隐（上下不再留空），绝对定位不参与排布，hover/激活背景不影响 */
-html[data-skin="Maid_Atelier"] .task-tab:nth-child(1)::before,
-html[data-skin="Maid_Atelier"] .task-tab:nth-child(2)::before {
+html[data-skin="Maid_Atelier"] [data-region="task-tab"]:nth-child(1)::before,
+html[data-skin="Maid_Atelier"] [data-region="task-tab"]:nth-child(2)::before {
   content: '';
   position: absolute;
   top: 0;
@@ -746,12 +746,10 @@ html[data-skin="Maid_Atelier"] [data-region="task-list"] > * {
 /* 设置窗口右上角 git 按钮：除位置/大小外，各状态样式对齐侧栏置顶按钮
    （常态 底色+淡金边框+内金投影；hover 主题底白字去边框） */
 /* 日志预览高亮块：浅蓝（替代金色 brand-100/200，避免金色高亮刺眼） */
-html[data-skin="Maid_Atelier"] .right-panel__code-line.log-target,
-html[data-skin="Maid_Atelier"] .right-panel__line-num.log-target {
+/* ⚠ 高亮状态只落在行号列（`data-state="target"` 由 app.js 打在 .right-panel__line-num 上），
+   代码行从不带该状态 —— 原先针对成片名行的加深色规则形同废码，已删除，别再照抄回来。 */
+html[data-skin="Maid_Atelier"] .right-panel__line-num[data-state="target"] {
   background: rgba(105, 158, 216, 0.24);
-}
-html[data-skin="Maid_Atelier"] .right-panel__code-line.log-target.code-line--log-video {
-  background: rgba(105, 158, 216, 0.34);
 }
 /* 日志选择模式选中行：浅黄底上白字看不清，整行文字改深蓝色（hover 态恢复默认浅字，避免深蓝叠深背景） */
 html[data-skin="Maid_Atelier"] [data-region="log-list"][data-selecting] [data-region="log-entry"][data-selected]:not(:hover),
@@ -1011,15 +1009,15 @@ html[data-skin="Maid_Atelier"] .tree-project__name--sticky {
   background: transparent;
   box-shadow: none;
 }
-html[data-skin="Maid_Atelier"] .tree-project__name.is-filled {
+html[data-skin="Maid_Atelier"] [data-region="tree-project__name"][data-state="filled"] {
   color: #fff8e8;
   text-shadow: 0 1px 2px rgba(2, 8, 28, 0.54);
 }
-html[data-skin="Maid_Atelier"] .tree-project__name.is-filled:hover {
+html[data-skin="Maid_Atelier"] [data-region="tree-project__name"][data-state="filled"]:hover {
   background: transparent;
 }
-html[data-skin="Maid_Atelier"] .tree-project__name.is-filled .tree-arrow,
-html[data-skin="Maid_Atelier"] .tree-project__name.is-filled .tree-project__icon {
+html[data-skin="Maid_Atelier"] [data-region="tree-project__name"][data-state="filled"] .tree-arrow,
+html[data-skin="Maid_Atelier"] [data-region="tree-project__name"][data-state="filled"] .tree-project__icon {
   color: #fff8e8;
   filter: drop-shadow(0 1px 2px rgba(2, 8, 28, 0.45));
 }
@@ -1043,7 +1041,7 @@ html[data-skin="Maid_Atelier"] .tree-project__name::after {
   pointer-events: none;
   filter: drop-shadow(0 2px 3px rgba(2, 8, 28, 0.48));
 }
-html[data-skin="Maid_Atelier"] .tree-project__name.is-filled::after {
+html[data-skin="Maid_Atelier"] [data-region="tree-project__name"][data-state="filled"]::after {
   width: 27px;
   height: 33px;
   filter: drop-shadow(0 2px 3px rgba(2, 8, 28, 0.55)) brightness(1.15);
