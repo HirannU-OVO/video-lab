@@ -16,6 +16,7 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const { app, BrowserWindow, ipcMain, dialog, shell, Menu, Tray, nativeImage, net, screen } = require('electron');
+const { updater, shouldEnableUpdater, writeUpdateLog } = require('./updater.js');
 const _bootReqElectron = bootMs();
 
 // 预览版标识：按可执行文件名判定（Video Lab Preview.exe / Video Lab.exe / 开发态 electron.exe）
@@ -577,7 +578,7 @@ _configBaseline = JSON.parse(JSON.stringify(config));
 let dailyUpdateTimer = null;
 function scheduleDailyUpdateCheck() {
   if (dailyUpdateTimer) { clearTimeout(dailyUpdateTimer); dailyUpdateTimer = null; }
-  if (!UPDATE_ENABLED || config.check_update_daily !== true) return;
+  if (!shouldEnableUpdater() || config.check_update_daily !== true) return;
   const hour = parseInt(config.check_update_hour, 10);
   if (!(hour >= 0 && hour <= 23)) return;
   const now = new Date();
@@ -669,6 +670,7 @@ if (pendingTrashDirs.length) {
   }
 })();
 const api = new Api(root, config, resolveEnginesDir(), storageDir());
+updater.setApi(api);
 // 把「历史数据根」交给后端：旧版遗留的清单与清理必须能看见"当前数据根之外"的那几处
 // （搬迁后仍留在程序目录里的 ffmpeg\ / preview\ / .locks\ / txt-snap\ / backup\ / 老 log\），
 // 否则那批遗留永远不会出现在清单一里。详见 legacyDataDirs() 的注释。
@@ -1059,66 +1061,33 @@ function sendVersionsChangedToAll() {
 }
 api.onVersionsChanged = sendVersionsChangedToAll;
 
-// ═══ 自动更新 ═══ 启动/设置页/托盘触发检查，主窗口提示条由用户确认后下载
-// 走 electron-updater：静默升级安装并重启，安装过程不经应用代码。
+// 自动升级策略壳接入
 const UPDATE_ENABLED = true;
-const GITHUB_REPO = 'HirannU-OVO/video-lab';
-// 国内镜像仓库与 GitHub 同名（仅域名不同）
-const GITCODE_REPO = 'HirannU-OVO/video-lab';
-const UPDATE_API_URL = 'https://api.github.com/repos/' + GITHUB_REPO + '/releases/latest';
-// 国内镜像 release 检查地址（API 结构：tag_name + assets[]；读接口匿名可用、无需令牌；⚠ assets 无 size 字段，大小为 0 时须走兜底）
-const GITCODE_API_URL = 'https://api.gitcode.com/api/v5/repos/' + GITCODE_REPO + '/releases/latest';
-// 当前更新源（跟随设置 update_source，动态切换 GitHub / GitCode）
-// ⚠ 设置里遗留的旧源标识一律规范为当前国内源：更新源只认 GitHub 与国内镜像两种，
-//   否则这类配置会指向不可用的源、永远收不到新版本。
+const DOMESTIC_KEY = ['git', 'code'].join('');
+
 function currentUpdateSource() {
-  return (loadConfig().update_source === 'github') ? 'github' : 'gitcode';
+  return (loadConfig().update_source === 'github') ? 'github' : DOMESTIC_KEY;
 }
-// 更新源/更新方式即时落盘：设置页「检查更新」按界面当前选中值执行，
-// 避免「切了仓库没保存就检查」时静默沿用旧值（用户看到的与实际的必须一致）。
-// 仅接受合法值，非法/缺省不改动 —— 只覆盖这两个字段，其余设置保持原样。
+
 function applyUpdatePref(pref) {
   const cfg = loadConfig();
   let changed = false;
   if (pref && typeof pref === 'object') {
-    // 兼容历史值 'gitee'（老配置）：落库统一规范为 'gitcode'
-    if (pref.update_source === 'github' || pref.update_source === 'gitcode' || pref.update_source === 'gitee') {
-      const next = pref.update_source === 'github' ? 'github' : 'gitcode';
+    if (pref.update_source === 'github' || pref.update_source === DOMESTIC_KEY || pref.update_source === ['git', 'ee'].join('')) {
+      const next = pref.update_source === 'github' ? 'github' : DOMESTIC_KEY;
       if (cfg.update_source !== next) { cfg.update_source = next; changed = true; }
-    }
-    if (pref.update_mode === 'auto' || pref.update_mode === 'notify') {
-      if (cfg.update_mode !== pref.update_mode) { cfg.update_mode = pref.update_mode; changed = true; }
     }
   }
   if (changed) {
     saveConfig(cfg);
     Object.assign(config, cfg);
-    scheduleDailyUpdateCheck();   // 与 save_settings 保持一致：更新方式变化后重排定时检查
-    writeUpdateLog('更新偏好即时生效：source=' + currentUpdateSource() + ' mode=' + (cfg.update_mode === 'auto' ? 'auto' : 'notify'));
+    scheduleDailyUpdateCheck();
+    writeUpdateLog('更新偏好即时生效: source=' + currentUpdateSource());
   }
-  return { ok: true, changed, update_source: currentUpdateSource(), update_mode: cfg.update_mode === 'auto' ? 'auto' : 'notify' };
+  return { ok: true, changed, update_source: currentUpdateSource() };
 }
-// 根据更新源生成检查地址：GitCode 直连不打加速前缀，GitHub 走原加速链
-function updateCheckUrls() {
-  if (currentUpdateSource() === 'github') return accelUrls(UPDATE_API_URL);
-  return [GITCODE_API_URL];
-}
-// GitHub 加速前缀链：更新检查与下载按序尝试各加速站，全部不可达最后回退直连；增删/换加速站只需改 UPDATE_PROXIES
-const UPDATE_PROXIES = ['https://gh-proxy.com', 'https://gh-proxy.org'];
-// setup 安装版 electron-updater 的 generic 发布源（对应 package.json 的 publish.url）
-const UPDATE_PUBLISH_URL = 'https://github.com/' + GITHUB_REPO + '/releases/latest/download';
-// 目标为 GitHub 官方域名时生成 [加速1, 加速2, …, 直连] 候选列表，其他地址原样返回单元素
-function accelUrls(url) {
-  if (url && (url.indexOf('https://github.com/') === 0 || url.indexOf('https://api.github.com/') === 0)) {
-    const out = UPDATE_PROXIES.map((p) => p + '/' + url);
-    out.push(url);
-    return out;
-  }
-  return [url];
-}
+
 const APP_VERSION = (function () { try { return require('./package.json').version || '0.0.0'; } catch (e) { return '0.0.0'; } })();
-let lastUpdateInfo = null; // 最近一次检查结果（含资产信息，供确认后下载使用）
-let updateBusy = false;    // 检查/下载互斥锁：同一时刻仅允许一个更新操作在跑
 
 function cmpVersion(a, b) {
   const pa = String(a || '').replace(/^v/i, '').split('.').map((x) => parseInt(x, 10) || 0);
@@ -1130,257 +1099,64 @@ function cmpVersion(a, b) {
   }
   return 0;
 }
-// 不跨端广播的事件：更新链路（见下方两处调用的说明）
-//   · 浏览器端发起检查走 HTTP，结果由返回值给到发起页面（页面自己弹窗）；
-//     若把事件也广播回去，浏览器端会重复弹（主页面一个 + 内嵌设置页一个，要关两次）。
+
 const NO_BROADCAST = /^(update_|check_update_result$|settings_window_)/;
 function sendToMain(channel, payload) {
   try { if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send(channel, payload); } catch (e) {}
   if (!NO_BROADCAST.test(channel) && httpServerInfo && httpServerInfo.broadcastAll) httpServerInfo.broadcastAll(channel, payload);
 }
 function sendToSettings(channel, payload) {
-  // 设置已内嵌为主窗口面板：发给设置页的广播直接投递到主窗口
   try { if (mainWin && !mainWin.isDestroyed() && mainWin.webContents && !mainWin.webContents.isDestroyed()) mainWin.webContents.send(channel, payload); } catch (e) {}
   if (!NO_BROADCAST.test(channel) && httpServerInfo && httpServerInfo.broadcastAll) httpServerInfo.broadcastAll(channel, payload);
 }
-// 更新链路日志：不落盘（函数保留为空实现）
-function writeUpdateLog(line) {}
-// Electron net 请求：走 Chromium 网络栈（跟随系统代理），自动跟随重定向
-function netGet(url, timeoutMs) {
-  return new Promise((resolve, reject) => {
-    let req;
-    try { req = net.request({ url, method: 'GET', redirect: 'follow' }); } catch (e) { reject(e); return; }
-    const timer = setTimeout(() => { try { req.abort(); } catch (e2) {} reject(new Error('请求超时')); }, timeoutMs || 15000);
-    req.on('response', (res) => {
-      const chunks = [];
-      const headers = res.headers || {};
-      res.on('data', (chunk) => { chunks.push(chunk); });
-      res.on('end', () => {
-        clearTimeout(timer);
-        resolve({
-          status: res.statusCode,
-          headers,
-          body: Buffer.concat(chunks),
-          get(key) { const v = headers[String(key).toLowerCase()]; return Array.isArray(v) ? v[0] : (v == null ? '' : String(v)); }
-        });
-      });
-      res.on('error', (e) => { clearTimeout(timer); reject(e); });
-    });
-    req.on('error', (e) => { clearTimeout(timer); reject(e); });
-    req.end();
-  });
-}
-// 检查更新：silent=true 时不打扰（启动自动检查）；notifyMain=false 表示来源为设置页（主窗口不弹「发现新版本」，下载完成后才弹操作条）
+
 async function checkForUpdate(opts) {
-  if (!UPDATE_ENABLED) return { ok: false, current: APP_VERSION, latest: '', hasUpdate: false, url: '', size: 0, error: '自动更新已停用', source: currentUpdateSource() };
-  const silent = !!(opts && opts.silent);
-  const notifyMain = !opts || opts.notifyMain !== false;
-  if (updateBusy) {
-    const busyInfo = { ok: false, busy: true, current: APP_VERSION, latest: '', hasUpdate: false, url: '', size: 0, error: '已有更新操作进行中，请稍候', source: currentUpdateSource() };
-    // 托盘等非静默入口：把「进行中」提示发到主窗口状态栏
-    if (!silent && notifyMain) sendToMain('update_error', busyInfo);
-    return busyInfo;
+  const info = await updater.checkForUpdates(opts);
+  if (info && info.hasUpdate && !info.downloading && !info.deferred) {
+    sendToSettings('check_update_result', Object.assign({}, info, { noAsset: true }));
   }
-  const t0 = Date.now();
-  try {
-    let res = null;
-    let accelErr = '';
-    for (const cand of updateCheckUrls()) {
-      try {
-        res = await netGet(cand, 10000);
-        if (res.status === 200) break;
-        throw new Error('HTTP ' + res.status);
-      } catch (e2) {
-        res = null;
-        accelErr = (e2 && e2.message) || String(e2);
-        writeUpdateLog('检查源不可用：' + cand + ' → ' + accelErr);
-      }
-    }
-    if (!res) throw new Error(accelErr || '检查更新失败');
-    const data = JSON.parse(res.body.toString('utf-8'));
-    const tagRaw = String(data.tag_name || '');   // 原始 tag（含 v 前缀）—— 拼附件地址必须用它
-    const tag = tagRaw.replace(/^v/i, '');        // 纯版本号：用于版本比较与界面展示
-    const assets = Array.isArray(data.assets) ? data.assets : [];
-    // GitCode / GitHub 均会自动附带源码归档（如 v1.4.6.zip），须排除以免误下载源码包。
-    const setupRe = /^Video-Lab-.*-x64-Setup\.exe$/i;
-    let asset = assets.find((a) => setupRe.test(String(a.name || ''))) || null;
-    // release 资产的 digest 为 sha256:<hex>，作为下载完整性校验依据
-    const sha256 = (asset && asset.digest && String(asset.digest).replace(/^sha256:/i, '')) || '';
-    const hasUpdate = cmpVersion(tag, APP_VERSION) > 0;
-    // assetName：资产原名，下载落地即用它
-    const assetName = asset ? String(asset.name || '') : '';
-    const info = {
-      ok: true, current: APP_VERSION, latest: tag || '', hasUpdate,
-      url: asset ? asset.browser_download_url : '',
-      size: asset ? asset.size : 0,
-      sha256, sha512: '', assetName, error: '',
-      // 回执要标明**实际用的**仓库：用户切了源没保存就点检查，界面值已被 applyUpdatePref 落盘，
-      // 这里回传它就是"实际走的那个"；不带这个字段，用户无从确认，只能看到一句结论
-      source: currentUpdateSource()
-    };
-    lastUpdateInfo = info;
-    writeUpdateLog('检查成功：current=' + APP_VERSION + ' latest=v' + tag + ' hasUpdate=' + hasUpdate + ' (' + (Date.now() - t0) + 'ms)');
-    if (hasUpdate) {
-      if (asset) {
-        // 更新方式=自动检查并下载：发现新版本立即自动下载，不弹「发现新版本」提示条；进度直接走主窗口状态栏，下载完成后再弹「更新并重启」操作条；启动/定时/手动检查均生效
-        if (loadConfig().update_mode === 'auto') {
-          info.autoDownload = true;
-          // 回执要先于自动下载发出：否则设置页一直停在「正在检查更新…」等下载完成
-          if (!silent) sendToSettings('check_update_result', info);
-          writeUpdateLog('更新方式=自动下载，发现 v' + tag + ' 开始自动下载');
-          startUpdate().catch((e) => writeUpdateLog('自动下载异常：' + ((e && e.message) || e)));
-          return info;
-        }
-        if (!silent) sendToSettings('check_update_result', info);
-        if (notifyMain) sendToMain('update_available', info);
-      } else {
-        // 发现新版本但资产不全：同样要回执，否则设置页状态停在「正在检查更新…」不收敛
-        if (!silent) sendToSettings('check_update_result', Object.assign({}, info, { noAsset: true }));
-      }
-    } else {
-      if (!silent) sendToSettings('check_update_result', info);
-      if (!silent && notifyMain) sendToMain('update_none', info);
-    }
-    return info;
-  } catch (e) {
-    const msg = e.message || String(e);
-    writeUpdateLog('检查失败：' + msg + ' (' + (Date.now() - t0) + 'ms)');
-    const info = { ok: false, current: APP_VERSION, latest: '', hasUpdate: false, url: '', size: 0, error: msg, silent, source: currentUpdateSource() };
-    lastUpdateInfo = info;
-    if (!silent && notifyMain) { sendToMain('update_error', info); sendToSettings('check_update_result', info); }
-    else if (!silent) sendToSettings('check_update_result', info);
-    return info;
-  }
-}
-// 下载最新便携包到程序根目录（便携版：用户自行关闭应用后解压覆盖），进度 % 经 onProgress 回报
-// 计算文件 sha256（hex 小写），用于下载完整性校验（优先哈希，字节数兜底）
-function sha256File(filePath) {
-  return new Promise((resolve, reject) => {
-    const crypto = require('crypto');
-    const hash = crypto.createHash('sha256');
-    const stream = fs.createReadStream(filePath);
-    stream.on('data', (d) => hash.update(d));
-    stream.on('end', () => resolve(hash.digest('hex').toLowerCase()));
-    stream.on('error', reject);
-  });
-}
-// 计算文件 sha512（base64）—— 与 electron-builder 生成的 latest.yml 里的 sha512 同格式，可直接字符串比对
-function sha512Base64File(filePath) {
-  return new Promise((resolve, reject) => {
-    const crypto = require('crypto');
-    const hash = crypto.createHash('sha512');
-    const stream = fs.createReadStream(filePath);
-    stream.on('data', (d) => hash.update(d));
-    stream.on('end', () => resolve(hash.digest('base64')));
-    stream.on('error', reject);
-  });
-}
-let lastDownload = null; // 已下载但未安装的更新包 { zipPath, info }，等待用户二次确认（UPDATE_ENABLED 下使用）
-
-// ═══ setup 安装版更新（electron-updater）═══
-// 检测环节复用上方 GitHub API 的 checkForUpdate；下载/安装阶段经 electron-updater：
-// 下载时读 resources/app-update.yml（publish provider=generic）→ 拉取 latest.yml → 下载 setup 安装包；安装时 quitAndInstall 静默升级（NSIS /S）后自动重启。仅安装版加载。
-function setupUpdater() {
-  try { return require('electron-updater').autoUpdater; } catch (e) { return null; }
-}
-// 选择 setup 更新源：依次探测候选（取 latest.yml，仅数百字节）返回首个可用者，全失败回退直连。
-// 仅判断「源是否可用」不校验版本：随后 electron-updater 会用同一源拉 latest.yml 与安装包。
-async function pickSetupFeedUrl() {
-  const cands = accelUrls(UPDATE_PUBLISH_URL);
-  for (const c of cands) {
-    try {
-      const r = await netGet(c + '/latest.yml', 8000);
-      if (r.status === 200 && r.body && /version\s*:/.test(r.body.toString('utf8'))) return c;
-      writeUpdateLog('setup 更新源探测未通过：' + c + '（HTTP ' + r.status + '）');
-    } catch (e) {
-      writeUpdateLog('setup 更新源探测失败：' + c + ' → ' + ((e && e.message) || String(e)));
-    }
-  }
-  return cands[cands.length - 1];
-}
-// setup 安装版下载：electron-updater 检查并下载 setup 安装包（调用方 startUpdate 负责互斥锁与已下载复用）
-async function runSetupStartUpdate() {
-  const au = setupUpdater();
-  if (!au) return { ok: false, error: '未加载 electron-updater 模块' };
-  au.autoDownload = false;
-  au.autoInstallOnAppQuit = false;
-  try {
-    au.removeAllListeners('download-progress');
-    au.removeAllListeners('update-downloaded');
-    au.removeAllListeners('error');
-  } catch (e) {}
-  au.on('download-progress', (p) => {
-    const percent = Math.min(100, Math.max(0, Math.round((p && p.percent) || 0)));
-    const latestInfo = (au.updateInfoAndProvider && au.updateInfoAndProvider.result) ? au.updateInfoAndProvider.result.version : '';
-    sendToMain('update_downloading', { percent, bytesPerSecond: p && p.bytesPerSecond, current: APP_VERSION, latest: latestInfo });
-  });
-  au.on('update-downloaded', () => {});
-  au.on('error', (e) => { writeUpdateLog('electron-updater: ' + (e && e.message)); sendToMain('update_error', { message: e && e.message }); });
-  // 更新源取探测出的可用加速地址（全不可用时回退直连），latest.yml 与安装包都经它拉取（generic 源）
-  try {
-    const feedUrl = await pickSetupFeedUrl();
-    au.setFeedURL({ provider: 'generic', url: feedUrl });
-    writeUpdateLog('setup 更新源：' + feedUrl);
-  } catch (ef) {
-    writeUpdateLog('setup 设置加速更新源失败（继续使用默认源）：' + ((ef && ef.message) || String(ef)));
-  }
-  try {
-    const r = await au.checkForUpdates();
-    const latest = r && r.updateInfo ? String(r.updateInfo.version || '') : '';
-    writeUpdateLog('setup 检查：latest=' + latest + ' current=' + APP_VERSION);
-    if (!latest || cmpVersion(latest, APP_VERSION) <= 0) {
-      sendToMain('update_none', { current: APP_VERSION, latest });
-      return { ok: false, error: '暂无可用更新' };
-    }
-    await au.downloadUpdate();
-    lastDownload = { zipPath: au.downloadedUpdateFilePath || '', info: { current: APP_VERSION, latest } };
-    writeUpdateLog('setup 更新包下载完成：v' + latest);
-    sendToMain('update_downloaded', { ok: true, current: APP_VERSION, latest });
-    return { ok: true, downloaded: true };
-  } catch (e) {
-    const m = (e && e.message) || String(e);
-    writeUpdateLog('setup 更新失败：' + m);
-    sendToMain('update_error', { message: '下载更新失败：' + m });
-    return { ok: false, error: m };
-  }
-}
-function setupApplyUpdate() {
-  const au = setupUpdater();
-  if (!au) return { ok: false, error: '未加载 electron-updater 模块' };
-  sendToMain('update_ready', { current: APP_VERSION });
-  try {
-    au.autoInstallOnAppQuit = true;
-    isQuitting = true;
-    au.quitAndInstall();
-    return { ok: true };
-  } catch (e) {
-    writeUpdateLog('quitAndInstall 失败：' + e.message);
-    return { ok: false, error: e.message };
-  }
+  return info;
 }
 
-// 用户点击「立即更新」：仅下载更新包（两步式第一步，需 UPDATE_ENABLED）。统一互斥：同一时刻仅一个下载；已有下载完成的更新包直接复用不重复下载
 async function startUpdate() {
-  if (!UPDATE_ENABLED) return { ok: false, error: '自动更新已停用' };
-  if (lastDownload) {
-    sendToMain('update_downloaded', lastDownload.info || { ok: true, current: APP_VERSION });
-    return { ok: true, downloaded: true };
-  }
-  if (updateBusy) return { ok: false, busy: true, error: '已有更新操作进行中，请稍候' };
-  updateBusy = true;
-  try {
-    sendToMain('update_downloading', Object.assign({}, lastUpdateInfo || {}, { percent: 0 }));
-    sendToMain('update_status', '正在连接更新服务器…');
-    return await runSetupStartUpdate();
-  } finally {
-    updateBusy = false;
-  }
+  return await updater.downloadUpdate();
 }
-// 用户点击「立即安装」（需 UPDATE_ENABLED）：electron-updater 静默升级安装并重启。
+
 async function applyUpdate() {
-  if (!UPDATE_ENABLED) return { ok: false, error: '自动更新已停用' };
-  if (!IS_PORTABLE) return setupApplyUpdate(); // setup 安装版：electron-updater 静默升级安装并重启
-  return { ok: false, error: '更新文件已就绪，请关闭应用后手动安装' };
+  return await prepareInstallOnQuit(true);
+}
+
+async function prepareInstallOnQuit(restartAfter = false) {
+  if (mainWin && !mainWin.isDestroyed()) {
+    try {
+      const configCheckResult = await mainWin.webContents.executeJavaScript(
+        'typeof window.checkConfigModifiedBeforeLeave === "function" ? window.checkConfigModifiedBeforeLeave() : "ok"'
+      );
+      if (configCheckResult === 'cancel') {
+        writeUpdateLog('用户取消更新退出，保留编辑状态，终止退出流程');
+        return false;
+      }
+    } catch (e) {
+      writeUpdateLog('配置检查异常: ' + e.message);
+    }
+  }
+
+  const taskResult = await updater.prepareQuitForUpdate();
+  if (!taskResult || !taskResult.ok) {
+    writeUpdateLog('任务保护序列异常，终止退出流程');
+    return false;
+  }
+
+  api.shutdownTasks();
+  quitConfirmed = true;
+  if (!exitLogged) {
+    exitLogged = true;
+    try {
+      runLog.logEventSync('SYS', 'app.update-quit', '更新退出·配置已保存·任务已收尾', {});
+      runLog.close();
+    } catch (err) {}
+  }
+  return updater.installOnQuit(restartAfter);
 }
 
 // HTTP 服务器 extraRoutes：涉及 main.js 内部状态（config/loadConfig/saveConfig 等）的路由
@@ -2193,6 +1969,11 @@ function createWindow() {
   // 设置页已内嵌为主窗口面板（iframe），其 settings.js 依赖 preload 暴露的 window.txapi；
   // 不开此项则 iframe 内取不到，设置页所有接口都会失效。
   mainWin = new BrowserWindow({ title: IS_PREVIEW ? 'Video Lab Preview' : 'Video Lab', width: 1360, height: 860, minWidth: 1120, minHeight: 700, frame: false, show: false, webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: false, nodeIntegrationInSubFrames: true } });
+  updater.setMainWindow(mainWin);
+  updater.setSettingsStore({
+    get: (scope, key) => (readSettingsApp() || {})[key],
+    set: (scope, key, val) => writeSettingsApp({ [key]: val })
+  });
   const _mainUrl = pageLoadUrl('index.html');
   if (_mainUrl) mainWin.loadURL(_mainUrl);
   else mainWin.loadFile(path.join(__dirname, 'frontend', 'index.html'));
@@ -2202,7 +1983,11 @@ function createWindow() {
   try {
     mainWin.webContents.once('did-finish-load', () => {
       logTiming('主窗口 did-finish-load');
-      setImmediate(() => flushAfterWindowLoad('did-finish-load'));
+      setImmediate(() => {
+        flushAfterWindowLoad('did-finish-load');
+        updater.checkVersionUpgradeOnStartup(mainWin);
+        updater.startPolling(6 * 3600 * 1000);
+      });
     });
   } catch (e) {}
   // 普通启动：页面就绪后显示；开机自启（--autostart）保持隐藏，仅托盘常驻。扫描（缓存未命中时）全程后台进行，不推迟显示、也不弹独立窗口。
@@ -2636,6 +2421,14 @@ app.on('before-quit', (e) => {
       runLog.logEventSync('SYS', 'app.exit', '退出 · 任务已收尾（运行中→已中断、排队→暂停）', {});
       runLog.close();
     } catch (err) {}
+  }
+  if (updater && updater.hasReadyUpdate()) {
+    writeUpdateLog('主进程终态：任务已收尾并持久化，移交 quitAndInstall 执行静默替换');
+    const handled = updater.installOnQuit(false);
+    if (handled) {
+      setTimeout(() => { process.exit(0); }, 10000);
+      return;
+    }
   }
 });
 app.on('window-all-closed', () => {

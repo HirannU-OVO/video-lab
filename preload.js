@@ -172,6 +172,7 @@ const api = {
   on_update_error: (cb) => { ipcRenderer.on('update_error', (e, info) => { try { cb(info); } catch (err) {} }); },
   on_update_ready: (cb) => { ipcRenderer.on('update_ready', (e, info) => { try { cb(info); } catch (err) {} }); },
   on_update_downloaded: (cb) => { ipcRenderer.on('update_downloaded', (e, info) => { try { cb(info); } catch (err) {} }); },
+  on_app_upgraded_notice: (cb) => { ipcRenderer.on('app_upgraded_notice', (e, data) => { try { cb(data); } catch (err) {} }); },
   on_check_update_result: (cb) => { ipcRenderer.on('check_update_result', (e, info) => { try { cb(info); } catch (err) {} }); },
   get_settings: () => invoke('get_settings'),
   save_settings: (s) => invoke('save_settings', s),

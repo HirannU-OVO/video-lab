@@ -32,6 +32,7 @@
       "preload.js",
       "backend.js",
       "server.js",
+      "updater.js",
       "engines/engine-runner.js",
       "engines/registry.js",
       "engines/base/**/*",
@@ -84,7 +85,7 @@
       "createStartMenuShortcut": true,
       "shortcutName": "Video Lab",
       "deleteAppDataOnUninstall": false,
-      "differentialPackage": false,
+      "differentialPackage": true,
       "artifactName": "Video-Lab-${version}-x64-Setup.${ext}",
       "include": "build/installer.nsh"
     }

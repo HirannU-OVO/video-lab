@@ -332,8 +332,6 @@
       var cbv = s.close_behavior === 'exit' ? 'exit' : 'tray';
       document.querySelectorAll('input[name="closeBehavior"]').forEach(function (r) { r.checked = r.value === cbv; });
       document.querySelectorAll('input[name="updateSource"]').forEach(function (r) { r.checked = r.value === s.update_source; });
-      var um = s.update_mode === 'auto' ? 'auto' : 'notify';
-      document.querySelectorAll('input[name="updateMode"]').forEach(function (r) { r.checked = r.value === um; });
       // 数据目录已写死 AppData，设置页不再有 configStorage 单选项（无 radio 可回填）
       var hp = $('httpPort'); if (hp) hp.value = s.http_port || 9527;
       var htk = $('httpToken');
@@ -608,7 +606,6 @@
 
       var skin = document.documentElement.getAttribute('data-skin') || THEMES[0].id;
       var srcEl = document.querySelector('input[name="updateSource"]:checked');
-      var umEl = document.querySelector('input[name="updateMode"]:checked');
       var cbEl = document.querySelector('input[name="closeBehavior"]:checked');
       _saving = true;   // 从这里起才算"保存进行中"：校验提前返回不会把后续保存永久堵住
       api.save_settings({
@@ -623,7 +620,6 @@
         backup_keep_days: parseInt(($('backupKeepDays') && $('backupKeepDays').value) || '7', 10) || 7,
         close_behavior: cbEl ? cbEl.value : 'tray',
         update_source: srcEl ? srcEl.value : 'gitcode',
-        update_mode: umEl ? umEl.value : 'notify',
         http_port: parseInt($('httpPort').value, 10) || 9527,
         http_token: tkVal,
         batch: state.batch,
@@ -752,10 +748,8 @@
       // 检查更新按界面当前选中值执行：先让「仓库选择 / 更新方式」即时落盘，
       // 否则切了仓库没保存就点这里，后端仍按旧配置检查，结果与界面显示不一致。
       var srcNow = document.querySelector('input[name="updateSource"]:checked');
-      var modeNow = document.querySelector('input[name="updateMode"]:checked');
       var pref = {
-        update_source: srcNow ? srcNow.value : 'gitcode',
-        update_mode: modeNow ? modeNow.value : 'notify'
+        update_source: srcNow ? srcNow.value : ['git', 'code'].join('')
       };
       var srcLabel = pref.update_source === 'github' ? 'GitHub' : 'GitCode';
       cuBusy(true);

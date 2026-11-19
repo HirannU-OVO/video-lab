@@ -2854,34 +2854,63 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
   // 回调在确认动作后执行；右上角 ✕ / 遮罩关闭视为取消（中止原动作、返回编辑页面）；
   // 三个按钮行为与配置栏同名按钮一致，「不保存」直接丢弃修改继续原动作。
   function checkConfigModifiedBeforeLeave(afterConfirm, onCancel) {
-    // 日志模式为只读浏览：退出日志（折叠项目/品牌名片/复位视图）不弹未保存拦截，
-    // 配置编辑状态仍保留在内存，切回配置模式后未保存标记照常显示、可继续保存
-    if (state.mode === 'log') { afterConfirm(); return; }
-    if (!state.configModified || !state.configData) { afterConfirm(); return; }
-    showDialog({
-      title: '配置已修改未保存',
-      message: '当前配置已发生修改，丢失修改将无法恢复。',
-      buttons: [
-        { label: '不保存', value: 'discard', cls: 'modal-btn--cfg-discard' },
-        { label: '覆盖当前配置', value: 'overwrite', cls: 'modal-btn--cfg-save' },
-        { label: '保存为当日配置', value: 'today', cls: 'modal-btn--cfg-save-today' }
-      ],
-      // 宽弹窗保证按钮文字不换行
-      cssClass: 'modal-card--wide'
-    }).then(function (choice) {
-      // ✕ / 遮罩关闭 = 取消：中止原动作，返回编辑页面
-      if (choice == null) { if (onCancel) onCancel(); return; }
-      // 不保存：丢弃修改，继续原动作
-      if (choice === 'discard') { afterConfirm(); return; }
-      // 复用配置栏同名按钮逻辑：覆盖当前配置（已确认，跳过覆盖确认二次弹窗）/ 保存为当日配置
-      var go = choice === 'overwrite' ? function () { return saveConfig(true); } : (choice === 'today' ? saveConfigToday : null);
-      if (!go) { afterConfirm(); return; }
-      go().then(function (ok) {
-        if (ok) afterConfirm();
-        else if (onCancel) onCancel();
+    if (typeof afterConfirm === 'function') {
+      if (state.mode === 'log') { afterConfirm(); return; }
+      if (!state.configModified || !state.configData) { afterConfirm(); return; }
+      showDialog({
+        title: '配置已修改未保存',
+        message: '当前配置已发生修改，丢失修改将无法恢复。',
+        buttons: [
+          { label: '不保存', value: 'discard', cls: 'modal-btn--cfg-discard' },
+          { label: '覆盖当前配置', value: 'overwrite', cls: 'modal-btn--cfg-save' },
+          { label: '保存为当日配置', value: 'today', cls: 'modal-btn--cfg-save-today' }
+        ],
+        cssClass: 'modal-card--wide'
+      }).then(function (choice) {
+        if (choice == null) { if (onCancel) onCancel(); return; }
+        if (choice === 'discard') { afterConfirm(); return; }
+        var go = choice === 'overwrite' ? function () { return saveConfig(true); } : (choice === 'today' ? saveConfigToday : null);
+        if (!go) { afterConfirm(); return; }
+        go().then(function (ok) {
+          if (ok) afterConfirm();
+          else if (onCancel) onCancel();
+        });
+      });
+      return;
+    }
+    return new Promise(function (resolve) {
+      if (state.mode === 'log' || !state.configModified || !state.configData) {
+        resolve('ok');
+        return;
+      }
+      showDialog({
+        title: '配置已修改未保存',
+        message: '当前配置已发生修改，是否在退出前保存？',
+        buttons: [
+          { label: '取消', value: 'cancel', cls: 'modal-btn--ghost' },
+          { label: '覆盖当前配置', value: 'overwrite', cls: 'modal-btn--cfg-save' },
+          { label: '保存为当日配置', value: 'today', cls: 'modal-btn--cfg-save-today' }
+        ],
+        cssClass: 'modal-card--wide'
+      }).then(function (choice) {
+        if (!choice || choice === 'cancel') {
+          resolve('cancel');
+          return;
+        }
+        var go = choice === 'overwrite' ? function () { return saveConfig(true); } : (choice === 'today' ? saveConfigToday : null);
+        if (!go) { resolve('cancel'); return; }
+        go().then(function (ok) {
+          if (ok) resolve('ok');
+          else resolve('cancel');
+        }).catch(function () {
+          resolve('cancel');
+        });
+      }).catch(function () {
+        resolve('cancel');
       });
     });
   }
+  window.checkConfigModifiedBeforeLeave = checkConfigModifiedBeforeLeave;
   // 主进程关闭/退出前询问"配置是否有未保存修改"：无修改立即放行；有修改弹三按钮，处理后再回传
   function handleDiscardConfigRequest() {
     var respond = function (action) { var ap = getApi(); if (ap && ap.respond_discard_config) ap.respond_discard_config(action); };
@@ -3548,10 +3577,11 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       if (later) later.textContent = custom.later || '取消';
       if (now) now.textContent = custom.now || '确定';
     } else if (_bannerState === 'downloaded') {
-      if (title) title.textContent = '更新文件已就绪';
-      if (desc) desc.textContent = '是否立即重启并安装？';
-      if (later) later.textContent = '取消';
-      if (now) now.textContent = '重启并安装';
+      var latestVer = ((info && info.latest) || '');
+      if (title) title.textContent = latestVer ? ('新版本 v' + latestVer + ' 已就绪') : '新版本已就绪';
+      if (desc) desc.textContent = '点击立即重启完成升级；如不重启，将在下次退出时自动替换';
+      if (later) later.textContent = '稍后';
+      if (now) now.textContent = '立即重启替换';
     } else {
       if (title) title.textContent = '发现新版本 v' + ((info && info.latest) || '');
       if (desc) desc.textContent = '当前版本 v' + ((info && info.current) || '') + ' · 点击立即更新获取最新功能';
@@ -3677,11 +3707,12 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       }
       now.disabled = true;
       if (_bannerState === 'downloaded') {
-        setStatus('正在准备安装更新…');
-        if (!gp.apply_update) { now.disabled = false; return; }
+        now.textContent = '正在准备重启…';
+        setStatus('正在准备重启…');
+        if (!gp.apply_update) { now.disabled = false; now.textContent = '立即重启替换'; return; }
         gp.apply_update().then(function (r) {
-          if (r && r.ok === false) { now.disabled = false; notify((r && r.error) || '启动更新失败'); }
-        }).catch(function () { now.disabled = false; notify('启动更新失败'); });
+          if (r && r.ok === false) { now.disabled = false; now.textContent = '立即重启替换'; notify((r && r.error) || '启动更新失败'); }
+        }).catch(function () { now.disabled = false; now.textContent = '立即重启替换'; notify('启动更新失败'); });
       } else {
         // 第一步：仅下载更新包（连接服务器阶段先给提示，随后出现 0% 进度条）
         setStatus('正在连接更新服务器…');
@@ -3725,6 +3756,17 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       hideUpdateBanner();
       setStatus('更新包已就绪，正在重启应用…');
     });
+    if (upd.on_app_upgraded_notice) {
+      upd.on_app_upgraded_notice(function (data) {
+        if (!data || !data.notes) return;
+        showDialog({
+          title: '已升级到 v' + (data.version || ''),
+          message: data.notes,
+          buttons: [{ label: '知道了', value: 'ok', cls: 'modal-btn--primary' }],
+          cssClass: 'modal-card--changelog'
+        });
+      });
+    }
     // FFmpeg 环境自愈：复用更新提示条与状态栏进度条（文案与来源不同）
     // 缺失由**启动自动下载**处理（不弹确认）；此横幅只在「下载失败」时出现 → 文案按失败说，按钮是重试
     if (upd.on_env_fix_available) upd.on_env_fix_available(function (info) {

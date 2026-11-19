@@ -4493,6 +4493,20 @@ class Api {
     for (const t of this.tasks.values()) if (t.status === 'queued') return true;
     return false;
   }
+  getPendingTasks() {
+    return [...this.tasks.values()]
+      .filter((t) => t.status === 'running' || t.status === 'queued' || (t.status === 'paused' && (t.softPaused || t._softPaused)))
+      .map((t) => ({ id: t.id, status: t.status, softPaused: !!(t.softPaused || t._softPaused), title: t.title }));
+  }
+  call(cmd, ...args) {
+    if (cmd === 'pause') return this.pauseTask(...args);
+    if (cmd === 'resume') return this.continueReplica(...args);
+    if (cmd === 'requeue') return this.resumeTask(...args);
+    if (cmd === 'continue_replica') return this.continueReplica(...args);
+    if (cmd === 'resume_task') return this.resumeTask(...args);
+    if (typeof this[cmd] === 'function') return this[cmd](...args);
+    return { ok: false, error: 'unknown cmd ' + cmd };
+  }
   // 已结束任务单行删除（运行/排队/暂停中的任务不可删；连带删除任务标记文件）
   clearTask(id) {
     const t = this.tasks.get(id);
