@@ -15,7 +15,6 @@
     if (location.protocol.startsWith('http')) {
 var m = new URL(location.href).searchParams.get('token');
       if (m) localStorage.setItem('tx_token', m);
-      if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(function () {});
       var sk = new URL(location.href).searchParams.get('skin');
       if (sk) document.documentElement.setAttribute('data-skin', sk); else { try { var _sk0 = localStorage.getItem('vl_skin'); if (_sk0) document.documentElement.setAttribute('data-skin', _sk0); } catch (e) {} }
     }

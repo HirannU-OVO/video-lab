@@ -34,7 +34,6 @@
     if (location.protocol.startsWith('http')) {
 var m = new URL(location.href).searchParams.get('token');
       if (m) localStorage.setItem('tx_token', m);
-      if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(function () {});
     }
   </script>
 </head>

@@ -572,6 +572,9 @@
     var tagEl = rec.header.querySelector('.task-card__tag');
     tagEl.textContent = TYPE_TEXT[t.type] || t.type || '';
     tagEl.className = 'task-card__tag' + ((t.type === 'batch' || t.type === 'replica' || t.type === 'mask' || t.type === 'tool') ? ' task-card__tag--' + t.type : '');
+    // 稳定锚点：皮肤按 [data-region="task-tag"][data-kind="…"] 覆盖底色，不必依赖业务类名
+    tagEl.setAttribute('data-region', 'task-tag');
+    tagEl.setAttribute('data-kind', t.type || '');
     var lockText = LOCK_TEXT[t.lockState] || '';
     var lockEl = rec.header.querySelector('.task-card__lock');
     lockEl.textContent = lockText;

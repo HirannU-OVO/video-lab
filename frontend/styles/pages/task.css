@@ -260,12 +260,15 @@
     .task-card__tag--batch { background: var(--vl-alias-brand-500); color: var(--vl-alias-text-onaccent); }
     .task-card__tag--replica { background: var(--vl-alias-status-success-default); color: var(--vl-alias-text-onaccent); }
     .task-card__tag--mask { background: var(--vl-alias-accent-magenta); color: var(--vl-alias-text-onaccent); }
-    /* 视频处理（工具）：琥珀色 —— 与三模块区分；工具任务没有成片概念，删除时只移除列表项 */
-    /* 视频处理（工具）：琥珀色 —— 与三模块区分；任务徽章颜色在**深色主题皮肤**下会与
-       模块主色撞色（女仆的品牌金 ≈ 琥珀、深色的品牌橙 ≈ 琥珀），按皮肤覆盖为冷色区分 */
-    .task-card__tag--tool { background: var(--vl-alias-accent-amber); color: var(--vl-alias-text-onaccent); }
-    html[data-skin="Maid_Atelier"] .task-card__tag--tool { background: var(--vl-alias-accent-violet); }
-    html[data-skin="Black_Orange"] .task-card__tag--tool { background: var(--vl-alias-accent-blue); }
+    /* 视频处理（工具）：琥珀色 —— 与三模块区分；工具任务没有成片概念，删除时只移除列表项。
+       深色主题皮肤下会与模块主色撞色（女仆的品牌金 ≈ 琥珀、深色的品牌橙 ≈ 琥珀），
+       所以底色只声明为组件变量，由 skins/*.css 在 [data-region="task-tag"][data-kind="tool"] 上覆盖
+       —— 皮肤文件自包含，页面层不再出现 html[data-skin] 规则。 */
+    .task-card__tag--tool {
+      --vl-task-tag-tool-bg: var(--vl-alias-accent-amber);
+      background: var(--vl-task-tag-tool-bg);
+      color: var(--vl-alias-text-onaccent);
+    }
     .task-card__lock { flex-shrink: 0; font-size: var(--vl-type-body-xs-size); }
     .task-card__lock--waiting { color: var(--vl-alias-status-warning-default); }
     .task-card__lock--locked { color: var(--vl-alias-status-primary-default); }

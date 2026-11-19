@@ -1602,4 +1602,10 @@ html[data-skin="Maid_Atelier"] {
     --vl-sh-color: var(--vl-skin-maid-gold, #c5a468);
     --vl-sh-border: rgba(197, 164, 104, 0.38);
   }
+
+  /* 视频处理徽章：女仆的品牌金 ≈ 琥珀，与工具任务的琥珀撞色 → 覆盖为冷紫区分。
+     只设组件变量，页面层 `.task-card__tag--tool` 读的正是这个变量。 */
+  html[data-skin="Maid_Atelier"] [data-region="task-tag"][data-kind="tool"] {
+    --vl-task-tag-tool-bg: var(--vl-alias-accent-violet);
+  }
 }

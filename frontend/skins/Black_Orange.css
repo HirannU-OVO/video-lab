@@ -133,4 +133,10 @@ html[data-skin="Black_Orange"] {
   --vl-skin-toast-bg: #1e1e20;
   --vl-skin-toast-border: #3a3a3e;
 }
+
+/* 视频处理徽章：深色的品牌橙 ≈ 琥珀，与工具任务的琥珀撞色 → 覆盖为冷蓝区分。
+   只设组件变量（不写外观属性），页面层 `.task-card__tag--tool` 读的正是这个变量。 */
+html[data-skin="Black_Orange"] [data-region="task-tag"][data-kind="tool"] {
+  --vl-task-tag-tool-bg: var(--vl-alias-accent-blue);
+}
 }
