@@ -980,6 +980,18 @@ function openDevToolsWindow() {
   return devToolsWin;
 }
 // 面板能力的唯一真相在主进程：preload 渲染进程读不到主进程的启动参数，改由这里同步告知。
+// 宿主能力清单：与 server.js 同读 frontend/capabilities.json，软件端按 electron 标记求值。
+// 渲染进程经 preload 的 sendSync('vl-capabilities') 拿到同一份结果，避免各页面自己猜能力。
+const HOST_CAPABILITIES = (() => {
+  try {
+    const raw = JSON.parse(fs.readFileSync(path.join(__dirname, 'frontend', 'capabilities.json'), 'utf8'));
+    const defs = raw.capabilities || {};
+    const out = {};
+    for (const k of Object.keys(defs)) out[k] = !!(defs[k] && defs[k].electron);
+    return out;
+  } catch (e) { return {}; }
+})();
+ipcMain.on('vl-capabilities', (e) => { e.returnValue = HOST_CAPABILITIES; });
 ipcMain.on('vl-devtools:query', (e) => { e.returnValue = DEV_TOOLS; });
 // 试值广播：面板改一个令牌 → 所有窗口（含主窗口）同步，退出面板即消失（不落库）
 if (DEV_TOOLS) {

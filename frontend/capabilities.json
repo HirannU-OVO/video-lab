@@ -1,0 +1,15 @@
+{
+  "_note": "宿主能力清单（单一事实源）。electron = 软件端（主进程 + preload）是否具备，browser = 内嵌 HTTP 服务经 /api 通道是否具备。两侧实现都必须从本文件派生，不得各自硬编码；新增能力只改这里 + 对应实现。",
+  "capabilities": {
+    "taskEngine": { "desc": "发起/停止出片任务（内置 Node 引擎）", "electron": true, "browser": true },
+    "filePicker": { "desc": "弹出系统文件/目录选择框", "electron": true, "browser": true },
+    "revealInExplorer": { "desc": "在资源管理器中打开目录", "electron": true, "browser": true },
+    "clipboardWrite": { "desc": "写入系统剪贴板", "electron": true, "browser": false },
+    "systemNotify": { "desc": "系统级通知/气泡", "electron": true, "browser": false },
+    "windowControl": { "desc": "窗口最小化/最大化/关闭/置前", "electron": true, "browser": false },
+    "tray": { "desc": "托盘图标与菜单", "electron": true, "browser": false },
+    "autoUpdate": { "desc": "自动升级检查与下载", "electron": true, "browser": false },
+    "devtoolsPanel": { "desc": "令牌检视面板（以 --dev-tools 启动时可用）", "electron": true, "browser": true },
+    "cdpWindow": { "desc": "通过 CDP 操控真实窗口（观测通道）", "electron": true, "browser": false }
+  }
+}

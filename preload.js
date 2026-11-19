@@ -25,7 +25,13 @@ const IS_PREVIEW_BUILD = (() => {
 // 所以不能在这里判断 --dev-tools —— 改为向主进程同步询问一次。
 const DEV_TOOLS = (() => { try { return ipcRenderer.sendSync('vl-devtools:query') === true; } catch (e) { return false; } })();
 
+// 宿主能力：主进程从 frontend/capabilities.json 派生，这里同步取一次随 api 暴露，
+// 与浏览器端的 /api/capabilities 同源，页面只读这一处即可判断「这个宿主任不任这件事」。
+// 渲染进程的读法：`window.txapi && txapi.capabilities && txapi.capabilities.taskEngine`。
+const CAPABILITIES = (() => { try { return ipcRenderer.sendSync('vl-capabilities') || {}; } catch (e) { return {}; } })();
+
 const api = {
+  capabilities: CAPABILITIES,
   list_projects: (force) => invoke('list_projects', force),
   list_versions: (project, name, force) => invoke('list_versions', project, name, force),
   read_config: (p) => invoke('read_config', p),

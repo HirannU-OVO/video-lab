@@ -441,8 +441,21 @@ function startHttpServer(opts) {
     return p;
   }
 
+  // 宿主能力：从 frontend/capabilities.json 派生**浏览器端**取值。
+  // 与 main.js 读同一份清单（那边按 electron 标记），三方（清单 / preload / 本通道）由此不会漂移。
+  const hostRoutes = (() => {
+    try {
+      const raw = JSON.parse(fs.readFileSync(path.join(FRONTEND_DIR, 'capabilities.json'), 'utf8'));
+      const defs = raw.capabilities || {};
+      const out = {};
+      for (const k of Object.keys(defs)) out[k] = !!(defs[k] && defs[k].browser);
+      return out;
+    } catch (e) { return {}; }
+  })();
+
   // 浏览器侧降级路由：返回不支持
   const unsupportedRoutes = {
+    capabilities: () => hostRoutes,
     window_caps: () => ({ minimizable: false, maximizable: false, closable: false }),
     window_minimize: () => ({ ok: true }),
     window_toggle_maximize: () => ({ ok: true }),
