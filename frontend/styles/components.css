@@ -583,7 +583,6 @@
 }
 
 /* ═══ 已完成迁移记录（旧类名 → 现行组件类，仅供追溯）═════════
-   .ds-btn（蓝本）  → .vl-btn（+ --primary / --ghost / --danger；另有 --invert 反色主按钮）
    .tl-btn          → .vl-btn（默认 28px，与蓝本按钮同档）
    .btn（settings） → .vl-btn--lg（32px 档）
    .mode-toggle     → .vl-btn--sm .vl-btn--ghost（24px 档；选中态用 [aria-pressed="true"]）
@@ -591,8 +590,6 @@
    .sort-toggle     → .vl-btn--xs .vl-btn--ghost（20px 档）
    .sidebar-menu__item → .vl-btn--ghost（整宽：本文件不定义整宽，由页面层负责）
    .opt-check       → .vl-check
-   .ds-input（蓝本）→ .vl-input；带图标的搜索容器 → .vl-input-group
-   .ds-tag（蓝本）  → .vl-tag（语义变体用 --brand / --accent / --danger / --ok / --success / --outline）
    ═══════════════════════════════════════════════════════ */
 
 /* ─────────────────────────────────────────────────────────────
