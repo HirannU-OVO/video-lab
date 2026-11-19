@@ -33,7 +33,7 @@ const FFMPEG_REQUIRED_FILTERS = [
   'format', 'signalstats', 'metadata',
 ];
 
-// 必需编码器（硬件编码硬约束）：三档转码格式都走 NVENC ——只查滤镜查不到编码器能力（老版本 ffmpeg 没有 av1_nvenc，会"检测合格但选 AV1 就失败"）
+// 必需编码器（硬件编码硬约束）：三档转码格式都走 NVENC —— 只查滤镜查不到编码器能力。
 const FFMPEG_REQUIRED_ENCODERS = ['h264_nvenc', 'hevc_nvenc', 'av1_nvenc'];
 
 // 环境探测超时（毫秒）：探测异步、不阻塞事件循环，宁可多等，也不要因超时把「没探到」误判成「缺滤镜」。
@@ -369,7 +369,7 @@ class Api {
     // 统一空闲校验队列（见 _idleEnqueue）：启动期不发起批量文件 IO，校验全靠它后台串行完成
     this._idleJobs = [];
     this._idleRunning = false;
-    this._idleDelayMs = 50;                                  // 自适应节流间隔（实测反馈驱动）
+    this._idleDelayMs = 50;                                  // 自适应节流间隔
     this._idleStats = { done: 0, slow: 0, fast: 0, maxMs: 0, timeout: 0 };
     this._idleJobStartedAt = 0;   // 当前 job 的开始时刻（看门狗用）
     // 启动保护期：照预检测那套「后台检测不冻前台」的模式，队列在启动后这段时间内**不消费任何任务**，保证首屏渲染与用户首次操作期间完全不与前台争磁盘 IO。
@@ -2360,7 +2360,7 @@ class Api {
     // ⚠ 让路粒度 24（不要再放大）：冷态下一次让路前最多 24 次随机 IO，再多会把机械盘队列打满、连带冻住主线程。
     const YIELD = 24;
     let yields = 0;
-    // 阶段 5：接入统一让路查询（_verifyEnqueue 提供的 ctx.shouldYield）——
+    // 接入统一让路查询（_verifyEnqueue 提供的 ctx.shouldYield）——
     // 前台刚有活动/有任务在跑时多喘一口。纯增量：不改变原有让路节奏，只在忙时把间隔从 10ms 提到 30ms。
     const shouldYield = (opts && typeof opts.shouldYield === 'function') ? opts.shouldYield : null;
     for (let i = 0; i < list.length; i++) {
@@ -3330,7 +3330,7 @@ class Api {
     if (!db) return;
     try {
       const rows = db.prepare('SELECT dir, mtime, entries FROM clip_index').all();
-      // 带分隔符比较：`D:\A` 不能把 `D:\A2\...` 的条目也载进来
+      // 带分隔符比较：前缀匹配需加路径分隔符，避免 /path/A 误匹配 /path/A2/...
       const prefix = String(this.root || '').replace(/[\\/]+$/, '') + path.sep;
       for (const r of rows) {
         if (!String(r.dir).startsWith(prefix)) continue; // 仅载入当前工作目录下的条目
@@ -4239,9 +4239,7 @@ class Api {
     } catch (e) {}
     return healed;
   }
-  // 启动后异步预热「成片是否仍在磁盘」判定所需的目录/文件元数据（restoreTasks 的延后部分）。
-  // 为什么需要：_taskHasOutput 是**同步**判定（被 snapshotTasks 逐任务调用），而历史任务的成片
-  // 目录多在机械盘 —— 冷启动逐目录访问的代价明显。
+  // 启动后异步预热「成片是否仍在磁盘」判定所需的目录/文件元数据。
   _idleEnqueue(key, run) {
     if (!key || typeof run !== 'function') return false;
     if (!this._idleJobs) this._idleJobs = [];
@@ -5822,7 +5820,7 @@ class Api {
               const stderrTail = String((err && err.data && err.data.length) ? err.data.toString('utf8') : '').slice(-1500);
               // 引擎报错块优先：先把「错误信息」那几行提到摘要里，肉眼扫读即可见
               // 摘要优先取「错误详情」（信息量最大：含具体路径/原因），其次「出错步骤」等，
-              // 目标是扫一眼错误日志就知道为什么失败，不必展开 JSON
+              // 目标是扫一眼错误日志即可见失败原因，不必展开 JSON
               let why = '';
               for (const l of (task.log || [])) {
                 const t = String(l || '').trim();
@@ -5865,7 +5863,7 @@ class Api {
           if (task.type === 'tool') this._cleanupBackups();
           // ★ 结果快照（追加进既有 .log）：提交时那份只答「打算做什么」，
           //   这份答「实际发生了什么」—— 耗时 / 成败 / 失败原因 / 产出规模。
-          //   两者合起来才是完整的一次任务记录；只有提交侧快照时，"为什么失败"是缺失的。
+          //   两者合起来才是完整的一次任务记录；补充失败原因记录。
           try { this._lg('RUN', 'task.result', '任务结果快照 · ' + String(task.title || ''), { spec: this._taskResultText(task, status) }); } catch (e4) { /* 快照失败不影响主流程 */ }
           if (status === 'error') this._notifyFailSoon(task);
           // 队列已无待运行任务（queued 空）即视为「本轮跑完」——此时可能还有**暂停待续**的任务
@@ -7792,7 +7790,7 @@ class Api {
    *  包内含本机路径 → 文件头附提示（外发前自行打码）。 */
   // 诊断包路径打码（外发前用）：只保留**文件名**，盘符与各级目录一律折叠 ——
   // 目录名、盘符、任务名都可能含业务信息，而排查只需知道"是哪个文件"。
-  // 例：`E:\项目名\9月\0927\配置.txt` → `<路径>\配置.txt`。
+  // 例：`<工作根>\项目名\9月\0927\配置.txt` → `<路径>\配置.txt`。
   _maskDiagPaths(text) {
     const s = String(text == null ? '' : text);
     return s

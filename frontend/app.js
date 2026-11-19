@@ -438,7 +438,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     }).catch(function (err) { toast('读取项目设置失败：' + err.message, true); });
   }
   // ownerEl：气泡的归属元素（被右键/点击操作的对象）。菜单项点击后菜单即移除，
-  // 故把锚点改回归属元素，使气泡出现在「真正的对象」旁，而不是菜单项位置。
+  // 故把锚点改为归属元素，使气泡出现在「真正的对象」旁，而不是菜单项位置。
 
   // ── 第 2 节：菜单、原生调用与排序 ──────────────────────────────────────────────
   function showMenu(x, y, items, ownerEl) {
@@ -450,8 +450,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       var b = document.createElement('button');
       b.type = 'button';
       b.textContent = it.label;
-      /* 右键菜单项也是按钮：接入基线并给稳定锚点，外观由 .vl-btn 变量提供
-         （原先完全没有类名，只靠页面层 `.ctx-menu button` 类型选择器手写） */
+      /* 右键菜单项也是按钮：接入组件类，外观由 .vl-btn 变量提供 */
       b.className = 'ctx-menu__item vl-btn vl-btn--ghost';
       b.setAttribute('data-region', 'ctx-menu-item');
       m.appendChild(b);
@@ -2541,8 +2540,6 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
 
   /**
    * 需要用户**立刻注意到**的提示：操作被拦下、或操作失败。
-   *
-   * 为什么不能只用 setStatus：那是底部状态栏的一行小字，而用户操作时视线在按钮与表单上，
    */
   function notify(msg, kind) {
     var m = String(msg == null ? '' : msg);
@@ -4502,7 +4499,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       refreshData(true, '正在恢复视图…', function () {
         var az = $('azIndexBar'); if (az) az.style.display = '';
         var si = $('logSearchInput'); if (si) si.value = '';
-        bindBatchLogSearch(true); // 搜索框曾被遮罩 clone：强制恢复批量成片搜索监听
+        bindBatchLogSearch(true); // 恢复批量成片搜索监听
         // 对称还原：批量模式原本未选中配置时（refreshData 不会自动重绘中心区），
         // 需显式重建批量空视图，避免残留遮罩的中间内容
         if (!state.activeTxt) {
@@ -4654,10 +4651,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     document.querySelectorAll('.mask-proj-item').forEach(function (el) {
       var on = el.getAttribute('data-maskproj') === name;
       el.classList.toggle('mask-proj-item--active', on);
-      /* ⚠ 必须同步 data-state：皮肤里缎带的展开条件是
-         [data-region="mask-proj-item"][data-state="active"]::before { transform: scaleX(1) }。
-         这里若只切换类名，data-state 就永远停在初始渲染时的值，
-         于是切到其它项目后缎带不会展开（女仆皮肤实测丢装饰）。 */
+      /* ⚠ 同步 data-state，供皮肤状态选择器消费 */
       if (on) el.setAttribute('data-state', 'active');
       else el.removeAttribute('data-state');
     });

@@ -1,9 +1,8 @@
 /* eslint-disable */
 /**
- * 组件展示页脚本（C-04 组件工厂的活样板 · C-07 组件级视觉快照的载体）
+ * 组件展示页脚本
  *
- * 全部控件都由 VL.ui 工厂渲染，用来验证「新代码只需选 variant/size/state，
- * 不用重新发明样式」。页面本身不含任何硬编码色与内联样式。
+ * 控件由 VL.ui 工厂渲染，提供 variant/size/state 样式展示。
  */
 (function () {
   'use strict';

@@ -188,10 +188,7 @@ html[data-skin="Maid_Atelier"] {
   --vl-skin-maid-gold-glow: rgba(242, 217, 143, 0.14);
   --vl-skin-brand-hue: var(--vl-skin-maid-gold);
 }
-/* ⚠ 这里曾经丢了 `@layer skins {` 的开头：第一个 @layer 块在上面的 `}` 就闭合了，
-   于是下面 1400 多行规则全部变成 **未分层（unlayered）** —— 而未分层规则的优先级
-   高于所有 layer，导致女仆皮肤能压过页面层与组件层的任何规则（实测曾出现
-   皮肤覆盖 .config-btn--save-today 压掉页面层改动的现象）。
+/* ⚠ 规则必须包裹在 @layer skins 内，未分层规则会覆盖层内规则。
    本层块由文件末尾那处收尾的 `}` 闭合。 */
 @layer skins {
 /* ═══════════════════════════════════════════════════════════════
@@ -402,13 +399,8 @@ html[data-skin="Maid_Atelier"] [data-region="sidebar__root"] > [data-region="sid
 }
 /* 置顶按钮：移到蕾丝横幅上方（bottom 大于 swag 高度，不再与之重叠），
    恢复初始底色（同基础样式背景色 + 投影）+ 淡金色亮边框以融入蓝金主题 */
-/* 置顶悬浮钮：外观走基线变量（原先写属性，导致移出按钮时 hover 失效回退） */
-/* 女仆皮肤的悬浮置顶钮是**单独设计**的（深蓝底 + 金边 + 内发光），
-   ⚠ 这里刻意用属性而不是 --vl-btn-* 变量：
-     下方那条给「菜单按钮」设透明的规则用的是共用类 [data-region="sidebar-menu-btn"]，
-     特异性(0,4,1) 高于 .vl-btn，会连置顶按钮一起压成透明/无边框。
-     属性写在本选择器(0,5,1)里优先级足够，能稳定赢过它。
-     实测对照：正式版 background=rgb(9,19,51)、border=1px solid 金边。 */
+/* 置顶悬浮钮：深蓝底 + 金边 + 内发光。
+   ⚠ 显式声明属性确保优先级高于通用菜单按钮规则。 */
 html[data-skin="Maid_Atelier"] [data-region="sidebar__root"] > [data-region="sidebar__footer"] #sidebarToTop {
   left: 15px;
   bottom: calc(var(--vl-skin-maid-swag-height, 72px) + 73px);
@@ -576,8 +568,7 @@ html[data-skin="Maid_Atelier"] [data-region="az-letter"][data-active] {
   color: #4a2e14;
 }
 
-/* 中央舞台（行为层注入，见 .character-stage）：左侧女仆立绘移出 sidebar，
-   立绘回归中心面板角色舞台，避免与 chibi 吉祥物在侧栏叠放 */
+/* 中央舞台（行为层注入，见 .character-stage）：立绘位于中心面板角色舞台，避免与侧栏吉祥物叠放 */
 
 /* ── 中间列表标题栏（center-top__header，对应母本 conversation header）── */
 /* 仅用材质（top-trim 布纹）+ 纯色覆盖：用 workspace 露法（放大到 149px 高，
@@ -650,9 +641,7 @@ html[data-skin="Maid_Atelier"] [data-region="mode-toggle"]:disabled:hover {
   border-color: transparent;
 }
 /* 任务窗口 tab（正在运行/已完成/已停止）：与主界面模式切换同款风格 —— 透明底 + 激活态金色下划线 */
-/* 切换按钮（tab）：只设组件变量，不写任何页面类名 ——
-   一条规则即对任务页与工具页的全部切换按钮生效（此前只覆盖任务页，工具页一直漏着）。
-   下划线由组件层绘制（.vl-tab[aria-selected="true"]::after），此处只给颜色与尺寸。 */
+/* 切换按钮（tab）：透明底 + 激活态金色下划线，通过组件变量统一控制 */
 html[data-skin="Maid_Atelier"] .vl-tab {
   --vl-tab-bg: transparent;
   --vl-tab-color: #d7def0;
@@ -746,8 +735,7 @@ html[data-skin="Maid_Atelier"] [data-region="task-list"] > * {
 /* 设置窗口右上角 git 按钮：除位置/大小外，各状态样式对齐侧栏置顶按钮
    （常态 底色+淡金边框+内金投影；hover 主题底白字去边框） */
 /* 日志预览高亮块：浅蓝（替代金色 brand-100/200，避免金色高亮刺眼） */
-/* ⚠ 高亮状态只落在行号列（`data-state="target"` 由 app.js 打在 .right-panel__line-num 上），
-   代码行从不带该状态 —— 原先针对成片名行的加深色规则形同废码，已删除，别再照抄回来。 */
+/* ⚠ 高亮状态只落在行号列（`data-state="target"` 由 app.js 打在 .right-panel__line-num 上）。 */
 html[data-skin="Maid_Atelier"] [data-region="line-num"][data-state="target"] {
   background: rgba(105, 158, 216, 0.24);
 }
@@ -1537,10 +1525,7 @@ html[data-skin="Maid_Atelier"] [data-region="titlebar-btn"] {
   --vl-btn-color-hover: #fff7e6;
 }
 /* 标题栏模式切换按钮：女仆皮肤金色适配（文字亮金、hover 金辉、图标取金色阶） */
-/* 标题栏「视频处理入口 / 模式切换」：颜色走基线变量。
-   ⚠ 原先 :hover 直接写 background/color，会压死 --vl-btn-bg-active，
-     导致「按下与悬浮同色」，用户看不到点击反馈。
-     改法：把 hover 值搬进基础规则的 --vl-btn-*-hover，另给更浓一档的 -active。 */
+/* 标题栏「视频处理入口 / 模式切换」：通过 --vl-btn-*-hover 与 -active 变量控制反馈。 */
 html[data-skin="Maid_Atelier"] [data-region="win-titlebar-mode"] {
   --vl-btn-color: var(--vl-skin-maid-gold-light);
   --vl-btn-bg-hover: var(--vl-skin-maid-gold-glow);
@@ -1558,17 +1543,6 @@ html[data-skin="Maid_Atelier"] [data-region="titlebar-btn"][data-close] {
   --vl-btn-color-hover: #ffffff;
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   ⚠ 已移除「把保存为当日配置改成金色」的覆盖。
-   原因：主窗口三个彩色按钮与 task 三个悬浮按钮是同一族，取色必须同源 ——
-      · 覆盖配置 = status-error（红）
-      · 保存为当日 = status-warning（橙）
-      · 开始制作 = status-success（绿）
-   若皮肤把其中某个按钮改成品牌金，它在三个按钮里就成了异色，
-   与 task 页的「绿 / 橙 / 红」也对不上（实测女仆皮肤下该按钮为金色，
-   而同族的 task 橙是 status-warning 的橙金，两者肉眼可辨）。
-   需要金色主按钮时请用 .vl-btn--primary（语义就是品牌色主操作）。
-   ═══════════════════════════════════════════════════════════════ */
 html[data-skin="Maid_Atelier"] [data-region="modal-btn"][data-kind="primary"] {
   background: var(--vl-alias-brand-400);
   border-color: var(--vl-alias-brand-400);
@@ -1578,12 +1552,11 @@ html[data-skin="Maid_Atelier"] [data-region="modal-btn"][data-kind="primary"]:ho
   background: var(--vl-alias-brand-500);
   border-color: var(--vl-alias-brand-500);
 }
-/* toast 固定实色（深海蓝浮层：深蓝卡片 + 海蓝边框）
-   ⚠ 原先是两条**没有选择器**的裸声明（写在上一条规则的 `}` 之后），属无效 CSS，
-     导致女仆皮肤的 toast 一直落回兜底色。 */
+/* toast 固定实色（深海蓝浮层：深蓝卡片 + 海蓝边框） */
 html[data-skin="Maid_Atelier"] {
   --vl-skin-toast-bg: #14264f;
   --vl-skin-toast-border: #2c4a97;
+}
 }
 
 @layer skins {

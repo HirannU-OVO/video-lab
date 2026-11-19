@@ -28,11 +28,7 @@
   --vl-tab-bg-active: var(--vl-alias-status-error-surface-l2, var(--vl-alias-status-error-surface-l1));
 }
     .task-tab[aria-selected="true"] .task-tab__count { background: color-mix(in srgb, var(--vl-alias-text-onaccent) 24%, transparent); color: var(--vl-alias-text-onaccent); }
-    /* 已停止 tab：新增报错任务时浅红底提醒，点击查看后消除 */
-    /* 「已停止」告警态：改为只声明 --vl-tab-* 变量。
-   原先直接写 background/border-color/color —— 属性写法会压过皮肤的 --vl-tab-* 变量，
-   于是女仆皮肤下这个 tab 露出原始红框红字（切过去重建后类被丢才显得正常）。
-   取值与原属性 1:1 对应，白蓝 / 黑橙观感不变。 */
+    /* 「已停止」告警态：通过 --vl-tab-* 变量控制颜色，新增报错任务时浅红底提醒 */
 .task-tab--alert {
   --vl-tab-bg: var(--vl-alias-status-error-surface-l1);
   --vl-tab-border: var(--vl-alias-status-error-default);
@@ -40,7 +36,7 @@
   --vl-tab-bg-hover: var(--vl-alias-status-error-surface-l1);
   --vl-tab-color-hover: var(--vl-alias-status-error-default);
   --vl-tab-bg-active: var(--vl-alias-status-error-surface-l2, var(--vl-alias-status-error-surface-l1));
-  /* 选中态：原先 .task-tab--alert 未覆盖，这里补齐，让「已停止」被选中时同样是红的 */
+  /* 选中态 */
   --vl-tab-bg-on: var(--vl-alias-status-error-surface-l1);
   --vl-tab-border-on: var(--vl-alias-status-error-default);
   --vl-tab-color-on: var(--vl-alias-status-error-default);

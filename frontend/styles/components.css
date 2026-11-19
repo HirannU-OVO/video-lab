@@ -1,19 +1,14 @@
 @layer reset, tokens, base, layout, components, pages, skins, utilities;
 
 /* ─────────────────────────────────────────────────────────────
-   基础组件层（B-07 / C-01 / C-02）
+   基础组件层
    
    四个基础组件类：.vl-btn / .vl-input / .vl-check / .vl-tag
    差异用两个维度表达：
      variant（语义）—— 默认 / --primary / --ghost / --danger / --subtle
      size（尺寸）   —— 默认 md / --sm / --lg
-   状态用属性表达（不新增状态类名，C-03）：
+   状态用属性表达：
      [disabled] / [aria-pressed="true"] / [data-loading="1"] / [aria-invalid="true"]
-   
-   ⚠ 当前状态（2026-10-26）：迁移已完成，旧类名**已全部删除**，页面也已改用下面的组件类。
-       · 蓝本体系（原 ds- 前缀）的 34 族资产已全部并入本文件，原体系已删；
-       · 页面私有类已收敛，剩下的只承载「与基线不同的布局差异」；
-       · 后续新增控件请直接扩到本文件，不要再在页面层写控件本体。
    ───────────────────────────────────────────────────────────── */
 
 @layer components {
@@ -24,20 +19,16 @@
     /* 垂直内距：默认 0（固定高度靠 --vl-btn-h）。
        内容撑高的按钮（菜单项 / 列表项）设 --vl-btn-h: auto 并给这里一个值。 */
     --vl-btn-py: 0;
-    /* 图标与文字的间距：默认 6px（与历史按钮一致）。 */
+    /* 图标与文字的间距：默认 6px */
     --vl-btn-gap: 6px;
     /* 行高：默认 1（固定高度按钮靠 --vl-btn-h 撑）。
        内容撑高的整行元素（列表项/配置项）设 --vl-btn-h: auto 后，
        行高直接决定内容盒高度 —— 不设的话会比原设计矮一截。 */
     --vl-btn-lh: normal;   /* 与未设样式的按钮一致：normal，不用 1（1 会把行距压紧、内容撑高的按钮变矮） */
     --vl-btn-px: 12px;
-    --vl-btn-fs: 13.3333px;   /* = 40/3，Chrome 给 <button> 的 UA 默认字号；写 13px 会比正式版小一点 */
-    /* 字重：默认 600。
-       ⚠ 与正式版的关系：正式版的 .config-btn 没声明 font-family，按钮回落到 <button> 的
-         UA 默认字体（Arial），Arial 在 12px/500 下比我们的 SF Pro Text 明显粗一档。
-         我们保留 font-family: inherit（与全站统一，不让按钮单独用 Arial），
-         改为把字重提高半档（600 实测偏粗，550 最接近）。 */
-    --vl-btn-fw: 500;   /* 与正式版 .config-btn 一致（500）。常规按钮若需 400 由页面类覆盖 */
+    --vl-btn-fs: 13.3333px;   /* = 40/3，Chrome UA 默认字号 */
+    /* 字重：默认 500。常规按钮若需 400 由页面类覆盖 */
+    --vl-btn-fw: 500;
     /* 悬浮 / 按下的**位移与投影**反馈：默认无（普通按钮不该跳），
        需要「悬浮浮起」观感的用 --lift 变体，或由页面/皮肤给变量。
        ⚠ 与尺寸、颜色分开：这样「悬浮反馈」是全站一致的能力，各按钮只调数值。 */
@@ -52,21 +43,15 @@
          :hover 失效、未覆盖的属性（如 box-shadow）会突然回退 → 视觉上闪一下。 */
     --vl-btn-shadow-active: var(--vl-btn-shadow);   /* 按下投影收到常态（下沉感） */
     /* ── 全部视觉状态的唯一出口 ────────────────────────────────
-       ⚠ 按钮本体的 background / border-color / color **只消费下面这些变量**，
-         任何变体、页面类、皮肤都**不允许再写 background / border / color 本身**。
-       原因：同一个按钮族曾出现「每个变体各自写 background + :hover + :active」，
-         结果按下态漏写、悬浮边框不同步、皮肤覆盖后颜色对不上，改一处漏一处。
-       约定：变体只声明变量值 ——
+       ⚠ 按钮本体只消费变量，变体与皮肤均通过变量控制：
          · 常态     --vl-btn-bg / --vl-btn-border / --vl-btn-color
          · 悬浮     --vl-btn-bg-hover / --vl-btn-border-hover（缺省跟随常态边框）
          · 按下     --vl-btn-bg-active / --vl-btn-border-active
          · 禁用     --vl-btn-bg-disabled / --vl-btn-border-disabled / --vl-btn-color-disabled
-       ⚠ 悬浮、按下的「方向」全站统一：悬浮变亮一档、按下变暗一档，
-         深浅由皮肤令牌决定（反色系天然幅度小，属色系限制，不是规则不一致）。 */
+       悬浮、按下的「方向」全站统一：悬浮变亮一档、按下变暗一档。 */
     --vl-btn-bg: var(--vl-alias-bg-base-default);
     --vl-btn-border: var(--vl-alias-border-neutral-l2);
-    /* 边框宽度也走变量：实色按钮对齐正式版是**无边框**的（正式版 .config-btn 是 border: none），
-       有 1px 边框会让同宽文字摊在更宽的按钮里、视觉上显得细一档。 */
+    /* 边框宽度也走变量：支持无边框变体 */
     --vl-btn-border-width: 1px;
     /* 圆角：默认 6px。图标按钮 / 紧凑按钮 / 圆形按钮各自覆盖。 */
     --vl-btn-radius: var(--vl-static-radius-6);
@@ -80,9 +65,7 @@
     /* 文字色也走变量：皮肤常需要「悬浮时文字变亮」（如女仆皮肤的浅金→亮金），
        若只允许改背景，皮肤就只能用类名覆盖 color —— 那正是要消灭的写法。 */
     --vl-btn-color-hover: var(--vl-btn-color);
-    /* ⚠ 默认「按下 = 悬浮」，只有需要按下更深的按钮才自己覆盖。
-       历史上 active 默认取 bg-base-tertiary，与 hover 的 bg-base-secondary 不同，
-       导致按下的瞬间背景突变（看起来像闪一下）。 */
+    /* 默认「按下 = 悬浮」，需要更深按下的按钮自行覆盖 */
     --vl-btn-bg-active: var(--vl-alias-bg-base-tertiary);
     --vl-btn-border-active: var(--vl-btn-border-hover);
     --vl-btn-border-width-active: var(--vl-btn-border-width-hover);
@@ -110,7 +93,7 @@
     background: var(--vl-btn-bg);
     color: var(--vl-btn-color);
     box-shadow: var(--vl-btn-shadow);
-    font-family: Arial, "Microsoft YaHei", "PingFang SC", sans-serif;   /* 与正式版按钮一致（UA 默认 Arial）；正文仍用主字体令牌 */
+    font-family: Arial, "Microsoft YaHei", "PingFang SC", sans-serif;   /* 按钮字体族，正文用主字体令牌 */
     font-size: var(--vl-btn-fs);
     font-weight: var(--vl-btn-fw);
     line-height: var(--vl-btn-lh);
@@ -191,8 +174,7 @@
   --vl-btn-border-active: var(--vl-alias-status-error-active);
 }
 
-  /* ⚠ 只声明变量：写 background/border-color 会把页面层给 ghost 按钮设的
-     --vl-btn-bg / --vl-btn-border 压死（历史事故：侧栏 tree-txt-item 的选中态全部失效）。 */
+  /* ⚠ 只声明变量：避免直接写 background/border 导致特异性冲突 */
 .vl-btn--ghost {
   --vl-btn-bg: transparent;
   --vl-btn-border: transparent;
@@ -216,13 +198,8 @@
 }
 
   /* size */
-  /* ── 从蓝本整合的变体（2026-10-26）────────────────────────
-     以下变体取自蓝本体系的按钮族（原 ds- 前缀，该体系已删），本页暂未使用 —— 保留是为了「要用时直接取用」，
-     而不是等需要时再手写一遍。语义与蓝本一致。 */
-  /* 反色主按钮（取自蓝本体系的主按钮实现，留作备用方案）
-     与 vl-btn--primary 的区别：那个是「品牌色主按钮」，这个是「黑白反转的主按钮」。
-     两者语义都是「页面主操作」，取舍看具体场景 —— 品牌色更呼应主题，反色对比更强。
-     ⚠ 当前真实页面零使用，属备用变体；补它是为了删蓝本后仍有这个选项。 */
+  /* ── 扩展变体 ───────────────────────────────────────────── */
+  /* 反色主按钮：黑白反转主按钮，高对比度场景备用 */
   .vl-btn--invert {
   --vl-btn-bg: var(--vl-alias-bg-invert);
   --vl-btn-border: var(--vl-alias-bg-invert);
@@ -275,9 +252,7 @@
   --vl-btn-bg-hover: var(--vl-alias-status-warning-surface-l3);
   --vl-btn-border-hover: var(--vl-alias-status-warning-surface-l3);
   }
-  /* 纯图标按钮：正方形，宽度随尺寸档位（蓝本纯图标按钮的 sm/lg 宽度 24/32） */
-  /* ⚠ 用变量而非 padding:0：写死会让页面层设的 --vl-btn-px 对图标按钮永久失效
-     （与历史上 gap:6px 写死同型的事故）。宽度跟高度走，保证正方形。 */
+  /* 纯图标按钮：正方形，宽度随高度变量 */
 .vl-btn--icon {
   --vl-btn-px: 0;
   --vl-btn-py: 0;
@@ -288,9 +263,7 @@
   .vl-btn--sm { --vl-btn-h: 24px; --vl-btn-px: 8px; --vl-btn-fs: 12px; --vl-btn-radius: var(--vl-static-radius-4); }
   .vl-btn--lg { --vl-btn-h: 32px; --vl-btn-px: var(--vl-static-spacer-16); --vl-btn-fs: var(--vl-type-body-base-size); }
   /* state（属性表达，不新增状态类） */
-  /* 禁用态取历史惯例（蓝本次要按钮 / 页面开关 / 蓝本分页项三者一致）：
-     not-allowed 光标 + .5 透明度。原先的 default 光标 + .9 透明度使禁用态几乎看不出禁用，
-     是基线缺陷（页面私有类各自补写反而形成了不一致）。 */
+  /* 禁用态：not-allowed 光标 + .5 透明度 */
   .vl-btn[disabled],
   .vl-btn[aria-disabled="true"] {
     background: var(--vl-btn-bg-disabled);
@@ -343,9 +316,7 @@
   .vl-input:focus { outline: none; border-color: var(--vl-alias-accent-blue); }
   /* 禁用：整块变灰、不可交互 */
   .vl-input[disabled] { background: var(--vl-alias-bg-base-tertiary); color: var(--vl-alias-text-disabled); cursor: not-allowed; }
-  /* 只读：**外观与普通输入框一致**（只读仍可聚焦、选中、复制，不是禁用）。
-     ⚠ 曾与 [disabled] 写在一起 → 设置页「默认备份文件夹」是页面里唯一 readonly 的输入框，
-       结果只有它变成灰底灰字，看着像被禁用，与旁边可编辑的路径框明显不一致。 */
+  /* 只读：外观与普通输入框一致（只读仍可聚焦、选中、复制，不是禁用）。 */
   .vl-input[readonly] { cursor: default; }
   .vl-input[readonly]:hover { border-color: var(--vl-alias-border-neutral-l1); }
   .vl-input[aria-invalid="true"] { border-color: var(--vl-alias-status-error-default); }
@@ -463,22 +434,16 @@
   .vl-row--between { justify-content: space-between; }
   .vl-col { display: flex; flex-direction: column; gap: 8px; }
   .vl-spacer { flex: 1 1 auto; }
-  /* ── 提示文字（M-05 结构类通用化）──────────────────────────
-     用途：表单说明、区块注解、操作提示等「辅助性文字」。
-     全站原先有 10 余种各写一遍的提示类（字号 11 / 11.5 / 12 / 13px 不等、
-     颜色在 tertiary 与 secondary 之间摇摆、间距各自定义）→ 收敛到这里。
+  /* ── 提示文字 ──────────────────────────────────────────
+     用途：表单说明、区块注解、操作提示等辅助性文字。
      形态差异靠变量表达，页面私有类只留真正不同的地方：
        · 字号 / 颜色 / 行高 / 上下间距 —— 走变量
-       · --block  带底色的提示块（原 tl-note：错误底 + 内距 + 圆角）
-       · --warn   警告色（原 cv-warn / tl-hint--warn）
-     不并入的同类项：状态栏的环境警告（.status-bar__envwarn 是带圆点的状态指示，
-     不是说明文字）。 */
+       · --block  带底色的提示块
+       · --warn   警告色 */
   .vl-hint {
     --vl-hint-fs: 12px;
     --vl-hint-color: var(--vl-alias-text-tertiary);
-    /* ⚠ 行高默认 inherit（不强制值）：原先多数提示类并没有声明 line-height，
-       若这里写死 1.6，块级提示的高度会变 → 连累下方内容整体位移
-       （实测工具页因此位移 6.4%）。需要特定行高的页面类自行设 --vl-hint-lh。 */
+    /* ⚠ 行高默认 inherit（不强制值）：避免统一固定行高导致内容盒位移。需要特定行高的页面类自行设 --vl-hint-lh。 */
     --vl-hint-lh: inherit;
     --vl-hint-mt: 0;
     --vl-hint-mb: 0;
@@ -494,7 +459,7 @@
     font-size: var(--vl-hint-fs);
     line-height: var(--vl-hint-lh);
   }
-  /* 带底色的提示块（原工具页的备注块） */
+  /* 带底色的提示块 */
   .vl-hint--block {
     --vl-hint-pad: 8px 10px;
     --vl-hint-radius: var(--vl-static-radius-6);
@@ -506,12 +471,8 @@
   .vl-hint--warn { --vl-hint-color: var(--vl-alias-status-warning-default); }
   .vl-path { font-family: var(--vl-font-family-mono); font-size: 11.5px; color: var(--vl-alias-text-secondary); word-break: break-all; }
 
-  /* ── 工具栏（M-05 结构类通用化）────────────────────────────
-     用途：一行里并排放按钮 / 输入框 / 说明的操作区。
-     全站原先有 5 种各写一遍的工具栏类（间距 8 / 10px 不等、换行与否各异、
-     对齐 flex-start / flex-end 混用）→ 收敛到这里，差异走变量。
-     不并入的同类项：窗口标题栏、侧栏、配置栏、状态栏（整块外壳，不是行内工具条），
-     以及设置页表单右侧的纵向操作区（.form-group__ops，是列布局而非行）。 */
+  /* ── 工具栏 ────────────────────────────────────────────
+     用途：一行里并排放置按钮 / 输入框 / 说明的操作区。 */
   .vl-toolbar {
     --vl-tb-gap: 8px;
     --vl-tb-justify: flex-start;
@@ -528,13 +489,10 @@
   /* 不换行（画布工具条的单行模式） */
   .vl-toolbar--nowrap { --vl-tb-wrap: nowrap; }
 
-  /* ── 纯文字标题（M-05 结构类通用化）────────────────────────
-     用途：页面级标题（设置页视图名、主窗口栏标题）、区块小标题。
-     与 .vl-section-head 的分工：那个是「带底色的整条区块头」（有背景与下边框），
-     这个是「纯文字标题」（无背景、无边框，只统一字号/字重/颜色）。
-     ⚠ 不设 margin 与 line-height：这两项各页差异大，交给页面类控制。
-     不并入的同类项：表单分组头（.form-group__head 是标签+说明的容器）、
-     窗口标题（.win-titlebar__title 绝对居中）。 */
+  /* ── 纯文字标题 ────────────────────────────────────────
+     用途：页面级标题、区块小标题。
+     与 .vl-section-head 的分工：那个是带底色的整条区块头，这个是纯文字标题。
+     ⚠ 不设 margin 与 line-height：这两项各页差异大，交给页面类控制。 */
   .vl-title {
     --vl-title-fs: 15px;
     --vl-title-fw: 600;
@@ -546,7 +504,7 @@
   .vl-title--sm { --vl-title-fs: 14px; }
   .vl-title--lg { --vl-title-fs: 16px; }
 
-  /* ── 计数徽章（M-05 结构类通用化）──────────────────────────
+  /* ── 计数徽章 ──────────────────────────────────────────
      用途：状态栏任务数、分组标题右侧的条目数等。
      · 默认：小圆角徽章（有底色）
      · --plain：纯文字计数（无底色，随父级排版） */
@@ -582,22 +540,11 @@
   }
 }
 
-/* ═══ 已完成迁移记录（旧类名 → 现行组件类，仅供追溯）═════════
-   .tl-btn          → .vl-btn（默认 28px，与蓝本按钮同档）
-   .btn（settings） → .vl-btn--lg（32px 档）
-   .mode-toggle     → .vl-btn--sm .vl-btn--ghost（24px 档；选中态用 [aria-pressed="true"]）
-   .preview-toggle  → .vl-btn--xs .vl-btn--ghost（20px 档）
-   .sort-toggle     → .vl-btn--xs .vl-btn--ghost（20px 档）
-   .sidebar-menu__item → .vl-btn--ghost（整宽：本文件不定义整宽，由页面层负责）
-   .opt-check       → .vl-check
-   ═══════════════════════════════════════════════════════ */
-
 /* ─────────────────────────────────────────────────────────────
-   区块头 / 标题行（K-01）
+   区块头 / 标题行
 
-   全站「标题行」有 20 种不同类名，皮肤要为每种各写一遍 → 必然漏。
-   本组件把外观收敛为 6 个可覆盖变量，皮肤只需设变量即可覆盖所有页面。
-   变量兜底到 alias 层：未设变量时外观与原有标题行一致。
+   收敛为可覆盖变量，皮肤只需设变量即可覆盖所有页面。
+   变量兜底到 alias 层。
    ───────────────────────────────────────────────────────────── */
 @layer components {
   .vl-section-head {
@@ -608,10 +555,7 @@
     --vl-sh-pad-x: 10px;
     --vl-sh-radius: 0;
     --vl-sh-weight: var(--vl-font-font-weight-strong);
-    /* 下边框：区块头用它把「标题」和「下面的内容」分隔开 —— 实测这条线本来就是
-       分组头自己承担的（不是由外层框体提供），故保留在基线。
-       ⚠ 纯分组小标题（如工具页的「水印」「背景」这类紧凑小标题）不需要这条线，
-         由各自的页面类把 --vl-sh-border 设为 transparent。 */
+    /* 下边框：区块头分隔线 */
     display: block;
     padding: var(--vl-sh-pad-y) var(--vl-sh-pad-x);
     background: var(--vl-sh-bg);
@@ -621,11 +565,8 @@
     font-size: var(--vl-type-body-sm-size);
     font-weight: var(--vl-sh-weight);
   }
-  /* 无分隔线的区块头：用于「分组小标题」这类紧贴控件、下方还有其它分组的场合。
-     ⚠ 必须用 **属性**（border-bottom）而不是把 --vl-sh-border 设为 transparent：
-        变量的层序是 skin > pages > components，皮肤一旦给 --vl-sh-border 设了颜色，
-        页面层再写 transparent 也压不住（实测女仆皮肤下分组小标题仍冒出金线）。
-        直接写 border-bottom 属于组件层属性，皮肤不声明该属性，故一定生效。 */
+  /* 无分隔线的区块头：用于「分组小标题」紧贴控件的场合。
+     ⚠ 使用 border-bottom: 0 保证层序覆盖优先级。 */
   .vl-section-head--no-line { border-bottom: 0; }
 
   /* 可折叠标题行（点击展开/收起） */
@@ -644,10 +585,8 @@
      目的：交互反馈由一处统一产出，新组件加进 :is() 列表即自动获得 hover / focus / pressed，
            不必为每个变体各配一套状态色，也不必靠提高特异性去和页面规则竞争。
      载体用 ::after（叠一层 currentColor，z-index:-1 位于文字之下、背景之上），
-           而不是 background-image —— 后者会**覆盖**皮肤给的装饰背景图
-           （实测女仆皮肤的可折叠标题行带装饰图，hover 时会被状态层替换掉）。
-     ⚠ 接入前提：该组件的 ::after 必须未被自身规则占用（opt-check 画勾、btn 画图标即属此类）。
-           接入清单由 verify-state-layer.js 校验，冲突即报。
+           而不是 background-image，避免覆盖皮肤背景图。
+     ⚠ 接入前提：该组件的 ::after 必须未被自身规则占用。
      分工（与「每态一色」并行，不替代）：
        · 实心色块（primary / danger / 选中态）：仍用每态一色，语义更强；
        · 表面/透明类（可折叠标题行、后续接入的 tag / check）：用本状态层。
@@ -733,9 +672,7 @@
   }
   .vl-tab:hover { background: var(--vl-tab-bg-hover); color: var(--vl-tab-color-hover); border-color: var(--vl-tab-border-hover); }
   .vl-tab:active { background: var(--vl-tab-bg-active); }
-  /* 选中态：`aria-selected` 是 tab 的标准语义；
-     ⚠ 同时兼容 `aria-pressed`（主窗口那批切换按钮历史上用的是 aria-pressed，
-        逐个改语义风险大、收益小，故两者等价支持）。 */
+  /* 选中态：同时支持 aria-selected 与 aria-pressed */
   .vl-tab[aria-selected="true"],
   .vl-tab[aria-pressed="true"] {
     background: var(--vl-tab-bg-on);
@@ -793,9 +730,7 @@
     color: var(--vl-alias-text-disabled);
     cursor: default;
   }
-  /* ⚠ 默认按内容宽度（width: auto）：wrap 若占满 100%，作为 flex 项会抢占整行空间，
-     把同行的其它控件压窄换行（实测设置页 radio 被压到 44px 宽、行高 38→88px）。
-     需要占满一行的表单字段用 --block 变体。 */
+  /* ⚠ 默认按内容宽度（width: auto）：避免 flex 项抢占整行空间导致同行控件挤压换行。需要占满一行的表单字段用 --block 变体。 */
   .vl-select-wrap { position: relative; width: auto; display: inline-block; }
   .vl-select-wrap--block { width: 100%; }
   /* 需要占满一行的表单字段用此变体（默认按内容宽度，便于放在 flex 行内） */
@@ -926,8 +861,7 @@
     --vl-option-bg: transparent;
     --vl-option-color: var(--vl-alias-text-secondary);
     --vl-option-border-color: transparent;
-    /* 边框宽度默认 0（= 无边框）。⚠ 原先只设了 border-color 而没设宽度，
-       `<button>` 的 UA 默认边框（2px outset）仍在 → 导航 tab 比正式版宽高各多 4px。
+    /* 边框宽度默认 0（= 无边框）。⚠ 显式消除 button 的 UA 默认边框。
        需要描边的形态（主题项）改用 box-shadow 外发光，或把本变量设为 1px。 */
     --vl-option-border-width: 0;
     --vl-option-bg-hover: var(--vl-alias-bg-overlay-l1);
@@ -976,15 +910,7 @@
     outline-offset: 1px;
   }
 
-  /* ── 从蓝本并入的组件族（2026-10-26 M-08 批次②）────────────────
-     这些族原本分散在主样式里、且沿用蓝本的 ds- 前缀。为方便维护，
-     已集中到组件层并改用 vl- 前缀：
-       table / dialog / drawer / notif / menu / alert / switch / slider / progress
-       avatar / empty / pagination / tooltip / popover / search / kbd / code
-       skeleton / breadcrumb / date-input / textarea
-     ⚠ tabs 族与既有 vl-tab（切换按钮）语义冲突，改名 vl-tabset 后单独并入。
-     这些族当前真实页面零使用，属「备用资产」——保留是为了要用时直接取用，
-     而不是等需要时再手写一遍。 */
+  /* ── 通用组件族 ────────────────────────────────────────── */
 .vl-tooltip {
   display: inline-flex;
   align-items: center;
@@ -1363,29 +1289,13 @@
 
     .vl-table td.vl-table__actions { width: 1%; text-align: right; }
 
-  /* ── 标签页组（从蓝本并入 2026-10-26）────────────────────────
-     只并入「容器」与「计数徽章」两项：
-       · vl-tabset —— 标签页容器（flex + 底部分隔线），我们原本没有
-       · vl-tab__count —— 标签上的计数徽章
-     ⚠ 蓝本的单个标签项**不并入**：我们的 vl-tab 已是下划线式切换按钮，
-       语义完全覆盖，且 task / tool 两页已验收定型（形态为 padding 0 12px + 圆角），
-       把蓝本的 padding 12px 0 + 无圆角搬进来会破坏已验收的观感。
-       属「同一语义已有更贴合本项目的实现」，不是漏做。 */
+  /* ── 标签页组 ────────────────────────────────────────── */
     .vl-tabset { display: flex; gap: var(--vl-static-spacer-24); border-bottom: 1px solid var(--vl-alias-border-neutral-l1); }
 
     .vl-tab__count,
     .vl-tab .vl-tag.num { margin-left: var(--vl-static-spacer-6); min-width: 18px; height: 18px; padding: 0 var(--vl-static-spacer-6); display: inline-grid; place-items: center; vertical-align: middle; border: none; border-radius: var(--vl-static-radius-full); background: var(--vl-alias-bg-overlay-l2); color: var(--vl-alias-text-tertiary); font-family: var(--vl-font-font-family-metric); font-size: var(--vl-type-body-xs-size); line-height: var(--vl-type-body-xs-line-height); font-weight: var(--vl-type-body-xs-weight); font-variant-numeric: tabular-nums; }
 
-  /* ── 删除蓝本前补齐的资产（2026-10-26 逐项对照后发现）──────────
-     逐项对照蓝本的 85 个选择器时，发现以下 5 项在 vl-* 里没有等价实现，
-     补齐后才允许删除蓝本：
-       · vl-backdrop     —— 对话框/抽屉的遮罩层
-       · vl-btn-group    —— 按钮组（并排按钮的间距与合并圆角）
-       · vl-card         —— 卡片容器
-       · vl-input-group__icon —— 输入框组内的图标位
-       · vl-tag .icon    —— 标签内图标
-     ⚠ 其余未被「逐项对照」判为缺失的项，均属「实现方式不同但等效」，
-       例如变体三态改为统一三态 + 变量、input 用类型选择器、下拉箭头用 ::after 绘制。 */
+  /* ── 容器与辅助组件 ────────────────────────────────────── */
     .vl-btn-group { display: inline-flex; }
 
     .vl-btn-group > .vl-btn { border-radius: var(--vl-static-radius-0); margin-left: calc(-1 * var(--vl-static-border-width-default)); }
@@ -1404,9 +1314,7 @@
 
     .vl-backdrop { position: relative; background: var(--vl-alias-bg-overlay-l4); border: 1px solid var(--vl-alias-border-neutral-l1); padding: var(--vl-static-spacer-32) var(--vl-static-spacer-24); display: flex; align-items: center; justify-content: center; }
 
-    /* 输入框组（带前后缀的输入容器）。
-     ⚠ 从页面层移入基线：原先写在 styles.css 里，页面层一改样式皮肤就跟着失效。
-     外观全部走变量，皮肤（女仆的玻璃拟态）靠这几个变量定制。 */
+    /* 输入框组（带前后缀的输入容器）。外观走变量，便于皮肤定制。 */
   .vl-input-group {
     --vl-input-group-bg: var(--vl-alias-bg-base-default);
     --vl-input-group-border-color: var(--vl-alias-border-neutral-l1);

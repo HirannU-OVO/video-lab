@@ -250,7 +250,7 @@ async function processFile(file, steps, opts) {
     const finalBit = await measureBitrateKbps(tmp);
     if (ramp.targetKbps > 0 && finalBit > ramp.targetKbps * 1.03) {
       try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch (e) {}
-      pushNote('整片实测 ' + Math.round(finalBit) + ' kbps 仍高于目标 '
+      pushNote('整片码率 ' + Math.round(finalBit) + ' kbps 仍高于目标 '
         + Math.round(ramp.targetKbps) + ' kbps');
       return { ok: true, skip: true, encodes, samples, notes,
         reason: '目标体积未达成，已保留原文件（未做任何改动）' };
@@ -320,7 +320,7 @@ async function runPipeline(opts) {
   }
 
   // 备份根：默认用数据目录下的 backup（本身就在应用专属目录内）；
-  // 用户自选目录（如 E:\Cache）时，在其下再建一层应用专属文件夹 ——
+  // 用户自选目录（如自定义缓存目录）时，在其下再建一层应用专属文件夹 ——
   // ① 备份不散落在用户目录根下；② 避免与别的应用的同名子文件夹（如 tool）混淆。
   // ⚠ 层级必须走 `output.defaultBackupDir`（后端 runTool 填的设置项），不要读顶层同名字段。
   const customRoot = String(output.backupDir || '').trim() || String(output.defaultBackupDir || '').trim();

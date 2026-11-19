@@ -31,8 +31,7 @@
       height: 1px;
       background: var(--vl-alias-border-neutral-l1);
     }
-    /* 差异：区域留白与不收缩（原本还有下边框与底色，已回归基线；
-       原先那几条 :hover / :focus / [disabled] 状态对 div 容器无效，一并删除） */
+    /* 差异：区域留白与不收缩 */
     .tl-input { flex-shrink: 0; padding: 10px 14px; }
     /* 补齐交互状态（基于原样式改造；令牌与基线 .vl-input 保持一致，皮肤可覆盖） */
     .tl-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -40,16 +39,16 @@
        避免匹配到 .vl-check 内部的 checkbox） */
     .tl-line > .vl-input { flex: 1; min-width: 180px; }
     .tl-label { flex-shrink: 0; font-size: var(--vl-type-body-sm-size); color: var(--vl-alias-text-secondary); }
-    /* 外观全部回归基线 .vl-btn--ghost（原为实色灰边框）；仅保留不参与压缩这一布局约束 */
+    /* 仅保留不参与压缩这一布局约束 */
     .tl-btn { flex-shrink: 0; }
     .tl-check { display: inline-flex; align-items: center; gap: 5px; font-size: var(--vl-type-body-sm-size); color: var(--vl-alias-text-secondary); cursor: pointer; }
-    /* 差异：上方 6px（字号/行高/颜色回归基线） */
+    /* 差异：上方 6px */
     .tl-hint { --vl-hint-mt: 6px; }
     .tl-hint--warn { color: var(--vl-alias-status-warning-default); }
 
     /* ── Tab ── */
     .tl-tabs { flex-shrink: 0; display: flex; gap: 8px; padding: 8px 14px 0; border-bottom: 1px solid var(--vl-alias-border-neutral-l1); background: var(--vl-alias-bg-base-default); }
-    /* 差异：工具页 tab 更矮更窄、下边框与下方内容区连成一片（只上圆角）；外观与全部交互状态由基线 .vl-tab 提供 */
+    /* 差异：工具页 tab 尺寸与形状定制 */
     .tl-tab {
       height: 32px;
       padding: var(--vl-static-spacer-0) var(--vl-static-spacer-14);
@@ -59,16 +58,15 @@
       font-size: var(--vl-type-body-sm-size);
     }
 
-    /* 差异：运行按钮实心无边框 + 强字重（基线 .vl-btn--primary 给了品牌色边框、.vl-btn 字重为常规） */
+    /* 差异：运行按钮实心无边框 + 强字重 */
     .tl-run {
       font-weight: var(--vl-font-font-weight-strong);
     }
-    /* 差异：无 —— 选中态样式全部由基线 .vl-tab 提供（含字重，与任务页一致） */
 
     /* ── 滚动区 ── */
     .tl-scroll { flex: 1; overflow-y: auto; padding: 10px 14px 14px; }
     .tl-pane[hidden] { display: none; }
-    /* 差异：备注块的文字取错误色（底色 / 内距 / 圆角 / 下方间距回归基线 .vl-hint--block） */
+    /* 差异：备注块文字取错误色 */
     .tl-note { --vl-hint-color: var(--vl-alias-status-error-default); }
 
     /* ── 步骤分组（框体）：默认全部展开 ── */
@@ -80,7 +78,7 @@
     .tl-group__head:hover { background: var(--vl-alias-bg-overlay-l2); }
     .tl-group__arrow { display: inline-flex; transition: transform .15s ease; color: var(--vl-alias-text-tertiary); }
     .tl-group--open .tl-group__arrow { transform: rotate(90deg); }
-    /* 差异：靠右（外观回归基线 .vl-count--plain） */
+    /* 差异：靠右 */
     .tl-group__count { margin-left: auto; }
     .tl-group__body { display: none; padding: 0; }
     .tl-group--open .tl-group__body { display: block; }
@@ -103,7 +101,6 @@
     .tl-field__label { font-size: var(--vl-type-body-xs-size); color: var(--vl-alias-text-secondary); white-space: nowrap; }
     .tl-field__hint { font-size: 10px; color: var(--vl-alias-text-tertiary); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .tl-field__row { display: flex; align-items: center; gap: 6px; }
-    /* 外观全部回归基线 .vl-input（原本是 25px 高的私有输入框实现） */
     .tl-num { width: 84px; }
     .tl-path { min-width: 0; }
     .tl-num { width: 84px; }
@@ -224,9 +221,7 @@
     .cv-badge--ok { background: #14532d; }
     .cv-badge--err { background: #7f1d1d; }
     .cv-warn { font-size: 11px; line-height: 1.6; color: #d97706; min-height: 0; }
-    /* 布局回归基线 .vl-toolbar（原 gap 8 / align center / wrap 与基线一致） */
-    /* 列表行（样本 / 背景）：不换行 —— 两个按钮并排相邻，名称占剩余宽度并省略 */
-    /* 单行工具条改用基线的 .vl-toolbar--nowrap 变体 */
+    /* 列表行（样本 / 背景）：不换行 */
     .cv-bar--list .tl-label { flex: 0 0 auto; }
     .cv-info { flex: 1 1 auto; min-width: 0; font-size: var(--vl-type-body-xs-size); color: var(--vl-alias-text-tertiary);
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

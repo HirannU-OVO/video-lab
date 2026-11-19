@@ -871,7 +871,7 @@
       });
     });
     // 「数据目录」清理：扫描 → 勾选 → 清理。
-    // 不可清项照样列出来（灰显 + 原因）—— 让用户知道它们为什么还在，免得以为「没清干净」。
+    // 不可清项照样列出（灰显 + 原因）
     var ddList = document.getElementById('dataDirList');
     var bDDScan = document.getElementById('btnDataDirScan');
     var bDDClean = document.getElementById('btnDataDirClean');

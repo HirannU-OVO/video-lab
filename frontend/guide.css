@@ -5,8 +5,7 @@
 /* 首次设置引导页（内嵌为主窗口的 #guideFrame，独立窗口形态亦复用）
    设计口径：① 不再自绘第二条标题（iframe 外层已有窗口标题）；② 内容只有"标题 + 一个路径选择 + 操作行"，
    全部放在同一个框体内，不另起底部栏；③ 按钮右对齐，与主窗口结果弹窗（.update-result__actions 的
-   flex-end）一致；④ 顶部 hero 用应用图标建立识别；⑤ 内边距按"上下均衡"取值 —— 卡片高度与
-   内容自然高（实测 263px vs 265px）基本一致，故上下都不留空。 */
+   flex-end）一致；④ 顶部 hero 用应用图标建立识别；⑤ 内边距按上下均衡取值，保持与卡片高度贴合。 */
 
 .guide-shell {
   display: flex;
@@ -34,7 +33,6 @@
   -webkit-user-drag: none;
 }
 .guide-hero__text { min-width: 0; }
-/* 外观全部回归基线 .vl-title */
 .guide-hero__sub {
   margin-top: var(--vl-static-spacer-1);
   font-family: var(--vl-font-family-base);
@@ -44,8 +42,7 @@
 }
 
 /* ── 中部：表单 + 操作行（同属一个框体，无额外分栏）
-   ⚠ 不用 flex:1 撑满剩余空间 —— 那会让内容顶对齐、底部凭空多出一条留白（实测过）。
-   让容器按内容自然高度排布，再配合 .guide-frame 的固定高度即可上下贴合。 ── */
+   ⚠ 容器按内容自然高度排布，不用 flex:1 避免内容顶对齐产生底部留白。 ── */
 .guide-body {
   flex: 0 0 auto;
   min-height: 0;
@@ -61,9 +58,7 @@
   font-weight: var(--vl-font-font-weight-strong, 600);
   color: var(--vl-alias-text-default);
 }
-/* 提示文字：宽度按"本句不换行"预留，故不折行 */
-/* 差异：引导页提示字号 11.5px、行高 1.5、上方 7px，单行省略（颜色走基线） */
-/* 差异：上方 7px、单行省略（字号/行高/颜色回归基线） */
+/* 提示文字：上方 7px，单行省略 */
 .guide-hint {
   --vl-hint-mt: 7px;
   white-space: nowrap;
@@ -72,7 +67,6 @@
 }
 
 /* 操作行：按钮右对齐，与内容同处一个框体（不使用独立页脚栏） */
-/* 差异：不参与收缩、上方 14px（布局回归基线 .vl-toolbar--end） */
 .guide-actions { flex: 0 0 auto; margin-top: 14px; }
 .guide-actions__status {
   min-width: 0;
@@ -90,8 +84,7 @@
 
 /* ── 内嵌形态（主窗口的 iframe）：外层已有标题栏，隐藏自绘的，避免标题叠加 ── */
 body[data-embedded="1"] .win-titlebar { display: none; }
-/* ⚠ 同一原因：styles.css 里给 .guide-shell 留了 padding-top:34px 为"fixed 标题栏"让位
-   （那是它还作为独立窗口时的需要）。iframe 形态下标题栏已隐藏，这 34px 会变成卡片顶部的一条纯留白，必须一起取消。 */
+/* ⚠ 内嵌形态下标题栏已隐藏，取消顶部 padding。 */
 body[data-embedded="1"] .guide-shell { padding-top: 0; }
 }
 

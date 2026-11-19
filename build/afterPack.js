@@ -2,8 +2,7 @@
 // 1) 应用图标（electron-builder 26 在 signAndEditExecutable:true 下未执行 exe 图标编辑，此处补 rcedit）
 // 2) 版本资源（文件版本/产品版本 = package.json 版本）
 // 3) 版权（去掉构建器默认的 GitHub/Electron 版权）与清空原始文件名
-// 注：不再做版本信息二进制语言替换（曾内联改 en-US -> zh-CN 2052，对 electron 44 exe 会
-//     误伤文件内碰巧匹配的字节导致渲染进程崩溃、窗口白屏；语言保持构建默认）
+// 注：版本语言保持构建默认（二进制语言替换会误伤字节导致崩溃）。
 'use strict';
 const { execFileSync } = require('child_process');
 const fs = require('fs');

@@ -1,4 +1,4 @@
-// dev-tokens.js —— 设计令牌检视 / 调参面板（A-09，开发者工具）
+// dev-tokens.js —— 设计令牌检视 / 调参面板（开发者工具）
 // 门控：只有以 --dev-tools 启动的实例才有 window.txapi.devTools；没有它本页只显示「未启用」。
 'use strict';
 (function () {

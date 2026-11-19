@@ -643,8 +643,7 @@ function startHttpServer(opts) {
       serveStatic(req, res, path.join(FRONTEND_DIR, 'dev-tokens.html'));
       return;
       }
-      // 组件展示页：与 dev-tokens 同门控。视觉基线的组件级快照（C-07）需要它走 HTTP 通道，
-      // 否则只能 file:// 采集，与「双宿主一致性」的口径对不上。
+      // 组件展示页：与 dev-tokens 同门控，通过 HTTP 通道提供组件展示。
       if (devToolsEnabled && (pathname === '/dev-components' || pathname === '/dev-components.html')) {
       serveStatic(req, res, path.join(FRONTEND_DIR, 'dev-components.html'));
       return;

@@ -139,7 +139,7 @@
     var mod = MODS[id];
     current = { id: id, mod: mod || null, snapshot: snap };
     if (!mod) return;
-    // 若该皮肤之前发生过重复 apply（如老版本 bug 堆积），apply 前幂等清理残留装饰
+    // apply 前幂等清理残留装饰
     if (mod.disposeLocal) safe(function () { mod.disposeLocal(); }, 'disposeLocal:' + id);
     safe(function () { mod.apply(); }, 'apply:' + id);
   }

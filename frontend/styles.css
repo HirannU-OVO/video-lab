@@ -197,7 +197,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* 自制标题栏（方案A：frame:false 窗口顶部 34px 条）
+/* 自制标题栏（frame:false 窗口顶部 34px 条）
    统一组件：标题绝对居中，右侧窗口控制按钮区（最小化/最大化/关闭）
    拖拽：整条 drag，按钮 no-drag；各页面容器需 padding-top:34px 让位 */
 .win-titlebar {
@@ -277,7 +277,6 @@ body {
 }
 .win-titlebar svg { width: 13px; height: 13px; display: block; }
 /* 标题栏模式切换按钮（主窗口）：图标品牌色 + 当前模式名，随皮肤变量适配 */
-/* 外观已回归基线 .vl-btn，这里只保留布局 */
 .win-titlebar__mode {
   --vl-btn-h: 100%;
   --vl-btn-px: 10px;
@@ -418,7 +417,6 @@ body {
   pointer-events: none;
 }
 /* 左侧列表栏三竖线按钮：可见调节把柄，横跨分界线居中，交互/拖拽仅在按钮本体 */
-/* 外观已回归基线 .vl-btn，这里只保留布局 */
 .sidebar-resize-btn {
   --vl-btn-h: 64px;
   --vl-btn-px: 0;
@@ -501,8 +499,7 @@ body[data-preview-collapsed] .preview-resizer-anchor {
 body[data-preview-collapsed] .right-panel {
   width: 0;
   min-width: 0;
-  /* ⚠ 必须同时把左边框宽度归零：right-panel 有 border-left: 1px，
-     只设 width:0 时仍会留下 1px 宽的竖条（实测 offsetWidth = 1）。 */
+  /* ⚠ 折叠时必须同时将 border-left-width 设为 0，避免遗留边框线。 */
   border-left-width: 0;
   opacity: 0;
   pointer-events: none;
@@ -603,7 +600,6 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   flex-shrink: 0;
   gap: var(--vl-static-spacer-8);
 }
-/* 外观全部回归基线 .vl-title（原为 heading-xs 字体族 + 中等字重） */
 /* 侧栏标题行「新增配置」纯图标按钮：样式完全参考界面右上角预览展开按钮（含阴影、hover 上浮） */
 /* 外观走 .vl-btn 基线变量（原属性 1:1 转变量，状态由基线提供） */
 .sidebar__new-config {
@@ -652,10 +648,7 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   gap: 2px;
   flex-shrink: 0;
 }
-/* 切换按钮（mode-toggle / sort-toggle / preview-toggle）的选中态外观
-   已全部回归基线 .vl-btn[aria-pressed="true"]（消费 --vl-btn-*-pressed 变量）。
-   原先这里各写一份 background: brand-500/600 —— 皮肤想改选中态就得逐个类名覆盖，
-   女仆皮肤因此多出一块金色实底。现由皮肤设 --vl-btn-bg-pressed: transparent 即可。 */
+/* 切换按钮（mode-toggle / sort-toggle / preview-toggle）的选中态消费 --vl-btn-*-pressed 变量。 */
 /* 外观全部走 .vl-tab 变量（尺寸档 + 配色），本类只声明差异值 */
 .sort-toggle {
   --vl-tab-h: 20px;
@@ -1068,7 +1061,6 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   box-shadow: 0 8px 24px color-mix(in srgb, var(--vl-alias-text-default) 16%, transparent);
 }
 .sidebar-menu--enter { animation: sidebar-menu-rise 0.18s ease-out; }
-/* 外观已回归基线 .vl-btn，这里只保留布局 */
 .sidebar-menu__item {
   --vl-btn-h: auto;
   --vl-btn-py: 10px;
@@ -1139,7 +1131,6 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   border-bottom: 1px solid var(--vl-alias-border-neutral-l1);
   flex-shrink: 0;
 }
-/* 外观全部回归基线 .vl-title（原为 heading-xs 字体族 + 中等字重） */
 .center-top__toggles {
   display: flex;
   gap: var(--vl-static-spacer-4);
@@ -1406,7 +1397,6 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   color: var(--vl-alias-text-default);
 }
 /* Modify path button */
-/* 外观已回归基线 .vl-btn，这里只保留布局 */
 .config-path-row__browse {
   --vl-btn-h: 20px;
   --vl-btn-px: 0;
@@ -1419,7 +1409,6 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   --vl-btn-color-hover: var(--vl-alias-text-default);
 }
 /* Open path button */
-/* 外观已回归基线 .vl-btn，这里只保留布局 */
 .config-path-row__open {
   --vl-btn-h: 20px;
   --vl-btn-px: 0;
@@ -1544,7 +1533,6 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   gap: var(--vl-static-spacer-2);
 }
 /* 刷新预缓存：复用预缓存逻辑（增量、不重置）；进行中禁用并旋转图标 */
-/* 外观已回归基线 .vl-btn，这里只保留布局 */
 .config-path-subheader__refresh {
   --vl-btn-h: 16px;
   --vl-btn-px: 0;
@@ -1639,7 +1627,6 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
 .config-watermark__path:hover { background: var(--vl-alias-brand-200); }
 .config-watermark__path--empty { color: var(--vl-alias-text-tertiary); }
 /* 图标按钮：参考路径栏按钮（仅 icon） */
-/* 外观已回归基线 .vl-btn，这里只保留布局 */
 .config-watermark__btn {
   --vl-btn-h: 24px;
   --vl-btn-px: 0;
@@ -1689,7 +1676,6 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   font-size: var(--vl-type-body-md-size);
   color: var(--vl-alias-text-secondary);
 }
-/* 外观已回归基线 .vl-btn，这里只保留布局 */
 .config-exclude-row__remove {
   --vl-btn-h: 20px;
   --vl-btn-px: 0;
@@ -1701,7 +1687,6 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   --vl-btn-bg-hover: var(--vl-alias-status-error-surface-l1);
   --vl-btn-color-hover: var(--vl-alias-status-error-default);
 }
-/* 外观走 .vl-btn 基线变量（原属性值 1:1 转为变量，状态由基线提供） */
 .config-exclude-add {
   --vl-btn-gap: var(--vl-static-spacer-4);
   --vl-btn-h: 32px;
@@ -1881,14 +1866,11 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   --vl-btn-border-disabled: var(--vl-alias-status-error-default);
   --vl-btn-color-disabled: var(--vl-alias-text-onaccent);
 }
-/* ⚠ 语义色必须与 task 页三个悬浮按钮同源：
+/* 语义色与 task 悬浮按钮保持一致：
    红（覆盖配置 / 清除）= status-error，橙（保存为当日 / 全部暂停）= status-warning，
-   绿（开始制作 / 全部继续）= status-success。
-   原先这里用「品牌色 brand-500」→ 主窗口呈现为「主题色 + 绿色」，而 task 是「绿 + 橙 + 红」，
-   同一套悬浮按钮族出现了两套取色口径。改为语义橙后两边完全对应。 */
-/* 橙（保存为当日）：只声明变量，外观与三态一律由基线 .vl-btn 消费 */
+   绿（开始制作 / 全部继续）= status-success。 */
+/* 橙（保存为当日）：只声明变量，无边框 */
 .config-btn--save-today {
-  /* 与正式版一致：无边框（正式版 .config-btn 是 border: none） */
   --vl-btn-border-width: 0;
   --vl-btn-bg: var(--vl-alias-status-warning-default);
   --vl-btn-border: var(--vl-alias-status-warning-default);
@@ -2207,7 +2189,7 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   gap: var(--vl-static-spacer-8);
   margin-left: auto;
 }
-/* 差异：内距 / 下边框 / 不收缩 / 单行省略（字号与颜色回归基线） */
+/* 差异：内距 / 下边框 / 不收缩 / 单行省略 */
 .right-panel__subtitle { padding: var(--vl-static-spacer-6) var(--vl-static-spacer-12); border-bottom: 1px solid var(--vl-panel-border); flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .right-panel__content {
   flex: 1;
@@ -2431,7 +2413,7 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   background: var(--vl-static-bg-overlay, rgba(0, 0, 0, 0.35));
   backdrop-filter: blur(1px);
 }
-/* 设置面板打开时的模糊遮罩 + 内嵌设置页 iframe（原独立设置窗口已取消） */
+/* 设置面板打开时的模糊遮罩 + 内嵌设置页 iframe */
 .settings-dim {
   position: fixed;
   inset: 0;
@@ -2439,14 +2421,7 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   background: var(--vl-static-bg-overlay, rgba(0, 0, 0, 0.35));
   backdrop-filter: blur(1px);
 }
-/* 内嵌设置面板：居中卡片。
-   宽度按「内容区可用宽度」反推（而非直接照搬某个绝对尺寸）：
-   参考实现的设置面板在 1603 宽窗口下，卡片 980px、内容区约 690px（左导航约 230px）；
-   本设置页的左导航为 150px，要得到同等的内容区宽度，卡片取 840px
-   （840 − 150 导航 − 内边距 ≈ 688px，与参考的 690px 相当）。
-   占地比例也一致：840/1360 ≈ 61.8%，参考为 980/1603 ≈ 61.1%。
-   高度上限取 910px（与参考同值，容纳更多条目），小窗口时按视口收缩不溢出。
-   过窄会压死左栏（内容区 528px 时标题曾被压成逐字换行），这是尺寸的上下界依据。 */
+/* 内嵌设置面板：居中卡片，宽度上限 840px，高度上限 910px，小窗口按视口收缩。 */
 .settings-frame {
   position: absolute;
   left: 50%;
@@ -2567,13 +2542,7 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   vertical-align: middle;
   background: var(--vl-alias-status-success-default);
 }
-/* 外观走 .vl-btn 基线变量（原属性值 1:1 转为变量，状态由基线提供） */
-/* 图标+文字次级按钮（与右上「外部编辑」同一套配色，仅高度不同）。
-   ⚠ 补齐 hover / active 变量：原先未设，落到基线默认（实色次级底），
-     与外部编辑按钮的「透明底 + 淡色悬浮」观感不一致。 */
-/* 图标+文字次级按钮（与右上「外部编辑」同一套配色，仅高度不同）。
-   ⚠ 原先未设 hover/active，落到基线默认（实底次级/三级底），反馈本来就很明显；
-     后来被改成 overlay 半透明档反而「看着没反馈」，这里恢复实底。 */
+/* 图标+文字次级按钮（与「外部编辑」保持同套配色） */
 .status-bar__tasks-btn {
   --vl-btn-h: 18px;
   --vl-btn-px: 8px;
@@ -2590,7 +2559,6 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   --vl-btn-bg-active: var(--vl-alias-bg-base-tertiary);
   --vl-btn-color-active: var(--vl-alias-text-default);
 }
-/* 外观全部回归基线 .vl-count（原为品牌色底 + 反色字 + 10px 字号） */
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -2598,14 +2566,14 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
 ::-webkit-scrollbar-thumb { background: var(--vl-alias-border-neutral-l2); border-radius: var(--vl-static-radius-full); }
 ::-webkit-scrollbar-thumb:hover { background: var(--vl-alias-border-neutral-l3); }
 
-/* ── 补充：交互控件（与对比稿视觉保持一致） ── */
+/* ── 补充：交互控件 ── */
 .tree-project__icon {
   width: 16px;
   height: 16px;
   flex-shrink: 0;
   color: var(--vl-alias-text-tertiary);
 }
-/* 重复配置警告：改为设基线变量 */
+/* 重复配置警告 */
 .tree-txt-item--dup {
   --vl-btn-bg: var(--vl-alias-status-alert-surface-l1);
   --vl-btn-bg-hover: var(--vl-alias-status-alert-surface-l2);
@@ -3106,37 +3074,26 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   border-radius: var(--vl-static-radius-8);
   box-shadow: 0 12px 32px color-mix(in srgb, var(--vl-alias-text-default) 16%, transparent);
 }
-/* 右键菜单项：改用类选择器 + 基线变量。
-   ⚠ 原先是 `.ctx-menu button`（类型选择器，特异性 0,1,1 高于 .vl-btn 的 0,1,0），
-     会直接压死组件变量，所以必须换成类选择器。 */
-/* 右键菜单项：改用类选择器 + 基线变量。
-   ⚠ 原先是 `.ctx-menu button`（类型选择器，特异性 0,1,1 高于 .vl-btn 的 0,1,0），
-     会直接压死组件变量，所以必须换成类选择器。
-   ⚠ 接入基线后要显式对齐这几项，否则外观会被基线的默认值改掉（实测差异）：
-     · --vl-btn-lh：基线默认 1 → 行高 14px，原来继承 normal(≈19.6px)，行距明显变紧、行高 31→26；
-     · --vl-btn-fw：基线默认 500，原来继承 400，文字变粗；
-     · font-family：基线指定了字体族，原来继承页面默认，字形不同。 */
+/* 右键菜单项：改用类选择器覆盖组件变量。
+   ⚠ 使用类选择器避免特异性冲突，显式指定行高与字重维持文本流布局。 */
 .ctx-menu__item {
   --vl-btn-h: auto;
   --vl-btn-py: 6px;
   --vl-btn-px: 12px;
   --vl-btn-fs: var(--vl-type-body-base-size);
-  --vl-btn-lh: normal;      /* 与原来的继承行高一致，别用基线的 1 */
-  --vl-btn-fw: normal;      /* 原来是 400，不是基线的 500 */
+  --vl-btn-lh: normal;
+  --vl-btn-fw: normal;
   --vl-btn-radius: var(--vl-static-radius-6);
   --vl-btn-border-width: 0;
   --vl-btn-bg: transparent;
   --vl-btn-color: var(--vl-alias-text-default);
   --vl-btn-bg-hover: var(--vl-alias-brand-100);
   --vl-btn-color-hover: var(--vl-alias-brand-600);
-  display: block;           /* 原来是块级，flex 会改变文本布局 */
+  display: block;
   width: 100%;
   text-align: left;
   white-space: nowrap;
-  /* 字体走主字体令牌（Windows 实际渲染 Segoe UI）。
-     ⚠ 不再对齐正式版的 Arial：那只是 <button> 未设字体时的 UA 默认值，并非设计选择；
-       全站字面量字体只此一处，统一到主字体更合理。
-     （不能写 inherit —— 会继承 .ctx-menu 上的字体族；写 initial 会被解析成 serif。） */
+  /* 字体走主字体令牌，显式指定避免继承上下文字体或 UA 默认 serif */
   font-family: var(--vl-font-family-base);
 }
 /* 变灰项仍可点击（点击弹 toast 说明）：同 disabled 的灰显外观，但保留可点光标 */
@@ -3215,9 +3172,6 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   flex-direction: column;
   gap: 2px;
 }
-/* 外观全部回归基线 .vl-title */
-/* 差异：更新横幅描述用 body-sm 字号与字重、行高 1.5（颜色与基线同） */
-/* 外观全部回归基线 .vl-hint（原为 body-sm 字号 + 单独字重） */
 .update-banner__progress {
   display: flex;
   align-items: center;
@@ -3244,7 +3198,7 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   min-width: 30px;
   text-align: right;
 }
-/* 差异：不参与收缩（布局回归基线 .vl-toolbar） */
+/* 不参与收缩 */
 .update-banner__actions { flex-shrink: 0; }
 
 /* ═══ 状态栏下载进度（任务按钮左侧）═══ 配色走主题变量 */
@@ -3372,11 +3326,8 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   color: var(--vl-alias-text-tertiary);
 }
 .boot-guide__inner > i { margin-bottom: 6px; }
-/* 外观全部回归基线 .vl-title */
-/* 差异：引导卡片描述用次级色、body-sm 字号、行高 1.5、上方 6px */
-/* 差异：上方 6px（字号/行高/颜色回归基线） */
+/* 引导卡片描述：上方 6px */
 .boot-guide__desc { --vl-hint-mt: 6px; }
-/* 外观走 .vl-btn 基线变量（原属性值 1:1 转为变量，状态由基线提供） */
 .boot-guide__btn {
   --vl-btn-gap: var(--vl-static-spacer-8);
   margin-top: var(--vl-static-spacer-16);
@@ -4115,7 +4066,6 @@ button[data-disabled="1"] {
   background: var(--vl-static-bg-overlay, rgba(0, 0, 0, 0.35));
   backdrop-filter: blur(3px);
 }
-/* 差异：布局 / 宽度 / 内距 / 投影（底色与圆角回归基线 .vl-card） */
 .update-result__box { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 14px; width: min(420px, calc(100vw - 64px)); padding: 20px 22px; box-shadow: 0 10px 34px rgba(0, 0, 0, 0.22); }
 .update-result__icon {
   flex: 0 0 auto; width: 34px; height: 34px; border-radius: 50%;
@@ -4127,18 +4077,15 @@ button[data-disabled="1"] {
 .update-result__icon--err { background: #dc2626; }
 .update-result__icon--wait { background: var(--vl-alias-text-tertiary, #8a8a8a); }
 .update-result__body { flex: 1 1 0; min-width: 0; }
-/* 外观全部回归基线 .vl-title */
-/* 差异：弹窗描述比基线大一号、行高更紧、上方 4px、长串可断词 */
-/* 差异：上方 4px、长串可断词（字号/行高/颜色回归基线） */
+/* 弹窗描述：上方 4px、长串可断词 */
 .update-result__desc {
   --vl-hint-mt: 4px;
   word-break: break-word;
 }
-/* 差异：占满整行（布局回归基线 .vl-toolbar--end） */
+/* 占满整行 */
 .update-result__actions { flex: 1 1 100%; }
 
-/* 模式切换（批量 ↔ 遮罩叠加）的中间过渡：两种模式的中栏 / 侧栏结构完全不同，切换必然整片重建；
-   重建在遮罩之下进行，用户看到的是一次干净的切换，而非重建过程的中间态 */
+/* 模式切换中间过渡遮罩 */
 .mode-mask {
   position: fixed;
   inset: 0;
@@ -4149,7 +4096,6 @@ button[data-disabled="1"] {
   background: var(--vl-static-bg-overlay, rgba(0, 0, 0, 0.35));
   backdrop-filter: blur(3px);
 }
-/* 差异：布局 / 内距 / 投影（底色与圆角回归基线 .vl-card） */
 .mode-mask__box { display: flex; align-items: center; gap: 10px; padding: 14px 20px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18); }
 .mode-mask__text { font-size: var(--vl-type-body-sm-size, 13px); color: var(--vl-alias-text-default, #222); }
 
@@ -4173,7 +4119,6 @@ button[data-disabled="1"] {
 }
 /* 预览版窗口：标题栏底部橙线（inset 阴影，不占布局） */
 .win-titlebar[data-preview="1"] { box-shadow: inset 0 -2px 0 0 #f97316; }
-  /* ↓ 从 @layer 外移回的块（原先脱离层序，皮肤压不住） */
 .date-branch-btn {
   --vl-btn-h: 26px;
   --vl-btn-px: var(--vl-static-spacer-10);
