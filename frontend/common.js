@@ -19,6 +19,48 @@
   };
 
   /**
+   * ── 附属存储通道（Auxiliary Channel）────────────────────────────────────────
+   * ⚠ 架构红线：
+   * 1. 跨端状态真相源唯一：
+   *    - 皮肤真相源：主进程配置（settings.db / config.json，经 get_skin / set_skin 读写）
+   *    - 令牌真相源：主进程生成的 http_token
+   * 2. localStorage 在本项目中**绝不是真相源**，仅作为显式「附属通道」存在：
+   *    - vl_skin  ：仅作同源多窗口首屏防闪缓存（渲染前同步读取避免先白后换，拿到服务端值后必须回写校正）
+   *    - tx_token ：仅作浏览器端 URL 参数到 HTTP 请求头的令牌桥接
+   * 3. 业务代码严禁绕过本门面直接读写 localStorage。
+   */
+  root.VL.auxiliary = {
+    /** 皮肤首屏防闪缓存：读取 */
+    getSkinCache: function () {
+      try { return root.localStorage ? (root.localStorage.getItem('vl_skin') || '') : ''; } catch (e) { return ''; }
+    },
+    /** 皮肤首屏防闪缓存：回写校正 */
+    setSkinCache: function (skinId) {
+      if (!skinId) return;
+      try { if (root.localStorage) root.localStorage.setItem('vl_skin', String(skinId)); } catch (e) {}
+    },
+    /** 浏览器端令牌桥接：读取 */
+    getTokenBridge: function () {
+      try { return root.localStorage ? (root.localStorage.getItem('tx_token') || '') : ''; } catch (e) { return ''; }
+    },
+    /** 浏览器端令牌桥接：存储 */
+    setTokenBridge: function (token) {
+      if (!token) return;
+      try { if (root.localStorage) root.localStorage.setItem('tx_token', String(token)); } catch (e) {}
+    },
+    /** 尝试从当前 URL query 参数桥接 token（仅浏览器端需要） */
+    bridgeTokenFromUrl: function () {
+      try {
+        var token = new URL(root.location.href).searchParams.get('token');
+        if (token) this.setTokenBridge(token);
+        return token || this.getTokenBridge();
+      } catch (e) {
+        return this.getTokenBridge();
+      }
+    }
+  };
+
+  /**
    * 皮肤清单（单一事实源：skins/skins.json）。
    * 用同步 XHR 读一次并缓存：本地文件、体积只有几百字节，换来的是「各页初始化顺序无需为异步让路」。
    * 页面通过 HTTP 加载（软件端与浏览器端都是），file:// 下若被安全策略拒绝则回退内置最简清单。

@@ -128,7 +128,8 @@
   function setSkin(id) {
     var real = THEMES.some(function (t) { return t.id === id; }) ? id : THEMES[0].id;
     document.documentElement.setAttribute('data-skin', real);
-    try { localStorage.setItem('vl_skin', real); } catch (e) {}   // 与主窗口共享，供内嵌页首屏注入
+    // 附属通道：缓存供内嵌页首屏防闪，真相源仍是主进程配置（settings.db / config.json）
+    if (window.VL && window.VL.auxiliary) window.VL.auxiliary.setSkinCache(real);
     var items = document.querySelectorAll('#themeRow .theme-item');
     items.forEach(function (it) { it.setAttribute('aria-checked', it.dataset.theme === id ? 'true' : 'false'); });
   }

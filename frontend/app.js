@@ -2686,9 +2686,8 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
   function applySkin(id, persist) {
     var target = SKINS.some(function (s) { return s.id === id; }) ? id : SKINS[0].id;
     document.documentElement.setAttribute('data-skin', target);
-    // 缓存到 localStorage：内嵌的设置/引导页在**渲染前**同步读取并应用，
-    // 避免"先按默认皮肤画一帧、再被异步结果改回来"的闪烁（内嵌页与主窗口同源，共享该缓存）
-    try { localStorage.setItem('vl_skin', target); } catch (e) {}
+    // 附属通道：缓存供内嵌页首屏防闪，真相源仍是主进程配置（settings.db / config.json）
+    if (window.VL && window.VL.auxiliary) window.VL.auxiliary.setSkinCache(target);
     // 皮肤行为层热切换：先 dispose 上一皮肤装饰，再 apply 当前皮肤行为（若有）
     if (window.VL_SkinRuntime) window.VL_SkinRuntime.sync(target);
     if (persist) call('set_skin', target);

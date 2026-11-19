@@ -11,10 +11,11 @@
   <link rel="stylesheet" href="skins/_all.css">
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="../icon/preview/app-icon.png">
+  <script src="common.js"></script>
   <script>
-    // 皮肤首屏注入：与设置页同理 —— 渲染前同步应用已缓存的皮肤，避免"先白后换"的闪烁。
-    // 缓存缺失时再向主进程要一次（iframe 与主窗口同源也能读到，但首次进引导页时可能还没写）。
-    try { var _sk0 = localStorage.getItem('vl_skin'); if (_sk0) document.documentElement.setAttribute('data-skin', _sk0); } catch (e) {}
+    // 附属通道：首屏防闪缓存同步读取应用
+    var _sk0 = VL.auxiliary.getSkinCache();
+    if (_sk0) document.documentElement.setAttribute('data-skin', _sk0);
     document.addEventListener('DOMContentLoaded', function () {
       // 内嵌为主窗口 iframe 时：外层窗口已提供标题栏，隐藏自绘的那条（否则标题叠加）
       try { if (window.self !== window.top) document.body.setAttribute('data-embedded', '1'); } catch (e) { document.body.setAttribute('data-embedded', '1'); }
@@ -24,14 +25,14 @@
           api.get_skin().then(function (id) {
             if (!id) return;
             document.documentElement.setAttribute('data-skin', id);
-            try { localStorage.setItem('vl_skin', id); } catch (e) {}
+            VL.auxiliary.setSkinCache(id);
           }).catch(function () {});
         }
       } catch (e) {}
     });
-    if (location.protocol.startsWith('http')) {
-var m = new URL(location.href).searchParams.get('token');
-      if (m) localStorage.setItem('tx_token', m);
+    // 能力探测：仅浏览器端桥接 token 与注册 SW（Electron 端由原生能力提供）
+    if (!VL.host.isElectron) {
+      VL.auxiliary.bridgeTokenFromUrl();
       if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(function () {});
     }
   </script>
@@ -70,7 +71,6 @@ var m = new URL(location.href).searchParams.get('token');
 </div>
 <script src="icons.js"></script>
 <script src="txapi.js"></script>
-<script src="common.js"></script>
 <script src="titlebar.js"></script>
 <script src="guide.js"></script>
 </body>

@@ -10,11 +10,11 @@
   <link rel="stylesheet" href="skins/_all.css">
 <link rel="manifest" href="manifest.json">
   <link rel="icon" href="../icon/preview/app-icon.png">
+  <script src="common.js"></script>
   <script>
-    if (location.protocol.startsWith('http')) {
-var m = new URL(location.href).searchParams.get('token');
-      if (m) localStorage.setItem('tx_token', m);
-      // 注册 Service Worker（PWA 安装条件）
+    // 能力探测：仅浏览器端需要桥接 token 与注册 Service Worker（Electron 端由原生能力提供）
+    if (!VL.host.isElectron) {
+      VL.auxiliary.bridgeTokenFromUrl();
       if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(function () {});
     }
   </script>
@@ -285,7 +285,6 @@ var m = new URL(location.href).searchParams.get('token');
 
   <script src="icons.js"></script>
   <script src="txapi.js"></script>
-<script src="common.js"></script>
   <script src="logbootstrap.js"></script>
   <script src="titlebar.js"></script>
   <script src="skins/skin-loader.js"></script>

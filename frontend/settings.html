@@ -10,15 +10,15 @@
 <link rel="stylesheet" href="skins/_all.css">
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="../icon/preview/app-icon.png">
+  <script src="common.js"></script>
   <script>
-    // 皮肤首屏注入：主窗口/本页切换皮肤时都会把当前皮肤写进 localStorage（同源共享），
-    // 这里在样式生效前同步应用，避免内嵌设置页"先按默认皮肤渲染、再被异步结果改回来"的闪烁。
-    try { var _sk0 = localStorage.getItem('vl_skin'); if (_sk0) document.documentElement.setAttribute('data-skin', _sk0); } catch (e) {}
-    if (location.protocol.startsWith('http')) {
-var m = new URL(location.href).searchParams.get('token');
-      if (m) localStorage.setItem('tx_token', m);
+    // 附属通道：首屏防闪缓存同步读取应用
+    var _sk0 = VL.auxiliary.getSkinCache();
+    if (_sk0) document.documentElement.setAttribute('data-skin', _sk0);
+    // 能力探测：仅浏览器端桥接 token 与注册 SW；内嵌模态传参优先
+    if (!VL.host.isElectron) {
+      VL.auxiliary.bridgeTokenFromUrl();
       if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(function () {});
-      // 内嵌模态带 skin 参数：iframe 渲染前同步应用当前皮肤，避免先白后换的闪烁
       var sk = new URL(location.href).searchParams.get('skin');
       if (sk) document.documentElement.setAttribute('data-skin', sk);
     }
@@ -555,7 +555,6 @@ var m = new URL(location.href).searchParams.get('token');
 </div>
 
 <script src="txapi.js"></script>
-<script src="common.js"></script>
 <script src="logbootstrap.js"></script>
 <script src="titlebar.js"></script>
 <script src="settings.js"></script>

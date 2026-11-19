@@ -1,15 +1,19 @@
 // -*- coding: utf-8 -*-
 // Video Lab — 浏览器侧 txapi 实现
-// 仅在 http/https 协议下挂载 window.txapi（Electron file: 协议下 preload.js 已注入，本脚本跳过）
+// 仅在非 Electron 纯浏览器环境下挂载 window.txapi（Electron 端由 preload.js 注入，本脚本跳过）
 (function () {
   'use strict';
-  if (!location.protocol.startsWith('http')) return; // Electron 侧由 preload.js 注入
+  // 能力探测替代协议判断。Electron 端由 preload.js 注入原生 txapi，本脚本仅为浏览器端通道
+  if (window.VL && window.VL.host && window.VL.host.isElectron) return;
 
-  var token = localStorage.getItem('tx_token') || '';
-  // 从 URL query 取 token 存 localStorage（首次访问带 token 的 URL）
+  // 通过附属通道桥接 token，真相源仍为主进程生成的 http_token
+  var token = (window.VL && window.VL.auxiliary ? window.VL.auxiliary.getTokenBridge() : '');
   try {
     var q = new URL(location.href).searchParams.get('token');
-    if (q) { token = q; localStorage.setItem('tx_token', token); }
+    if (q) {
+      token = q;
+      if (window.VL && window.VL.auxiliary) window.VL.auxiliary.setTokenBridge(token);
+    }
   } catch (e) {}
 
   // fetch 封装：POST /api/<channel>，body 为 JSON 数组（args），返回 data 或抛错
