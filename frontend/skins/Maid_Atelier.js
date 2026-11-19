@@ -123,7 +123,13 @@
     //    使其 z-index:1000 真正置顶（不被金框蕾丝饰遮住）；仍被 app.js 经
     //    #sidebarMenu 引用控制显隐 ──
     var sideMenu = doc.getElementById('sidebarMenu');
-    if (sideMenu && sideMenu.parentNode !== sidebarRoot) sidebarRoot.appendChild(sideMenu);
+    var sideMenuOrigParent = null;
+    var sideMenuOrigNext = null;
+    if (sideMenu) {
+      sideMenuOrigParent = sideMenu.parentNode;
+      sideMenuOrigNext = sideMenu.nextSibling;
+      if (sideMenu.parentNode !== sidebarRoot) sidebarRoot.appendChild(sideMenu);
+    }
 
     // 选中配置投影：.tree-txt-item--active（批量配置管理模式）或
     // .mask-proj-item--active（遮罩叠加模式选中项目）存在 ⟷ body[data-maid-chat-active]
@@ -176,6 +182,9 @@
       if (holder && holder.parentNode === doc.head) doc.head.removeChild(holder);
       if (ro && typeof ro.disconnect === 'function') ro.disconnect();
       if (activeObserver && typeof activeObserver.disconnect === 'function') activeObserver.disconnect();
+      if (sideMenu && sideMenuOrigParent && sideMenu.parentNode !== sideMenuOrigParent) {
+        sideMenuOrigParent.insertBefore(sideMenu, sideMenuOrigNext);
+      }
       delete doc.body.dataset.maidSidebarSize;
       delete doc.body.dataset.maidChatActive;
     };
@@ -189,6 +198,11 @@
     doc.querySelectorAll('[data-skin-owner="' + OWNER + '"]').forEach(function (el) { el.remove(); });
     var holder = doc.querySelector('[data-skin-chrome="maid-width-rule"]');
     if (holder && holder.parentNode === doc.head) doc.head.removeChild(holder);
+    var sideMenu = doc.getElementById('sidebarMenu');
+    var treeWrap = doc.querySelector('.sidebar__tree-wrap');
+    if (sideMenu && treeWrap && sideMenu.parentNode !== treeWrap) {
+      treeWrap.appendChild(sideMenu);
+    }
     delete doc.body.dataset.maidSidebarSize;
     delete doc.body.dataset.maidChatActive;
   }
