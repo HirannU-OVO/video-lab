@@ -16,6 +16,8 @@
     if (location.protocol.startsWith('http')) {
 var m = new URL(location.href).searchParams.get('token');
       if (m) localStorage.setItem('tx_token', m);
+      // 注册 Service Worker（PWA 安装条件）
+      if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(function () {});
     }
   </script>
 </head>
