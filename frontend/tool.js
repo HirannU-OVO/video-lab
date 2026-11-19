@@ -54,7 +54,7 @@
       var card = document.createElement('div');
       card.className = 'modal-card' + (opts.cssClass ? ' ' + opts.cssClass : '');
       var html = '<button type="button" class="modal-close vl-btn vl-btn--icon" title="关闭">✕</button>'
-        + '<div class="modal__title">' + esc(opts.title) + '</div>';
+        + '<div class="modal__title vl-title">' + esc(opts.title) + '</div>';
       if (opts.message) html += '<div class="modal__message">' + opts.message + '</div>';
       // 文本输入（可选）：**不要用 window.prompt** —— Electron 渲染进程不支持它，
       // 会直接抛 "prompt() is not supported."。
@@ -63,7 +63,7 @@
           + ' placeholder="' + esc(opts.input.placeholder || '') + '"'
           + ' value="' + esc(opts.input.value || '') + '"></div>';
       }
-      html += '<div class="modal__actions">';
+      html += '<div class="modal__actions vl-toolbar">';
       (opts.buttons || []).forEach(function (b) {
         var cls = 'modal-btn vl-btn vl-btn--lift' + (b.danger ? ' modal-btn--danger' : '') + (b.primary ? ' modal-btn--primary' : '');
         html += '<button type="button" class="' + cls + '">' + (b.icon ? icon(b.icon, 14) : '') + esc(b.label) + '</button>';
@@ -145,7 +145,7 @@
     var html = (stepId === 'resize') ? resizeFieldsHtml()
       : (step.schema || []).filter(function (sc) { return fieldVisible(stepId, sc); })
         .map(function (sc) { return paramField(stepId, sc); }).join('');
-    body.innerHTML = html || '<span class="tl-field__hint">无需参数（勾选即可生效）</span>';
+    body.innerHTML = html || '<span class="tl-field__hint vl-hint">无需参数（勾选即可生效）</span>';
     if (window.VL_hydrateIcons) window.VL_hydrateIcons(body);
     refreshResizeLink();
   }
@@ -209,7 +209,7 @@
     }).join('');
     return '<label class="tl-field"><span class="tl-field__label">画面比例</span>'
       + '<span class="vl-select-wrap"><select class="vl-select tl-sel" data-step="resize" data-key="ratio">' + opts + '</select></span>'
-      + '<span class="tl-field__hint" title="选常用比例后，改宽/高会按比例自动联动；点锁链解绑可自由设定">'
+      + '<span class="tl-field__hint vl-hint" title="选常用比例后，改宽/高会按比例自动联动；点锁链解绑可自由设定">'
       + '改宽/高按比例联动</span></label>'
       + '<label class="tl-field"><span class="tl-field__label">宽</span>'
       + '<input class="vl-input vl-input--sm tl-num" type="number" data-step="resize" data-key="width" value="' + esc(v.width) + '" min="16" step="2"></label>'
@@ -223,7 +223,7 @@
   function paramField(stepId, sc) {
     var v = state.values[stepId][sc.key];
     var label = '<span class="tl-field__label">' + esc(sc.label || sc.key) + '</span>';
-    var hint = sc.hint ? '<span class="tl-field__hint" title="' + esc(sc.hint) + '">' + esc(sc.hint) + '</span>' : '';
+    var hint = sc.hint ? '<span class="tl-field__hint vl-hint" title="' + esc(sc.hint) + '">' + esc(sc.hint) + '</span>' : '';
     var input = '';
     var type = String(sc.type || 'text');
     if (type === 'number') {
@@ -266,13 +266,13 @@
     var params = (step.id === 'resize') ? resizeFieldsHtml()
       : (step.schema || []).filter(function (sc) { return fieldVisible(step.id, sc); })
         .map(function (sc) { return paramField(step.id, sc); }).join('');
-    div.innerHTML = '<div class="tl-step__head">'
+    div.innerHTML = '<div class="tl-step__head vl-title">'
       + '<label class="vl-check vl-check--nolabel"><input type="checkbox" data-check="' + step.id + '"' + (on ? ' checked' : '') + '><span class="vl-check__box"></span></label>'
       + '<span class="tl-step__arrow" data-fold="' + step.id + '" title="展开/收起参数">' + iconEl('chevron-right', 13) + '</span>'
-      + '<span class="tl-step__title">' + esc(step.title || step.id) + '</span>'
+      + '<span class="tl-step__title vl-title">' + esc(step.title || step.id) + '</span>'
       + (step.danger === 'lossy' ? '<span class="tl-step__flag">会丢内容</span>' : '')
       + '</div>'
-      + '<div class="tl-params">' + (params || '<span class="tl-field__hint">无需参数（勾选即可生效）</span>') + '</div>';
+      + '<div class="tl-params">' + (params || '<span class="tl-field__hint vl-hint">无需参数（勾选即可生效）</span>') + '</div>';
     return div;
   }
 
@@ -282,10 +282,10 @@
     (state.info.groups || []).forEach(function (g) {
       var box = document.createElement('div');
       box.className = 'tl-group tl-group--open';
-      box.innerHTML = '<div class="tl-group__head">'
+      box.innerHTML = '<div class="tl-group__head vl-title">'
         + '<span class="tl-group__arrow">' + iconEl('chevron-right', 14) + '</span>'
         + '<span>' + esc(g.group) + '</span>'
-        + '<span class="tl-group__count">' + g.steps.length + ' 项</span>'
+        + '<span class="tl-group__count vl-count">' + g.steps.length + ' 项</span>'
         + '</div>';
       var body = document.createElement('div');
       body.className = 'tl-group__body';

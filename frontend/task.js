@@ -128,9 +128,9 @@
       overlay.className = 'modal-overlay';
       var card = document.createElement('div');
       card.className = 'modal-card' + (opts.cardClass ? ' ' + opts.cardClass : '');
-      var html = '<button type="button" class="modal-close vl-btn vl-btn--icon" title="关闭">✕</button><div class="modal__title">' + escapeHtml(opts.title) + '</div>';
+      var html = '<button type="button" class="modal-close vl-btn vl-btn--icon" title="关闭">✕</button><div class="modal__title vl-title">' + escapeHtml(opts.title) + '</div>';
       if (opts.message) html += '<div class="modal__message">' + escapeHtml(opts.message) + '</div>';
-      html += '<div class="modal__actions">';
+      html += '<div class="modal__actions vl-toolbar">';
       (opts.buttons || []).forEach(function (b) {
         var cls = 'modal-btn vl-btn vl-btn--lift' + (b.danger ? ' modal-btn--danger' : '') + (b.primary ? ' modal-btn--primary' : '');
         html += '<button type="button" class="' + cls + '">' + escapeHtml(b.label) + '</button>';
@@ -571,7 +571,7 @@
     }
     var tagEl = rec.header.querySelector('.task-card__tag');
     tagEl.textContent = TYPE_TEXT[t.type] || t.type || '';
-    tagEl.className = 'task-card__tag' + ((t.type === 'batch' || t.type === 'replica' || t.type === 'mask' || t.type === 'tool') ? ' task-card__tag--' + t.type : '');
+    tagEl.className = 'task-card__tag vl-count' + ((t.type === 'batch' || t.type === 'replica' || t.type === 'mask' || t.type === 'tool') ? ' task-card__tag--' + t.type : '');
     // 稳定锚点：皮肤按 [data-region="task-tag"][data-kind="…"] 覆盖底色，不必依赖业务类名
     tagEl.setAttribute('data-region', 'task-tag');
     tagEl.setAttribute('data-kind', t.type || '');
@@ -638,7 +638,9 @@
         pauseBtn.style.display = 'none';
       } else {
       pauseBtn.style.display = '';
-      pauseBtn.className = 'task-card__pause';
+      // ⚠ className 是整体覆盖：必须带上 vl-btn，否则只剩 --vl-btn-* 变量无人消费 →
+      //    按钮退回浏览器默认外观（用户 2026-11-19 报「继续按钮变成默认样式」即此原因）
+      pauseBtn.className = 'task-card__pause vl-btn';
       pauseBtn.disabled = false;
       pauseBtn.innerHTML = icon('pause', 12) + '暂停';
       pauseBtn.title = t.type === 'tool'
@@ -647,7 +649,7 @@
       }
     } else if (t.status === 'queued') {
       pauseBtn.style.display = '';
-      pauseBtn.className = 'task-card__pause';
+      pauseBtn.className = 'task-card__pause vl-btn';
       pauseBtn.disabled = false;
       pauseBtn.innerHTML = icon('pause', 12) + '暂停';
       pauseBtn.title = '移出执行队列（点击继续可插回原位置）';
@@ -657,7 +659,7 @@
         pauseBtn.style.display = 'none';
       } else {
         pauseBtn.style.display = '';
-        pauseBtn.className = 'task-card__pause task-card__pause--resume';
+        pauseBtn.className = 'task-card__pause task-card__pause--resume vl-btn';
         pauseBtn.disabled = false;
         pauseBtn.innerHTML = icon('play', 12) + '继续';
         pauseBtn.title = '按当前位置插回执行队列';
@@ -802,10 +804,10 @@
     card.className = 'modal-card modal-card--wide';
     card.innerHTML =
       '<button type="button" class="modal-close vl-btn vl-btn--icon" title="关闭">✕</button>' +
-      '<div class="modal__title">重分组</div>' +
+      '<div class="modal__title vl-title">重分组</div>' +
       '<div class="modal__message">为任务「' + escapeHtml(t.title || '') + '」的成片重新分组（已有分组字母会被替换）。请输入分组数：</div>' +
       '<div class="modal__input-row"><input type="number" class="modal-input" id="rgInput" min="1" max="99" value="1"></div>' +
-      '<div class="modal__actions"><button type="button" class="modal-btn vl-btn vl-btn--lift" data-v="cancel">取消</button><button type="button" class="modal-btn vl-btn vl-btn--lift modal-btn--primary" data-v="go">开始分组</button></div>';
+      '<div class="modal__actions vl-toolbar"><button type="button" class="modal-btn vl-btn vl-btn--lift" data-v="cancel">取消</button><button type="button" class="modal-btn vl-btn vl-btn--lift modal-btn--primary" data-v="go">开始分组</button></div>';
     overlay.appendChild(card);
     document.body.appendChild(overlay);
     var close = function () { overlay.remove(); };
@@ -1090,7 +1092,7 @@
           hdr.innerHTML =
             '<span class="task-day-group__label">' + day + '</span>' +
             '<span class="task-day-group__line"></span>' +
-            '<span class="task-day-group__count">共 ' + dayCount[day] + ' 个视频</span>';
+            '<span class="task-day-group__count vl-count">共 ' + dayCount[day] + ' 个视频</span>';
           // 点击整个分组头即展开/折叠该日列表（按钮已移除）
           hdr.addEventListener('click', function () {
             doneGroupsExpanded[day] = !doneGroupsExpanded[day];

@@ -170,9 +170,9 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       overlay.className = 'modal-overlay';
       var card = document.createElement('div');
       card.className = 'modal-card' + (opts.cssClass ? ' ' + opts.cssClass : '');
-      var html = '<button type="button" class="modal-close vl-btn vl-btn--icon" title="关闭">✕</button><div class="modal__title">' + escapeHtml(opts.title) + '</div>';
+      var html = '<button type="button" class="modal-close vl-btn vl-btn--icon" title="关闭">✕</button><div class="modal__title vl-title">' + escapeHtml(opts.title) + '</div>';
       if (opts.message) html += '<div class="modal__message">' + escapeHtml(opts.message) + '</div>';
-      html += '<div class="modal__actions">';
+      html += '<div class="modal__actions vl-toolbar">';
       (opts.buttons || []).forEach(function (b) {
         var cls = 'modal-btn vl-btn vl-btn--lift' + (b.danger ? ' modal-btn--danger' : '') + (b.primary ? ' modal-btn--primary' : '') + (b.cls ? ' ' + b.cls : '') + (b.disabled ? ' modal-btn--disabled' : '');
         var ics = b.icon ? icon(b.icon, 14) : '';
@@ -223,7 +223,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
             var card = document.createElement('div');
             card.className = 'modal-card';
             card.innerHTML = '<button type="button" class="modal-close vl-btn vl-btn--icon" title="关闭">✕</button>'
-              + '<div class="modal__title">复刻</div>'
+              + '<div class="modal__title vl-title">复刻</div>'
               + '<div class="rp-form">'
               + '<div class="rp-form__row"><span class="rp-form__label">重复度下限</span>'
               + '<input class="modal-input rp-form__num" id="rpMin" type="number" min="0" max="1" step="0.05" placeholder="' + escapeHtml(dMin) + '">'
@@ -233,9 +233,9 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
               + '<input class="modal-input rp-form__num" id="rpMax" type="number" min="0" max="1" step="0.05" placeholder="' + escapeHtml(dMax) + '">'
               + '<label class="vl-check"><input type="checkbox" id="rpMaxOn"' + (maxOn ? ' checked' : '') + '><span class="vl-check__box"></span><span>启用</span></label>'
               + '</div>'
-              + '<div class="rp-form__hint">留空则使用设置里的默认值</div>'
+              + '<div class="rp-form__hint vl-hint">留空则使用设置里的默认值</div>'
               + '</div>'
-              + '<div class="modal__actions">'
+              + '<div class="modal__actions vl-toolbar">'
               + '<button type="button" class="modal-btn vl-btn vl-btn--lift" data-b="cancel">取消</button>'
               + '<button type="button" class="modal-btn vl-btn vl-btn--lift modal-btn--primary" data-region="modal-btn" data-kind="primary" data-b="full">完全复刻</button>'
               + '<button type="button" class="modal-btn vl-btn vl-btn--lift modal-btn--primary" data-region="modal-btn" data-kind="primary" data-b="dedup">去重复刻</button>'
@@ -270,11 +270,11 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       overlay.className = 'modal-overlay';
       var card = document.createElement('div');
       card.className = 'modal-card modal-card--dest';
-      var html = '<button type="button" class="modal-close vl-btn vl-btn--icon" title="关闭">✕</button><div class="modal__title">' + escapeHtml(opts.title) + '</div>';
+      var html = '<button type="button" class="modal-close vl-btn vl-btn--icon" title="关闭">✕</button><div class="modal__title vl-title">' + escapeHtml(opts.title) + '</div>';
       if (opts.message) html += '<div class="modal__message">' + escapeHtml(opts.message) + '</div>';
       html += '<div class="modal__dest-list">';
       (opts.rows || []).forEach(function (r) {
-        html += '<div class="modal__dest-row"><span class="modal__dest-hint">' + escapeHtml(r.hint) + '</span>';
+        html += '<div class="modal__dest-row"><span class="modal__dest-hint vl-hint">' + escapeHtml(r.hint) + '</span>';
         html += '<button type="button" class="modal-btn vl-btn vl-btn--lift modal__dest-save">' + escapeHtml(opts.btnLabel || '保存') + '</button></div>';
       });
       html += '</div>';
@@ -305,8 +305,8 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
   }
   // 项目设置弹窗顶部那一行「项目名」（新建态标题不同）
   function projectNameRowHtml(curName, isNew) {
-    return '<div class="wm-section-title">' + (isNew ? "新建项目" : "项目") + '</div>' +
-      '<div class="wm-row"><span class="wm-row__label">项目名</span><div class="wm-row__ops">' +
+    return '<div class="wm-section-title vl-title">' + (isNew ? "新建项目" : "项目") + '</div>' +
+      '<div class="wm-row"><span class="wm-row__label">项目名</span><div class="wm-row__ops vl-toolbar">' +
       '<input type="text" class="wm-row__input" id="projNameInput" style="flex:1; min-width:0" maxlength="64" spellcheck="false" placeholder="项目名称" value="' + escapeHtml(curName || "") + '">' +
       '</div></div>';
   }
@@ -330,17 +330,17 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       card.className = 'modal-card modal-card--wm';
       card.innerHTML =
         '<button type="button" class="modal-close vl-btn vl-btn--icon" title="关闭">✕</button>' +
-        '<div class="modal__title">' + (isNew ? "新建项目" : "项目设置") + '</div>' +
+        '<div class="modal__title vl-title">' + (isNew ? "新建项目" : "项目设置") + '</div>' +
         '<div class="modal__wm-body">' +
         projectNameRowHtml(project, isNew) +
-        '<div class="wm-section-title">默认分组数</div>' +
-        '<div class="wm-row"><span class="wm-row__label">启用默认分组数</span><div class="wm-row__ops"><label class="wm-check"><input type="checkbox" id="groupToggle"' + (curGroupEn ? ' checked' : '') + '><span class="wm-check__box"></span></label></div></div>' +
-        '<div class="wm-row"><span class="wm-row__label">默认分组数</span><div class="wm-row__ops"><input type="number" class="wm-row__input" id="groupInput" min="1" max="99" placeholder="不分组" value="' + (curGroup > 0 ? curGroup : '') + '"></div></div>' +
-        '<div class="wm-section-title">主流水印</div>' +
-        '<div class="wm-row"><span class="wm-row__label">启用主流水印判定</span><div class="wm-row__ops"><label class="wm-check"><input type="checkbox" id="wmToggle"' + (wmEn0 ? ' checked' : '') + '><span class="wm-check__box"></span></label></div></div>' +
-        '<div class="wm-row"><span class="wm-row__label">主流水印</span><div class="wm-row__ops"><div class="config-watermark__row config-watermark__row--inline" id="wmMainRow"></div></div></div>' +
+        '<div class="wm-section-title vl-title">默认分组数</div>' +
+        '<div class="wm-row"><span class="wm-row__label">启用默认分组数</span><div class="wm-row__ops vl-toolbar"><label class="wm-check"><input type="checkbox" id="groupToggle"' + (curGroupEn ? ' checked' : '') + '><span class="wm-check__box"></span></label></div></div>' +
+        '<div class="wm-row"><span class="wm-row__label">默认分组数</span><div class="wm-row__ops vl-toolbar"><input type="number" class="wm-row__input" id="groupInput" min="1" max="99" placeholder="不分组" value="' + (curGroup > 0 ? curGroup : '') + '"></div></div>' +
+        '<div class="wm-section-title vl-title">主流水印</div>' +
+        '<div class="wm-row"><span class="wm-row__label">启用主流水印判定</span><div class="wm-row__ops vl-toolbar"><label class="wm-check"><input type="checkbox" id="wmToggle"' + (wmEn0 ? ' checked' : '') + '><span class="wm-check__box"></span></label></div></div>' +
+        '<div class="wm-row"><span class="wm-row__label">主流水印</span><div class="wm-row__ops vl-toolbar"><div class="config-watermark__row config-watermark__row--inline" id="wmMainRow"></div></div></div>' +
         '</div>' +
-        '<div class="modal__actions">' +
+        '<div class="modal__actions vl-toolbar">' +
         '<button type="button" class="modal-btn vl-btn vl-btn--lift" data-wm-act="cancel">取消</button>' +
         '<button type="button" class="modal-btn vl-btn vl-btn--lift modal-btn--primary" data-region="modal-btn" data-kind="primary" data-wm-act="save">保存</button>' +
         '</div>';
@@ -581,7 +581,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       // 项目名行右侧：展开时显示「共 N 个配置」徽章（复刻虚拟项目无配置则不显示）
       // 切换配置场景（noBadgeAnim）：徽章加 --static 静止类，不重播滑入动画，与本行其他内容保持一致
       if (proj.name !== REPLICA_PROJECT && expanded) {
-        html += '<span class="tree-project__badge' + (noBadgeAnim ? ' tree-project__badge--static' : '') + '" data-region="tree-badge"' + (noBadgeAnim ? ' data-static="1"' : '') + '>共 ' + proj.txts.length + ' 个配置</span>';
+        html += '<span class="tree-project__badge vl-count' + (noBadgeAnim ? ' tree-project__badge--static' : '') + '" data-region="tree-badge"' + (noBadgeAnim ? ' data-static="1"' : '') + '>共 ' + proj.txts.length + ' 个配置</span>';
       }
       html += '</div>';
       if (expanded) {
@@ -611,7 +611,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
           html += '<span class="tree-txt-item__name" data-region="tree-item-name">' + escapeHtml(txt.name) + '</span>';
           // 复刻子项无配置日期，不显示 latest；徽章显示其日志数
           if (!isReplica) html += '<span class="tree-txt-item__date" data-region="tree-item-date">' + escapeHtml(txt.latest) + '</span>';
-          html += '<span class="tree-txt-item__badge" data-region="tree-item-badge">' + txt.count + '</span></div>';
+          html += '<span class="tree-txt-item__badge vl-count" data-region="tree-item-badge">' + txt.count + '</span></div>';
         });
         html += '</div>';
       }
@@ -970,7 +970,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       html += '<span class="config-path-row__drag" draggable="true" title="按住拖动排序">' + icon('grip-vertical', 14) + '</span>';
       html += '<label class="config-path-row__checkbox" title="勾选 = 不轮询（添加 = 前缀）"><input type="checkbox" class="config-path-row__check" ' + (f.nonround ? 'checked' : '') + '><span class="config-path-row__check-mark"></span></label>';
       html += '<input type="text" class="config-path-row__input" value="' + escapeHtml(f.path) + '" title="' + escapeHtml(f.path) + '">';
-      html += '<span class="config-path-row__precheck" data-index="' + idx + '"><span class="config-path-row__badge precheck--pending">检测中…</span></span>';
+      html += '<span class="config-path-row__precheck" data-index="' + idx + '"><span class="config-path-row__badge vl-count precheck--pending">检测中…</span></span>';
       html += '<button class="config-path-row__browse vl-btn vl-btn--icon" title="修改路径">' + icon('pencil', 14) + '</button>';
       html += '<button class="config-path-row__open vl-btn vl-btn--icon" title="打开文件夹">' + icon('folder-open', 14) + '</button>';
       html += '<button class="config-path-row__remove vl-btn vl-btn--icon" title="移除路径">' + icon('x', 14) + '</button></div>';
@@ -980,7 +980,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     html += '<div class="config-resizer" data-region="config-resizer"></div>';
     html += '<div class="config-editor__bottom">';
     html += '<div class="config-editor__col config-editor__col--exclude">';
-    html += '<div class="config-editor__col-header" data-region="config-editor-col-header">排除字段 <span class="config-editor__col-count">' + excludes.length + '</span></div>';
+    html += '<div class="config-editor__col-header" data-region="config-editor-col-header">排除字段 <span class="config-editor__col-count vl-count">' + excludes.length + '</span></div>';
     html += '<div class="config-editor__exclude-list" id="excludeList">';
     excludes.forEach(function (ex) {
       html += '<div class="config-exclude-row" data-orig="' + escapeHtml(ex) + '"><span class="config-exclude-row__path" title="' + escapeHtml(ex) + '">' + escapeHtml(ex) + '</span><button class="config-exclude-row__remove vl-btn vl-btn--icon" title="移除排除字段">' + icon('x', 12) + '</button></div>';
@@ -1186,7 +1186,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     // 左侧：全选(复选框) + 已选计数 + 选择按钮(在已选文字右侧)；复刻模式按钮放最右侧(软件最右下角)
     var html = '<div class="config-bar__left config-bar__left--log">';
     html += '<label class="log-configbar__selall"><input type="checkbox" id="chkLogAll">全选</label>';
-    html += '<span class="log-configbar__count" id="logSelCount">已选 0</span>';
+    html += '<span class="log-configbar__count vl-count" id="logSelCount">已选 0</span>';
     html += '<label class="log-configbar__switch" title="切换选择模式，选择成片进行批量复刻"><input type="checkbox" class="log-configbar__switch-input" id="btnLogSelect"' + (sel ? ' checked' : '') + '><span class="log-configbar__switch-track"><span class="log-configbar__switch-thumb"></span></span><span class="log-configbar__switch-text">选择</span></label>';
     html += '</div>';
     html += '<div class="config-bar__replica" id="logReplicaBtns">';
@@ -1346,7 +1346,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
         if (r.status === 'ok') cls = 'precheck--ok';
         else if (r.status === 'warn') cls = 'precheck--warn';
         else if (r.status === 'group') cls = 'precheck--group';
-        if (badge) { badge.className = 'config-path-row__badge ' + cls; badge.textContent = r.text || ''; }
+        if (badge) { badge.className = 'config-path-row__badge vl-count ' + cls; badge.textContent = r.text || ''; }
         else { span.className = 'config-path-row__precheck ' + cls; span.textContent = r.text || ''; }
       });
       // 成片数默认值（预检测视频总数）与「默认分组数」一致：以占位符展示、不写入 value，
@@ -1364,7 +1364,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
         if (row.dataset.deleted === '1') return;
         var span = row.querySelector('.config-path-row__precheck');
         var badge = span ? span.querySelector('.config-path-row__badge') : null;
-        if (badge) { badge.className = 'config-path-row__badge precheck--warn'; badge.textContent = '检测失败'; }
+        if (badge) { badge.className = 'config-path-row__badge vl-count precheck--warn'; badge.textContent = '检测失败'; }
         else { span.className = 'config-path-row__precheck precheck--warn'; span.textContent = '检测失败'; }
       });
       state.precheckInvalid = true;
@@ -1542,7 +1542,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
   }
   function pathRowHtml(value) {
     var v = value == null ? '' : String(value);
-    return '<span class="config-path-row__drag" draggable="true" title="按住拖动排序">' + icon('grip-vertical', 14) + '</span><label class="config-path-row__checkbox" title="勾选 = 不轮询（添加 = 前缀）"><input type="checkbox" class="config-path-row__check"><span class="config-path-row__check-mark"></span></label><input type="text" class="config-path-row__input" value="' + escapeHtml(v) + '" title="' + escapeHtml(v) + '"><span class="config-path-row__precheck"><span class="config-path-row__badge precheck--pending">检测中…</span></span><button class="config-path-row__browse vl-btn vl-btn--icon" title="修改路径">' + icon('pencil', 14) + '</button><button class="config-path-row__open vl-btn vl-btn--icon" title="打开文件夹">' + icon('folder-open', 14) + '</button><button class="config-path-row__remove vl-btn vl-btn--icon" title="移除路径">' + icon('x', 14) + '</button>';
+    return '<span class="config-path-row__drag" draggable="true" title="按住拖动排序">' + icon('grip-vertical', 14) + '</span><label class="config-path-row__checkbox" title="勾选 = 不轮询（添加 = 前缀）"><input type="checkbox" class="config-path-row__check"><span class="config-path-row__check-mark"></span></label><input type="text" class="config-path-row__input" value="' + escapeHtml(v) + '" title="' + escapeHtml(v) + '"><span class="config-path-row__precheck"><span class="config-path-row__badge vl-count precheck--pending">检测中…</span></span><button class="config-path-row__browse vl-btn vl-btn--icon" title="修改路径">' + icon('pencil', 14) + '</button><button class="config-path-row__open vl-btn vl-btn--icon" title="打开文件夹">' + icon('folder-open', 14) + '</button><button class="config-path-row__remove vl-btn vl-btn--icon" title="移除路径">' + icon('x', 14) + '</button>';
   }
   function addPathRow(path) {
     var p = String(path == null ? '' : path).trim();
@@ -1985,7 +1985,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
         if (sel) html += '<label class="vl-check log-entry__check-wrap"><input type="checkbox" class="log-entry__check"' + (checked ? ' checked' : '') + ' title="选择该成片进行批量复刻"><span class="vl-check__box"></span></label>';
         html += '<span class="log-entry__arrow">' + icon('chevron-right', 14) + '</span>' + icon('video', 14);
         html += '<span class="log-entry__video-name" data-region="log-entry-name" title="' + escapeHtml(entry.video) + '">' + escapeHtml(entry.video || '（未命名成片）') + '</span>';
-        html += '<span class="log-entry__clip-count" data-region="log-entry-clip-count">' + clips.length + ' 片段</span>';
+        html += '<span class="log-entry__clip-count vl-count" data-region="log-entry-clip-count">' + clips.length + ' 片段</span>';
         html += '<button class="log-entry__replica vl-btn" title="用该日志发起复刻">' + icon('repeat', 13) + '复刻</button>';
         html += '</div>';
         html += '<div class="log-entry__clips" style="display:none">';
@@ -2125,7 +2125,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       var html = '';
       items.slice(0, 200).forEach(function (r) {
         html += '<div class="search-dropdown__item" data-project="' + escapeHtml(r.project) + '" data-name="' + escapeHtml(r.name) + '">';
-        html += '<div class="search-dropdown__title">' + escapeHtml(r.name) + '</div>';
+        html += '<div class="search-dropdown__title vl-title">' + escapeHtml(r.name) + '</div>';
         html += '<div class="search-dropdown__meta">' + escapeHtml(r.project) + (r.latest ? ' / ' + escapeHtml(r.latest) : '') + '</div>';
         html += '</div>';
       });
@@ -2201,7 +2201,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       var html = '';
       items.slice(0, 200).forEach(function (r) {
         html += '<div class="search-dropdown__item" data-txt="' + escapeHtml(r.txtPath) + '" data-project="' + escapeHtml(r.project) + '" data-video="' + escapeHtml(r.video) + '" data-log="' + escapeHtml(r.logPath || '') + '">';
-        html += '<div class="search-dropdown__title">' + escapeHtml(r.video) + '</div>';
+        html += '<div class="search-dropdown__title vl-title">' + escapeHtml(r.video) + '</div>';
         html += '<div class="search-dropdown__meta">' + escapeHtml(r.project) + ' / ' + escapeHtml(r.txtName) + ' / ' + escapeHtml(r.label) + '</div>';
         html += '</div>';
       });
@@ -3496,11 +3496,11 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     var card = document.createElement('div');
     card.className = 'modal-card modal-card--close';
     card.innerHTML = '<button type="button" class="modal-close vl-btn vl-btn--icon" title="关闭">✕</button>' +
-      '<div class="modal__title">关闭主窗口</div>' +
+      '<div class="modal__title vl-title">关闭主窗口</div>' +
       '<div class="modal__message">请选择关闭主窗口后的行为：</div>' +
       '<div class="modal__close-foot">' +
       '<label class="vl-check"><input type="checkbox" id="closeRemindChk"><span class="vl-check__box"></span><span>不再询问</span></label>' +
-      '<div class="modal__actions">' +
+      '<div class="modal__actions vl-toolbar">' +
       '<button type="button" class="modal-btn vl-btn vl-btn--lift" id="cbCloseTray">最小化至系统托盘</button>' +
       '<button type="button" class="modal-btn vl-btn vl-btn--lift modal-btn--danger" id="cbCloseExit">退出软件</button>' +
       '</div>' +
@@ -3870,7 +3870,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     card.innerHTML =
       '<button type="button" class="modal-close vl-btn vl-btn--icon" title="关闭">✕</button>' +
       '<div class="changelog-card__body"></div>' +
-      '<div class="changelog-card__actions"><button type="button" class="modal-btn vl-btn vl-btn--lift modal-btn--primary" data-region="modal-btn" data-kind="primary">知道了</button></div>';
+      '<div class="changelog-card__actions vl-toolbar"><button type="button" class="modal-btn vl-btn vl-btn--lift modal-btn--primary" data-region="modal-btn" data-kind="primary">知道了</button></div>';
     var body = card.querySelector('.changelog-card__body');
     body.innerHTML = renderMdMd(content);
     var done = function () {
@@ -4413,7 +4413,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     var top = $('centerTop');
     if (top) {
       top.innerHTML = '<div class="center-top__header">' +
-        '<span class="center-top__title">遮罩叠加</span>' +
+        '<span class="center-top__title vl-title">遮罩叠加</span>' +
         '<div class="center-top__toggles">' +
         '<button class="mode-toggle vl-tab" data-region="mode-toggle" aria-pressed="' + (maskState.view === 'config' ? 'true' : 'false') + '" data-maskview="config" id="maskViewConfig">' + icon('list', 12) + '配置</button>' +
         '<button class="mode-toggle vl-tab" data-region="mode-toggle" aria-pressed="' + (maskState.view === 'log' ? 'true' : 'false') + '" data-maskview="log" id="maskViewLog">' + icon('scroll-text', 12) + '日志</button>' +
@@ -4455,7 +4455,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     var top = $('centerTop');
     if (!top) return;
     top.innerHTML = '<div class="center-top__header">' +
-      '<span class="center-top__title">日期分支</span>' +
+      '<span class="center-top__title vl-title">日期分支</span>' +
       '<div class="center-top__toggles">' +
       '<button class="mode-toggle vl-tab" data-region="mode-toggle" aria-pressed="true" data-mode="filelist" id="modeFilelist">' + icon('list', 12) + '配置列表</button>' +
       '<button class="mode-toggle vl-tab" data-region="mode-toggle" aria-pressed="false" data-mode="log" id="modeLog">' + icon('scroll-text', 12) + '日志</button>' +
@@ -4544,7 +4544,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
         '<span class="mask-proj-item__name" data-region="mask-proj-item-name">' + escapeHtml(p.name) + '</span>' +
         // 软件内新建、尚未放素材的项目：说「暂无素材」而不是「0种遮罩」——
         // 后者读起来像"这个项目坏了/是空的"，前者才是实情（等用户放 .mov 进来即可）
-        '<span class="mask-proj-item__badge" data-region="mask-proj-item-badge">' + (p.isEmptyProject
+        '<span class="mask-proj-item__badge vl-count" data-region="mask-proj-item-badge">' + (p.isEmptyProject
           ? '暂无素材'
           : ((p.themeCount != null ? p.themeCount : (p.themes ? p.themes.length : 0)) + '种遮罩')) + '</span></div>';
     });
@@ -4583,16 +4583,16 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       card.className = 'modal-card modal-card--wm';
       card.innerHTML =
         '<button type="button" class="modal-close vl-btn vl-btn--icon" title="关闭">✕</button>' +
-        '<div class="modal__title">' + (isNew ? "新建项目" : "项目设置") + '</div>' +
+        '<div class="modal__title vl-title">' + (isNew ? "新建项目" : "项目设置") + '</div>' +
         '<div class="modal__wm-body">' +
         projectNameRowHtml(projectName, isNew) +
-        '<div class="wm-section-title">默认输出文件夹</div>' +
-        '<div class="wm-row"><span class="wm-row__label">输出路径</span><div class="wm-row__ops">' +
+        '<div class="wm-section-title vl-title">默认输出文件夹</div>' +
+        '<div class="wm-row"><span class="wm-row__label">输出路径</span><div class="wm-row__ops vl-toolbar">' +
         '<input type="text" class="wm-row__input" id="maskDefaultOutInput" style="flex:1; min-width:0" placeholder="' + escapeHtml(projPath) + '" value="' + escapeHtml(curDir) + '" spellcheck="false">' +
         '<button type="button" class="modal-btn vl-btn vl-btn--lift" id="maskDefaultOutPick">选择文件夹</button>' +
         '</div></div>' +
         '</div>' +
-        '<div class="modal__actions">' +
+        '<div class="modal__actions vl-toolbar">' +
         '<button type="button" class="modal-btn vl-btn vl-btn--lift" data-mp2-act="cancel">取消</button>' +
         '<button type="button" class="modal-btn vl-btn vl-btn--lift modal-btn--primary" data-region="modal-btn" data-kind="primary" data-mp2-act="save">保存</button>' +
         '</div>';
@@ -4674,8 +4674,8 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     buildMaskConfigBar();
     var cb0 = $('centerBottom');
     if (cb0) cb0.innerHTML = maskState.view === 'log'
-      ? '<div class="mask-config__hint mask-config__hint--center">正在加载日志…</div>'
-      : '<div class="mask-config__hint mask-config__hint--center">正在加载项目「' + escapeHtml(p.name) + '」…</div>';
+      ? '<div class="mask-config__hint vl-hint mask-config__hint--center">正在加载日志…</div>'
+      : '<div class="mask-config__hint vl-hint mask-config__hint--center">正在加载项目「' + escapeHtml(p.name) + '」…</div>';
     setStatus('已选择遮罩叠加项目：' + p.name);
     // 会话恢复/扫描完成后统一渲染一次（配置视图依赖恢复数据，日志视图此时初始化）
     function maskRerenderAfterRestore() {
@@ -4741,29 +4741,29 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     html += '<div class="mask-config__cols">';
     // ── 左栏：遮罩主题（标题固定，列表独立滚动） ──
     if (maskNeedMask()) {
-      html += '<div class="mask-config__col mask-config__col--mask"><div class="mask-config__section-title"><span class="mask-config__title">遮罩</span>' +
+      html += '<div class="mask-config__col mask-config__col--mask"><div class="mask-config__section-title vl-title"><span class="mask-config__title vl-title">遮罩</span>' +
         '<button type="button" class="mask-config__addbtn vl-btn" id="maskAddThemeFile" title="添加单个遮罩文件（.mov）">' + icon('plus', 12) + '添加文件</button>' +
         '<button type="button" class="mask-config__addbtn vl-btn" id="maskAddThemeDir" title="添加遮罩文件夹（其中 .mov 递归扫描）">' + icon('plus', 12) + '添加文件夹</button></div><div class="mask-config__list">';
       if (!maskState.themes.length) {
-        html += '<div class="mask-config__hint mask-config__hint--center">项目下没有遮罩文件夹，请放入含 mov 的主题文件夹后刷新</div>';
+        html += '<div class="mask-config__hint vl-hint mask-config__hint--center">项目下没有遮罩文件夹，请放入含 mov 的主题文件夹后刷新</div>';
       } else {
         html += '<div id="maskAllGroups"><div class="mask-files__loading mask-files__loading--bar">正在扫描遮罩…</div></div>';
       }
       html += '</div></div>';
     }
     // ── 右栏：原片选择（标题固定，列表独立滚动） ──
-    html += '<div class="mask-config__col mask-config__col--raw" data-region="mask-config-col" data-kind="raw"><div class="mask-config__section-title"><span class="mask-config__title">原片</span>' +
+    html += '<div class="mask-config__col mask-config__col--raw" data-region="mask-config-col" data-kind="raw"><div class="mask-config__section-title vl-title"><span class="mask-config__title vl-title">原片</span>' +
       '<button type="button" class="mask-config__addbtn vl-btn" id="maskAddRawFile" title="添加单个原片文件（mp4 等视频）">' + icon('plus', 12) + '添加文件</button>' +
       '<button type="button" class="mask-config__addbtn vl-btn" id="maskAddRawDir" title="添加原片文件夹（其中视频递归扫描）">' + icon('plus', 12) + '添加文件夹</button></div><div class="mask-config__list">';
     if (!maskState.rawDirs.length) {
-      html += '<div class="mask-config__hint mask-config__hint--center">尚未选择原片文件夹</div>';
+      html += '<div class="mask-config__hint vl-hint mask-config__hint--center">尚未选择原片文件夹</div>';
     } else {
       maskState.rawDirs.forEach(function (rd, i) {
         if (rd.files && rd.files.length === 0) return; // 已扫描且 0 素材：该原片文件夹不显示
         html += '<div class="mask-folder-row" data-region="mask-folder" data-rawfold="' + i + '" title="点击展开/收起文件列表">' +
           '<label class="mask-folder-row__check" title="全选/取消该文件夹全部素材"><input type="checkbox" data-rawall="' + i + '"><span class="mask-folder-row__box"></span></label>' +
           '<span class="mask-folder-row__name" title="' + escapeHtml(rd.path) + '">' + escapeHtml(rd.name) + '</span>' +
-          '<span class="mask-folder-row__count" id="maskRawCount_' + i + '"></span>' +
+          '<span class="mask-folder-row__count vl-count" id="maskRawCount_' + i + '"></span>' +
           '<button type="button" class="mask-folder-row__del vl-btn vl-btn--icon" data-rawdel="' + i + '" title="移除该文件夹">' + icon('x', 13) + '</button>' +
           '<span class="mask-folder-row__arrow"></span></div>';
         html += '<div class="mask-files" id="maskRawFiles_' + i + '" data-rawfiles="' + i + '"' + ((maskState.rawSel[rd.path] || []).length ? '' : ' style="display:none"') + '><div class="mask-files__loading">正在扫描…</div></div>';
@@ -4901,7 +4901,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
           var gall = gany && inGroup.length === g.files.length;
           var gid = i + '_' + gi;
           html += '<div class="mask-raw-group' + (gany ? ' mask-raw-group--open' : '') + '">' +
-            '<div class="mask-raw-group__head" data-rawgrp="' + gid + '" title="点击展开/收起该组">' +
+            '<div class="mask-raw-group__head vl-title" data-rawgrp="' + gid + '" title="点击展开/收起该组">' +
             '<label class="mask-raw-group__check" title="全选/取消该组素材"><input type="checkbox" data-rawgrpall="' + gid + '"' + (gall ? ' checked' : '') + '><span class="mask-raw-group__box"></span></label>' +
             '<span class="mask-raw-group__name">' + escapeHtml(gname) + '</span>' +
             '<span class="mask-raw-group__meta">' + g.files.length + ' 个 · ' + maskFmtDur(g.dur) + (g.dir ? ' · ' + escapeHtml(g.dir) : '') + '</span>' +
@@ -5050,7 +5050,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       var selEl2 = document.getElementById('maskSelTotal');
       if (selEl2) selEl2.textContent = maskSelTotalText();
     }).catch(function () {
-      if (box) box.innerHTML = '<div class="mask-config__hint mask-config__hint--center">扫描失败</div>';
+      if (box) box.innerHTML = '<div class="mask-config__hint vl-hint mask-config__hint--center">扫描失败</div>';
     });
   }
   // 主题完整路径（sub 含子文件夹，用 '/' 分隔）
@@ -5080,7 +5080,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
           files.push({ full: t.single ? t.path : maskFullPath(t.path, f.sub, f.name), name: f.name, sub: f.sub || '', dur: f.dur || 0 });
         });
       });
-      if (!files.length) { box.innerHTML = '<div class="mask-config__hint mask-config__hint--center">无遮罩文件</div>'; return; }
+      if (!files.length) { box.innerHTML = '<div class="mask-config__hint vl-hint mask-config__hint--center">无遮罩文件</div>'; return; }
       // 遮罩时长映射：{ 完整路径: 时长秒 } 供开始前两两时长强校验使用（界面勾选只存路径）
       var durMap = {};
       files.forEach(function (f) { if (f.dur > 0) durMap[f.full] = f.dur; });
@@ -5110,7 +5110,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       });
       var azOrder = AZ_KEYS.concat('#');
       Object.keys(letterMap).sort(function (a, b) { return azOrder.indexOf(a) - azOrder.indexOf(b); }).forEach(function (L) {
-        html += '<div class="mask-letter-head" data-region="mask-letter-head"><span class="mask-letter-head__label" data-region="mask-letter-label">' + escapeHtml(L) + '</span><span class="mask-letter-head__line" data-region="mask-letter-line"></span></div>';
+        html += '<div class="mask-letter-head vl-title" data-region="mask-letter-head"><span class="mask-letter-head__label" data-region="mask-letter-label">' + escapeHtml(L) + '</span><span class="mask-letter-head__line" data-region="mask-letter-line"></span></div>';
         letterMap[L].forEach(function (g) {
           var allSel = g.files.every(function (f) { return maskState.maskSel[f.full] === true; });
           var anySel = g.files.some(function (f) { return maskState.maskSel[f.full] === true; });
@@ -5123,14 +5123,14 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
             var f0 = g.files[0];
             var s0 = maskState.maskSel[f0.full] === true;
             html += '<div class="mask-group mask-group--single">' +
-              '<div class="mask-group-head mask-group-head--single" data-region="mask-group-head" data-full="' + escapeHtml(f0.full) + '">' +
+              '<div class="mask-group-head vl-title mask-group-head--single" data-region="mask-group-head" data-full="' + escapeHtml(f0.full) + '">' +
               '<label class="mask-group-head__check"><input type="checkbox" data-grpall="' + gi + '" data-dur="' + (f0.dur || 0) + '"' + (s0 ? ' checked' : '') + '><span class="mask-group-head__box"></span></label>' +
               '<span class="mask-group-head__name" title="' + escapeHtml(f0.full) + '">' + escapeHtml(maskDisplayName(g.prefix)) + '</span>' +
               '<span class="mask-group-head__meta" data-region="mask-group-meta">' + maskFmtDur(f0.dur) + '</span></div></div>';
           } else {
             var gHeadTip = g.files[0].full + (g.files.length > 1 ? '\n（共 ' + g.files.length + ' 个文件）' : '');
             html += '<div class="mask-group">' +
-              '<div class="mask-group-head' + (anySel ? ' mask-group-head--open' : '') + '" data-region="mask-group-head"' + (anySel ? ' data-state="open"' : '') + ' data-full="' + escapeHtml(g.files[0].full) + '">' +
+              '<div class="mask-group-head vl-title' + (anySel ? ' mask-group-head--open' : '') + '" data-region="mask-group-head"' + (anySel ? ' data-state="open"' : '') + ' data-full="' + escapeHtml(g.files[0].full) + '">' +
               '<label class="mask-group-head__check"><input type="checkbox" data-grpall="' + gi + '"' + (allSel ? ' checked' : '') + '><span class="mask-group-head__box"></span></label>' +
               '<span class="mask-group-head__name" title="' + escapeHtml(gHeadTip) + '">' + escapeHtml(maskDisplayName(g.prefix)) + '</span>' +
               '<span class="mask-group-head__meta" data-region="mask-group-meta">' + g.files.length + ' 个' + '</span>' +
@@ -5241,7 +5241,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
           hd.classList.toggle('mask-group-head--open', filesBox.style.display !== 'none');
         });
       });
-    }).catch(function () { box.innerHTML = '<div class="mask-config__hint mask-config__hint--center">扫描失败</div>'; });
+    }).catch(function () { box.innerHTML = '<div class="mask-config__hint vl-hint mask-config__hint--center">扫描失败</div>'; });
   }
   // 日志视图：加载遮罩叠加日志并渲染到中间区（搜索过滤 / 删除 / 迁移 / 素材删除 / 二次产物）
   function buildMaskLogView() {
@@ -5264,7 +5264,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       if (maskState._logRenderSig === sig) return;
       maskState._logRenderSig = sig;
       if (!allLogs.length) {
-        box.innerHTML = '<div class="mask-config__hint mask-config__hint--center">暂无遮罩日志（任务完成后生成）</div>';
+        box.innerHTML = '<div class="mask-config__hint vl-hint mask-config__hint--center">暂无遮罩日志（任务完成后生成）</div>';
         return;
       }
       // 过滤到当前选中的日期分支；分支失效则回退最新
@@ -5286,7 +5286,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
             '<div class="log-entry__header">' +
             '<span class="log-entry__arrow">' + icon('chevron-right', 14) + '</span>' + icon('video', 14) +
             '<span class="log-entry__video-name" title="' + escapeHtml(e.outPath || e.video) + '">' + escapeHtml(e.video || '（未命名成片）') + '</span>' +
-            '<span class="log-entry__clip-count">' + clips.length + ' 素材</span>' +
+            '<span class="log-entry__clip-count vl-count">' + clips.length + ' 素材</span>' +
             '<button type="button" class="mask-log-entry__del vl-btn vl-btn--icon" data-delone="' + escapeHtml(e.video) + '" title="删除该成片">' + icon('trash-2', 14) + '</button></div>';
           html += '<div class="log-entry__clips" style="display:none">';
           clips.forEach(function (c) {
@@ -5296,7 +5296,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
         });
       });
       if (!showed) {
-        box.innerHTML = '<div class="mask-config__hint mask-config__hint--center">' + (q ? '未找到匹配日志' : '暂无遮罩日志（任务完成后生成）') + '</div>';
+        box.innerHTML = '<div class="mask-config__hint vl-hint mask-config__hint--center">' + (q ? '未找到匹配日志' : '暂无遮罩日志（任务完成后生成）') + '</div>';
         return;
       }
       box.innerHTML = '<div class="log-list">' + html + '</div>';
@@ -5400,7 +5400,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
           return;
         }
       };
-    }).catch(function () { box.innerHTML = '<div class="mask-config__hint mask-config__hint--center">加载日志失败</div>'; });
+    }).catch(function () { box.innerHTML = '<div class="mask-config__hint vl-hint mask-config__hint--center">加载日志失败</div>'; });
   }
   // 遮罩日志顶部日期分支：每个日志文件一个按钮，标签 MMDD-遮罩短名；
   // 同 日期+短名 多次生成时按时间旧=1 新=2 递增序号，当日单次无序号
@@ -5636,7 +5636,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       '<button type="button" class="mask-bar__pick vl-btn vl-btn--icon" id="maskPickOutDir" title="选择成片输出文件夹">' + icon('folder', 14) + '</button>' +
       '</div>';
     html += '<div class="config-bar__right">' +
-      '<span class="config-bottombar__warn mask-bar__hint" id="maskStartHint" style="display:none"></span>' +
+      '<span class="config-bottombar__warn mask-bar__hint vl-hint" id="maskStartHint" style="display:none"></span>' +
       '<span class="mask-config__seltotal" id="maskSelTotal">' + maskSelTotalText() + '</span>' +
       '<label class="config-bottombar__label">后缀</label>' +
       '<input type="text" class="config-bottombar__input mask-bar__suffix" id="maskSuffixInput" value="' + escapeHtml(maskState.suffix || '') + '" placeholder="" spellcheck="false" maxlength="20">' +
