@@ -180,7 +180,10 @@
     var applyFold = function () {
       list.hidden = !expanded;
       if (caret) caret.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-      if (group) group.classList.toggle('is-tags-open', expanded);
+      if (group) {
+        if (expanded) group.setAttribute('data-open', '1');
+        else group.removeAttribute('data-open');
+      }
       input.placeholder = !getStore().length ? '输入后回车添加，可添加多个' : (expanded ? '回车继续添加…' : summarize());
     };
     var render = function () {
@@ -528,10 +531,10 @@
     document.querySelectorAll('.settings-nav__item').forEach(function (btn) {
       btn.addEventListener('click', function () {
         document.querySelectorAll('.settings-nav__item').forEach(function (x) { x.setAttribute('aria-selected', 'false'); });
-        document.querySelectorAll('.settings-view').forEach(function (v) { v.classList.remove('is-active'); });
+        document.querySelectorAll('.settings-view').forEach(function (v) { v.removeAttribute('data-state'); });
         btn.setAttribute('aria-selected', 'true');
         var view = $('view-' + btn.dataset.view);
-        if (view) view.classList.add('is-active');
+        if (view) view.setAttribute('data-state', 'active');
         if (btn.dataset.view === 'changelog') loadChangelog();
         else if (btn.dataset.view === 'about') loadAbout();
       });

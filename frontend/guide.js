@@ -12,7 +12,8 @@
     if (!el) return;
     var ok = !(opts && opts.ok === false);
     el.textContent = msg || '';
-    if (el.classList) el.classList.toggle('is-error', !ok);
+    if (ok) el.removeAttribute('data-state');
+    else el.setAttribute('data-state', 'error');
   }
   try { VL.ui.registerStatus(_statusRender); } catch (e) { /* 同上 */ }
 

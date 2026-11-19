@@ -120,7 +120,7 @@
     -webkit-user-select: none;
     user-select: none;
   }
-  .vl-btn:hover:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) {
+  .vl-btn:hover:where(:not([disabled]):not([aria-disabled="true"]):not([data-disabled="1"])) {
     background: var(--vl-btn-bg-hover);
     border-color: var(--vl-btn-border-hover);
     border-width: var(--vl-btn-border-width-hover);
@@ -130,10 +130,10 @@
   }
   /* 按下态：:active 只在「指针仍在元素内」时生效 —— 鼠标按住拖出按钮，
      Chrome 会取消 :active，样式立刻回退到常态（看起来闪一下）。
-     所以再用 JS 维护一个 .is-pressed 类（pointerdown 加、全局 pointerup 移除），
+     所以再用 JS 维护一个 [data-state="pressed"] 类（pointerdown 加、全局 pointerup 移除），
      让「按住后无论指针在哪」都保持同一视觉。 */
-  .vl-btn:active:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)),
-  .vl-btn.is-pressed:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) {
+  .vl-btn:active:where(:not([disabled]):not([aria-disabled="true"]):not([data-disabled="1"])),
+  .vl-btn[data-state="pressed"]:where(:not([disabled]):not([aria-disabled="true"]):not([data-disabled="1"])) {
     background: var(--vl-btn-bg-active);
     border-color: var(--vl-btn-border-active);
     border-width: var(--vl-btn-border-width-active);
@@ -234,11 +234,11 @@
     --vl-btn-border-disabled: var(--vl-alias-bg-invert);
     --vl-btn-color-disabled: var(--vl-alias-text-white);
   }
-  .vl-btn--invert:hover:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) {
+  .vl-btn--invert:hover:where(:not([disabled]):not([aria-disabled="true"]):not([data-disabled="1"])) {
   --vl-btn-bg-hover: var(--vl-alias-bg-invert-hover);
   --vl-btn-border-hover: var(--vl-alias-bg-invert-hover);
   }
-  .vl-btn--invert:active:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) {
+  .vl-btn--invert:active:where(:not([disabled]):not([aria-disabled="true"]):not([data-disabled="1"])) {
   --vl-btn-bg-active: var(--vl-alias-bg-invert-active);
   --vl-btn-border-active: var(--vl-alias-bg-invert-active);
   }
@@ -256,7 +256,7 @@
   --vl-btn-border: transparent;
   --vl-btn-color: var(--vl-alias-text-secondary);
   }
-  .vl-btn--tertiary:hover:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) {
+  .vl-btn--tertiary:hover:where(:not([disabled]):not([aria-disabled="true"]):not([data-disabled="1"])) {
   --vl-btn-bg-hover: var(--vl-alias-bg-overlay-l1);
   --vl-btn-color-hover: var(--vl-alias-text-default);
   }
@@ -271,7 +271,7 @@
     --vl-btn-border-disabled: var(--vl-alias-status-warning-default);
     --vl-btn-color-disabled: var(--vl-alias-text-white);
   }
-  .vl-btn--warning:hover:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) {
+  .vl-btn--warning:hover:where(:not([disabled]):not([aria-disabled="true"]):not([data-disabled="1"])) {
   --vl-btn-bg-hover: var(--vl-alias-status-warning-surface-l3);
   --vl-btn-border-hover: var(--vl-alias-status-warning-surface-l3);
   }
@@ -822,11 +822,11 @@
   --vl-btn-color: var(--vl-alias-text-default);
   --vl-btn-border: var(--vl-alias-border-neutral-l2);
   }
-  .vl-btn--secondary:hover:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) {
+  .vl-btn--secondary:hover:where(:not([disabled]):not([aria-disabled="true"]):not([data-disabled="1"])) {
   --vl-btn-bg-hover: var(--vl-alias-bg-overlay-l2);
   --vl-btn-border-hover: var(--vl-alias-border-neutral-l3);
   }
-  .vl-btn--secondary:active:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) {
+  .vl-btn--secondary:active:where(:not([disabled]):not([aria-disabled="true"]):not([data-disabled="1"])) {
   --vl-btn-bg-active: var(--vl-alias-bg-overlay-l3);
   }
   .vl-btn--brand {
@@ -834,11 +834,11 @@
   --vl-btn-border: var(--vl-alias-bg-brand);
   --vl-btn-color: var(--vl-alias-text-white);
   }
-  .vl-btn--brand:hover:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) {
+  .vl-btn--brand:hover:where(:not([disabled]):not([aria-disabled="true"]):not([data-disabled="1"])) {
   --vl-btn-bg-hover: var(--vl-alias-bg-brand-hover);
   --vl-btn-border-hover: var(--vl-alias-bg-brand-hover);
   }
-  .vl-btn--brand:active:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) {
+  .vl-btn--brand:active:where(:not([disabled]):not([aria-disabled="true"]):not([data-disabled="1"])) {
   --vl-btn-bg-active: var(--vl-alias-bg-brand-active);
   --vl-btn-border-active: var(--vl-alias-bg-brand-active);
   }
@@ -848,7 +848,7 @@
   --vl-btn-color: var(--vl-alias-accent-blue);
     --vl-btn-px: 0;
   }
-  .vl-btn--link:hover:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) {
+  .vl-btn--link:hover:where(:not([disabled]):not([aria-disabled="true"]):not([data-disabled="1"])) {
   --vl-btn-color-hover: var(--vl-alias-accent-blue);
     text-decoration: underline;
   }
@@ -857,7 +857,7 @@
   --vl-btn-border: transparent;
   --vl-btn-color: var(--vl-alias-status-error-default);
   }
-  .vl-btn--danger-subtle:hover:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) {
+  .vl-btn--danger-subtle:hover:where(:not([disabled]):not([aria-disabled="true"]):not([data-disabled="1"])) {
   --vl-btn-bg-hover: var(--vl-alias-status-error-surface-l3);
   }
   .vl-btn--danger-strong {
@@ -865,11 +865,11 @@
   --vl-btn-border: var(--vl-alias-status-error-default);
   --vl-btn-color: var(--vl-alias-text-white);
   }
-  .vl-btn--danger-strong:hover:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) {
+  .vl-btn--danger-strong:hover:where(:not([disabled]):not([aria-disabled="true"]):not([data-disabled="1"])) {
   --vl-btn-bg-hover: var(--vl-alias-status-error-hover);
   --vl-btn-border-hover: var(--vl-alias-status-error-hover);
   }
-  .vl-btn--danger-strong:active:where(:not([disabled]):not([aria-disabled="true"]):not(.is-vl-disabled)) {
+  .vl-btn--danger-strong:active:where(:not([disabled]):not([aria-disabled="true"]):not([data-disabled="1"])) {
   --vl-btn-bg-active: var(--vl-alias-status-error-active);
   --vl-btn-border-active: var(--vl-alias-status-error-active);
   }
@@ -962,8 +962,7 @@
     color: var(--vl-option-color-active);
   }
   .vl-option[aria-selected="true"],
-  .vl-option[aria-checked="true"],
-  .vl-option.is-active {
+  .vl-option[aria-checked="true"] {
     background: var(--vl-option-bg-selected);
     color: var(--vl-option-color-selected);
     border-color: var(--vl-option-border-selected);
@@ -972,8 +971,7 @@
   /* 选中态再按下：颜色更深一档。默认与选中态同色；需要更深时由页面类覆盖
      （导航项原本是品牌色 active 档，描边型则保持选中态底色不变）。 */
   .vl-option[aria-selected="true"]:active,
-  .vl-option[aria-checked="true"]:active,
-  .vl-option.is-active:active {
+  .vl-option[aria-checked="true"]:active {
     background: var(--vl-option-bg-selected-active);
   }
   .vl-option:focus-visible {
@@ -1234,7 +1232,7 @@
 
     .vl-textarea:focus { outline: none; border-color: var(--vl-alias-border-contrast); background: var(--vl-alias-bg-base-default); }
 
-    .vl-textarea.is-error { border-color: var(--vl-alias-status-error-default); }
+    .vl-textarea[data-state="error"] { border-color: var(--vl-alias-status-error-default); }
 
     .vl-slider { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; background: var(--vl-alias-bg-overlay-l3); border-radius: var(--vl-static-radius-full); outline: none; }
 
@@ -1299,7 +1297,7 @@
 
     .vl-pagination__item:hover { background: var(--vl-alias-bg-overlay-l2); color: var(--vl-alias-text-default); }
 
-    .vl-pagination__item.is-active { background: var(--vl-alias-bg-overlay-l3); color: var(--vl-alias-text-default); border-color: var(--vl-alias-border-neutral-l2); }
+    .vl-pagination__item[aria-current="page"] { background: var(--vl-alias-bg-overlay-l3); color: var(--vl-alias-text-default); border-color: var(--vl-alias-border-neutral-l2); }
 
     .vl-pagination__item[disabled] { opacity: .4; cursor: not-allowed; }
 

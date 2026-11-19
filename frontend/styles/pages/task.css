@@ -194,7 +194,7 @@
       background: var(--vl-alias-text-tertiary);
       transition: transform 0.15s ease;
     }
-    .task-day-group.is-collapsed::after { transform: rotate(-90deg); }
+    .task-day-group[data-state="collapsed"]::after { transform: rotate(-90deg); }
     .task-card__header { display: flex; align-items: center; gap: 8px; padding: 6px 10px; cursor: pointer; user-select: none; }
     .task-card__status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
     /* 状态徽章：运行中=绿（高亮行），排队=序号徽章蓝，暂停=橙，已完成=主题色，停止/失败=红 */

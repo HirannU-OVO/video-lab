@@ -17,7 +17,7 @@
     try { var _sk0 = localStorage.getItem('vl_skin'); if (_sk0) document.documentElement.setAttribute('data-skin', _sk0); } catch (e) {}
     document.addEventListener('DOMContentLoaded', function () {
       // 内嵌为主窗口 iframe 时：外层窗口已提供标题栏，隐藏自绘的那条（否则标题叠加）
-      try { if (window.self !== window.top) document.body.classList.add('is-embedded'); } catch (e) { document.body.classList.add('is-embedded'); }
+      try { if (window.self !== window.top) document.body.setAttribute('data-embedded', '1'); } catch (e) { document.body.setAttribute('data-embedded', '1'); }
       try {
         var api = window.txapi;
         if (api && api.get_skin) {

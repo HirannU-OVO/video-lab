@@ -86,12 +86,12 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.guide-actions__status.is-error { color: var(--vl-alias-color-error, #d0483f); }
+.guide-actions__status[data-state="error"] { color: var(--vl-alias-color-error, #d0483f); }
 
 /* ── 内嵌形态（主窗口的 iframe）：外层已有标题栏，隐藏自绘的，避免标题叠加 ── */
-body.is-embedded .win-titlebar { display: none; }
+body[data-embedded="1"] .win-titlebar { display: none; }
 /* ⚠ 同一原因：styles.css 里给 .guide-shell 留了 padding-top:34px 为"fixed 标题栏"让位
    （那是它还作为独立窗口时的需要）。iframe 形态下标题栏已隐藏，这 34px 会变成卡片顶部的一条纯留白，必须一起取消。 */
-body.is-embedded .guide-shell { padding-top: 0; }
+body[data-embedded="1"] .guide-shell { padding-top: 0; }
 }
 

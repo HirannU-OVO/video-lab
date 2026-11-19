@@ -66,6 +66,23 @@
       <input class="vl-input" value="错误态" aria-invalid="true">
       <input class="vl-input" value="只读" readonly>
       <input class="vl-input" value="禁用" disabled>
+      <textarea class="vl-textarea" data-state="error" rows="2">多行错误态（data-state="error"）</textarea>
+    </div>
+    <div class="vl-row">
+      <button class="vl-btn" data-state="pressed">按下态（data-state="pressed"）</button>
+    </div>
+
+    <!-- 分页：当前页用 aria-current="page"，禁用页用 disabled -->
+    <h2 class="vl-dc__h2">分页</h2>
+    <div class="vl-row">
+      <div class="vl-pagination">
+        <button class="vl-pagination__item" disabled>‹</button>
+        <button class="vl-pagination__item" aria-current="page">1</button>
+        <button class="vl-pagination__item">2</button>
+        <button class="vl-pagination__item">3</button>
+        <button class="vl-pagination__item">›</button>
+        <span class="vl-pagination__range">第 1–15 条</span>
+      </div>
     </div>
   </section>
 

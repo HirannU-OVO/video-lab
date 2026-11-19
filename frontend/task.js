@@ -1103,7 +1103,8 @@
           var cntEl = hdr.querySelector('.task-day-group__count');
           if (cntEl) cntEl.textContent = '共 ' + dayCount[day] + ' 个视频';
         }
-        hdr.classList.toggle('is-collapsed', !doneGroupsExpanded[day]);
+        if (!doneGroupsExpanded[day]) hdr.setAttribute('data-state', 'collapsed');
+        else hdr.removeAttribute('data-state');
       }
       var rec = rendered[t.id];
       if (!rec) { rec = buildCard(t); rendered[t.id] = rec; }
@@ -1125,7 +1126,8 @@
     });
     var hdr = list.querySelector('.task-day-group[data-day="' + day + '"]');
     if (!hdr) return;
-    hdr.classList.toggle('is-collapsed', !expanded);
+    if (!expanded) hdr.setAttribute('data-state', 'collapsed');
+    else hdr.removeAttribute('data-state');
   }
 
   // 完成时间 → yy.mm.dd 分组键

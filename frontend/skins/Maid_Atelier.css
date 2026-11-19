@@ -418,8 +418,8 @@ html[data-skin="Maid_Atelier"] [data-region="sidebar__root"] > [data-region="sid
     inset 0 0 4px rgba(242, 217, 143, 0.12);
 }
 
-/* ⚠ 与 .is-pressed 合并：:hover/:active 在鼠标拖出按钮后会失效，
-   靠 JS 托管的 .is-pressed 保持按下态。 */
+/* ⚠ 与 [data-state="pressed"] 合并：:hover/:active 在鼠标拖出按钮后会失效，
+   靠 JS 托管的 [data-state="pressed"] 保持按下态。 */
 html[data-skin="Maid_Atelier"] [data-region="sidebar__root"] > [data-region="sidebar__footer"] #sidebarToTop:hover,
 html[data-skin="Maid_Atelier"] [data-region="sidebar__root"] > [data-region="sidebar__footer"] [data-region="sidebar-to-top"][data-state="pressed"] {
   background: var(--vl-alias-brand-500);
@@ -464,7 +464,7 @@ html[data-skin="Maid_Atelier"] [data-region="sidebar__root"] > [data-region="sid
   /* ⚠ hover/active 变量必须定义在**基础规则**里，不能写在 :hover 里 ——
      写在 :hover 里时，鼠标移出按钮该变量即失效，
      而 --vl-btn-bg-active 默认引用它，于是「按住拖出」会回退成常态色（闪一下）。
-     变量本身不会主动生效，只有 :hover / .is-pressed 时才被消费。 */
+     变量本身不会主动生效，只有 :hover / [data-state="pressed"] 时才被消费。 */
   --vl-btn-color-hover: #fff8e8;
   --vl-btn-bg-hover: transparent;
 }
@@ -563,11 +563,11 @@ html[data-skin="Maid_Atelier"] body[data-maid-sidebar-size="rail"] [data-skin-ch
 }
 
 /* azbar 位于整个框体最左侧：使其从最左缘轻微向内收（margin-left），
-   展开显示（is-show）时多让位一点 */
+   展开显示（data-show="1"）时多让位一点 */
 html[data-skin="Maid_Atelier"] [data-region="sidebar__az-index"] {
   margin-left: 4px;
 }
-html[data-skin="Maid_Atelier"] [data-region="sidebar__az-index"][data-state="show"] {
+html[data-skin="Maid_Atelier"] [data-region="sidebar__az-index"][data-show="1"] {
   margin-left: 8px;
 }
 /* azbar 首字母激活突出时：字母颜色换成深棕色（与亮金缎带区分明）
@@ -1074,7 +1074,7 @@ html[data-skin="Maid_Atelier"] [data-region="tree-badge"][data-state="leave"] {
   color: #0a173b;
 }
 /* ▼ 母本蓝缎带：展开项目行的实色填充（brand-500）替换为 workspace-ribbon 卷边缎带，
-    中段随侧栏宽度拉伸（border-image），保留原有 scaleX 填充动画（is-filled/is-filling） */
+    中段随侧栏宽度拉伸（border-image），保留原有 scaleX 填充动画（data-state="filled" / data-anim="fill"） */
 html[data-skin="Maid_Atelier"] [data-region="tree-project__name"]::before {
   background: transparent;
   border: 0;

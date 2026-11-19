@@ -56,8 +56,8 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     if (p) h += '<div class="config-watermark__path" data-region="watermark-path" title="' + escapeHtml(p) + '">' + escapeHtml(baseNameNoExt(p)) + '</div>';
     else h += '<div class="config-watermark__path config-watermark__path--empty" data-region="watermark-path" data-empty="1" title="点击更换水印">未设置水印</div>';
     if (showActions) {
-      h += '<button type="button" class="config-watermark__btn vl-btn vl-btn--icon' + (p ? '' : ' is-vl-disabled') + '" data-wm="open" title="打开文件"' + (p ? '' : ' data-why="未设置主流水印"') + '>' + icon('image', 15) + '</button>';
-      h += '<button type="button" class="config-watermark__btn vl-btn vl-btn--icon' + (p ? '' : ' is-vl-disabled') + '" data-wm="folder" title="打开文件夹"' + (p ? '' : ' data-why="未设置主流水印"') + '>' + icon('folder-open', 15) + '</button>';
+      h += '<button type="button" class="config-watermark__btn vl-btn vl-btn--icon" data-wm="open" title="打开文件"' + (p ? '' : ' data-disabled="1" data-why="未设置主流水印"') + '>' + icon('image', 15) + '</button>';
+      h += '<button type="button" class="config-watermark__btn vl-btn vl-btn--icon" data-wm="folder" title="打开文件夹"' + (p ? '' : ' data-disabled="1" data-why="未设置主流水印"') + '>' + icon('folder-open', 15) + '</button>';
     }
     return h + '</div>';
   }
@@ -189,8 +189,8 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       var btns = card.querySelectorAll('.modal-btn');
       (opts.buttons || []).forEach(function (b, i) {
         if (b.disabled) {
-          // 弹窗内灰显按钮统一由全局 is-vl-disabled 委托弹 toast（此处仅加灰显类，不再自绑）
-          btns[i].classList.add('is-vl-disabled');
+          // 弹窗内灰显按钮统一由全局 data-disabled="1" 委托弹 toast（此处只打标记，不再自绑）
+          btns[i].setAttribute('data-disabled', '1');
           btns[i].removeAttribute('disabled');
           if (b.hint) btns[i].setAttribute('data-why', b.hint);
           btns[i].addEventListener('click', function (e) { e.stopPropagation(); });
@@ -457,7 +457,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       m.appendChild(b);
       if (it.disabled) {
       // 置灰项仍可点击：点击关闭菜单并以 toast 提示不可用原因（仅告知，不开大窗）
-      b.className = 'ctx-menu__item vl-btn vl-btn--ghost is-vl-disabled';
+      b.className = 'ctx-menu__item vl-btn vl-btn--ghost';
       if (it.title) b.title = it.title;
       b.addEventListener('click', function () { close(); toast(it.title || it.label + '不可用', true); });
       return;
@@ -477,12 +477,12 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     document.addEventListener('contextmenu', onCtx, true);
   }
   function getApi() { return VL.api.getApi(); }
-  // 全局统一：灰显按钮（.is-vl-disabled）点击弹 toast 说明不可用原因（不开新窗）。
-  // 捕获阶段拦截，优先于业务点击处理；水印行/模式切换等所有 is-vl-disabled 按钮统一走此
+  // 全局统一：灰显按钮（[data-disabled="1"]）点击弹 toast 说明不可用原因（不开新窗）。
+  // 捕获阶段拦截，优先于业务点击处理；水印行/模式切换等所有灰显按钮统一走此
   document.addEventListener('click', function (e) {
     var t = e.target;
-    if (t && t.closest && t.closest('.is-vl-disabled')) {
-      var el = t.closest('.is-vl-disabled');
+    if (t && t.closest && t.closest('[data-disabled="1"]')) {
+      var el = t.closest('[data-disabled="1"]');
       var why = el.getAttribute && (el.getAttribute('data-why') || el.title || '');
       if (why) toast(why, true);
       e.preventDefault();
@@ -574,7 +574,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     sortedProjects().forEach(function (proj) {
       var expanded = (proj.name === state.expandedProject);
       html += '<div class="tree-project">';
-      html += '<div class="tree-project__name' + (expanded ? ' tree-project__name--sticky is-filled' : '') + '" data-region="tree-project__name"' + (expanded ? ' data-state="filled"' : '') + ' data-project="' + escapeHtml(proj.name) + '">';
+      html += '<div class="tree-project__name' + (expanded ? ' tree-project__name--sticky' : '') + '" data-region="tree-project__name"' + (expanded ? ' data-state="filled"' : '') + ' data-project="' + escapeHtml(proj.name) + '">';
       html += '<span class="tree-arrow' + (expanded ? ' tree-arrow--open' : '') + '" data-region="tree-arrow"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M6 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
       html += icon('folder', 16, 'tree-project__icon');
       html += escapeHtml(proj.name);
@@ -796,8 +796,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     var tree = $('sidebarTree');
     var hasTxt = !!(tree && tree.querySelector('.tree-txt-item'));
     var show = state.sortMode === 'name' && hasTxt;
-    bar.classList.toggle('is-show', show);
-    if (show) bar.setAttribute('data-state', 'show'); else bar.removeAttribute('data-state');
+    if (show) bar.setAttribute('data-show', '1'); else bar.removeAttribute('data-show');
     // 不自动判定高亮：由点击/滚动/拖拽交互触发（无交互保持初始排布）
   }
   // 仅当配置分支名/日期为严格 4 位 MMdd 时返回该日期，否则返回空串
@@ -865,19 +864,19 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
   function updateModeToggle() {
     var ml = $('modeLog'), mf = $('modeFilelist');
     if (!ml || !mf) return;
-    ml.classList.remove('is-vl-disabled'); ml.removeAttribute('data-why'); ml.title = '';
-    mf.classList.remove('is-vl-disabled'); mf.removeAttribute('data-why'); mf.title = '';
+    ml.removeAttribute('data-disabled'); ml.removeAttribute('data-why'); ml.title = '';
+    mf.removeAttribute('data-disabled'); mf.removeAttribute('data-why'); mf.title = '';
     if (state.activeProject === REPLICA_PROJECT) {
-      mf.classList.add('is-vl-disabled'); mf.setAttribute('data-why', '复刻模式无配置文件'); mf.title = '复刻模式无配置文件';
+      mf.setAttribute('data-disabled', '1'); mf.setAttribute('data-why', '复刻模式无配置文件'); mf.title = '复刻模式无配置文件';
       return;
     }
     if (state.mode === 'filelist') {
-      if (!state.activeVersion) { ml.classList.add('is-vl-disabled'); ml.setAttribute('data-why', '该配置文件没有对应日志'); ml.title = '该配置文件没有对应日志'; return; }
+      if (!state.activeVersion) { ml.setAttribute('data-disabled', '1'); ml.setAttribute('data-why', '该配置文件没有对应日志'); ml.title = '该配置文件没有对应日志'; return; }
       var d = mmddOf(state.activeVersion.label);
-      if (!d || !state.activeVersion.hasLog) { ml.classList.add('is-vl-disabled'); ml.setAttribute('data-why', '该配置文件没有对应日志'); ml.title = '该配置文件没有对应日志'; }
+      if (!d || !state.activeVersion.hasLog) { ml.setAttribute('data-disabled', '1'); ml.setAttribute('data-why', '该配置文件没有对应日志'); ml.title = '该配置文件没有对应日志'; }
     } else if (state.mode === 'log') {
-      if (!state.activeLogDate) { mf.classList.add('is-vl-disabled'); mf.setAttribute('data-why', '该日志没有对应日期的配置'); mf.title = '该日志没有对应日期的配置'; return; }
-      if (!logDateHasConfig()) { mf.classList.add('is-vl-disabled'); mf.setAttribute('data-why', '该日志没有对应日期的配置'); mf.title = '该日志没有对应日期的配置'; }
+      if (!state.activeLogDate) { mf.setAttribute('data-disabled', '1'); mf.setAttribute('data-why', '该日志没有对应日期的配置'); mf.title = '该日志没有对应日期的配置'; return; }
+      if (!logDateHasConfig()) { mf.setAttribute('data-disabled', '1'); mf.setAttribute('data-why', '该日志没有对应日期的配置'); mf.title = '该日志没有对应日期的配置'; }
     }
   }
   function buildDateBranches(silent) {
@@ -1384,8 +1383,8 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       btnRefresh.addEventListener('click', function () {
         if (btnRefresh.disabled) return;
         btnRefresh.disabled = true;
-        btnRefresh.classList.add('is-spinning');
-        var restore = function () { btnRefresh.disabled = false; btnRefresh.classList.remove('is-spinning'); };
+        btnRefresh.setAttribute('aria-busy', 'true');
+        var restore = function () { btnRefresh.disabled = false; btnRefresh.removeAttribute('aria-busy'); };
         Promise.resolve(refreshPrecacheFlow()).then(restore, restore);
       });
     }
@@ -1582,7 +1581,6 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     }
     var sec = document.querySelector('[data-region="config-editor-col"][data-kind="watermark"] [data-region="wm-section"]');
     if (sec) {
-      sec.classList.toggle('is-watermark-error', !!on);
       if (on) sec.setAttribute('data-state', 'error'); else sec.removeAttribute('data-state');
     }
   }
@@ -3005,12 +3003,11 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     var pname = state.expandedProject;
     if (!pname) return;
     var tree = $('sidebarTree');
-    var header = tree && (tree.querySelector('.tree-project__name.is-filled') || tree.querySelector('[data-region="tree-project__name"][data-state="filled"]'));
+    var header = tree && tree.querySelector('[data-region="tree-project__name"][data-state="filled"]');
     state.expandedProject = null;
-    var azBar = $('azIndexBar'); if (azBar) azBar.classList.remove('is-show');
+    var azBar = $('azIndexBar'); if (azBar) azBar.removeAttribute('data-show');
     if (!header) return;
-    header.classList.remove('is-filled');
-    header.removeAttribute('data-state');
+        header.removeAttribute('data-state');
     var bdg = header.querySelector('.tree-project__badge');
     if (bdg) {
       bdg.classList.remove('tree-project__badge--static'); bdg.removeAttribute('data-static');
@@ -3099,7 +3096,6 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
         var azBar = $('azIndexBar');
         if (!willExpand) {
           // 折叠：项目名反向收回 + azbar 收回；配置区整体从上到下渐隐，重建后仅展开项目下方的项目渐显
-          projectHeader.classList.remove('is-filled');
           projectHeader.removeAttribute('data-state');
           var bdgFold = projectHeader.querySelector('.tree-project__badge');
           if (bdgFold) {
@@ -3108,7 +3104,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
             bdgFold.classList.remove('tree-project__badge--static'); bdgFold.removeAttribute('data-static');
             bdgFold.classList.add('tree-project__badge--leave');
           }
-          if (azBar) azBar.classList.remove('is-show');
+          if (azBar) azBar.removeAttribute('data-show');
           state.expandedProject = null;
           var itemWrap = $('sidebarTree').querySelector('.tree-project__items');
           if (itemWrap) itemWrap.classList.add('tree-project__items--leaving');
@@ -3136,11 +3132,10 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
         //。
         var doExpand = function () {
           state.expandedProject = pname;
-          var oldHeader = $('sidebarTree').querySelector('.tree-project__name.is-filled') || $('sidebarTree').querySelector('[data-region="tree-project__name"][data-state="filled"]');
+          var oldHeader = $('sidebarTree').querySelector('[data-region="tree-project__name"][data-state="filled"]');
           var oldWrap = $('sidebarTree').querySelector('.tree-project__items');
           if (oldHeader) {
-            oldHeader.classList.remove('is-filled');
-            oldHeader.removeAttribute('data-state');
+                        oldHeader.removeAttribute('data-state');
             var bdgOld = oldHeader.querySelector('.tree-project__badge');
             if (bdgOld) {
               // 与折叠分支一致：先摘除 --static 再播 --leave 收回动画
@@ -3166,12 +3161,11 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
             }
             if (newHeader) {
               // 一次性动画类驱动填充（remove 后重加即可重新播放），避免过渡触发时序导致部分项目直接变色
-              newHeader.classList.add('is-filled');
-              newHeader.setAttribute('data-state', 'filled');
-              if (newHeader.classList.contains('is-filling')) newHeader.classList.remove('is-filling');
+                            newHeader.setAttribute('data-state', 'filled');
+              newHeader.removeAttribute('data-anim');
               void newHeader.offsetWidth;
-              newHeader.classList.add('is-filling');
-              window.setTimeout(function () { newHeader.classList.remove('is-filling'); }, 400);
+              newHeader.setAttribute('data-anim', 'fill');
+              window.setTimeout(function () { newHeader.removeAttribute('data-anim'); }, 400);
             }
           };
           if (oldHeader || oldWrap) { window.setTimeout(applyExpand, 50); } else { applyExpand(); }
@@ -4549,11 +4543,11 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     });
     tree.innerHTML = html;
     // 列表重建后选中项一出生就带 active，::before 的 transition 无从触发（没有 0→1 的变化），
-    // 补一次性 az-fill 划入动画 —— 与批量项目名（.is-filling）同款处理
+    // 补一次性 az-fill 划入动画 —— 与批量项目名（data-anim="fill"）同款处理
     var maskActiveEl = tree.querySelector('.mask-proj-item--active');
     if (maskActiveEl) {
-      maskActiveEl.classList.add('is-filling');
-      window.setTimeout(function () { maskActiveEl.classList.remove('is-filling'); }, 400);
+      maskActiveEl.setAttribute('data-anim', 'fill');
+      window.setTimeout(function () { maskActiveEl.removeAttribute('data-anim'); }, 400);
     }
     tree.querySelectorAll('.mask-proj-item').forEach(function (el) {
       el.addEventListener('click', function () { selectMaskProject(el.getAttribute('data-maskproj')); });

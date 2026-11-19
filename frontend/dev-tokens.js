@@ -83,7 +83,8 @@
     box.innerHTML = '';
     for (const it of items) {
       const b = document.createElement('button');
-      b.className = 'dt-chip' + (state.group === it.key ? ' is-on' : '');
+      b.className = 'dt-chip';
+      b.setAttribute('aria-pressed', state.group === it.key ? 'true' : 'false');
       b.textContent = it.label + ' ' + it.n;
       b.addEventListener('click', () => { state.group = it.key; renderGroups(); render(); });
       box.appendChild(b);

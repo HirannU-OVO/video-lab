@@ -76,7 +76,7 @@ body {
   padding: var(--vl-static-spacer-18) var(--vl-static-spacer-22);
   display: none;
 }
-.settings-view.is-active { display: block; }
+.settings-view[data-state="active"] { display: block; }
 /* 差异：下方留 16px（字号/字重/颜色回归基线） */
 .settings-view__title { margin: 0 0 16px; }
 
@@ -270,7 +270,7 @@ body {
   transition: transform .15s ease, color .15s ease;
 }
 .multi-tags__caret:hover { color: var(--vl-alias-text-default); background: var(--vl-alias-bg-overlay-l1); }
-.form-group.is-tags-open .multi-tags__caret { transform: translateY(-50%) rotate(180deg); color: var(--vl-alias-text-default); }
+.form-group[data-open="1"] .multi-tags__caret { transform: translateY(-50%) rotate(180deg); color: var(--vl-alias-text-default); }
 
 /* 输入框行容器（已取消「未保存」星号标记，仅保留基础定位） */
 .field-row { position: relative; }

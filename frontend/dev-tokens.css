@@ -83,7 +83,7 @@
   color: var(--vl-alias-text-secondary);
   border: 1px solid var(--vl-alias-border-neutral-l1);
 }
-.dt-chip.is-on { color: var(--vl-alias-text-onbrand); background: var(--vl-alias-color-primary); border-color: var(--vl-alias-color-primary); }
+.dt-chip[aria-pressed="true"] { color: var(--vl-alias-text-onbrand); background: var(--vl-alias-color-primary); border-color: var(--vl-alias-color-primary); }
 .dt-count { font-size: 12px; color: var(--vl-alias-text-tertiary); white-space: nowrap; }
 .dt-table-wrap { flex: 1; overflow: auto; min-height: 0; }
 .dt-table { width: 100%; border-collapse: collapse; font-size: 12px; }

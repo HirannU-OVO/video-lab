@@ -82,8 +82,8 @@ samp,
     input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
     .vl-input-group input::placeholder { color: var(--vl-alias-text-tertiary); }
     .vl-input-group input:disabled { color: var(--vl-alias-text-disabled); cursor: not-allowed; }
-    .vl-input-group.is-error { border-color: var(--vl-alias-status-error-default); }
-    .vl-input-group.is-disabled { background: var(--vl-alias-bg-base-secondary); color: var(--vl-alias-text-disabled); cursor: not-allowed; }
+    .vl-input-group[data-state="error"] { border-color: var(--vl-alias-status-error-default); }
+    .vl-input-group[data-disabled="1"] { background: var(--vl-alias-bg-base-secondary); color: var(--vl-alias-text-disabled); cursor: not-allowed; }
     .icon-img { display: inline-block; width: 16px; height: 16px; flex: 0 0 16px; object-fit: contain; vertical-align: middle; }
     .icon-img--12 { width: 12px; height: 12px; flex-basis: 12px; }
     .icon-img--14 { width: 14px; height: 14px; flex-basis: 14px; }
@@ -720,7 +720,7 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   cursor: pointer;
   transition: width 0.4s ease, opacity 0.4s ease;
 }
-.sidebar__az-index.is-show {
+.sidebar__az-index[data-show="1"] {
   width: 16px;
   opacity: 1;
   pointer-events: auto;
@@ -814,12 +814,12 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   transform-origin: left center;
   transition: transform 0.32s ease;
 }
-.tree-project__name.is-filled,
+.tree-project__name[data-state="filled"],
 [data-region="tree-project__name"][data-state="filled"] { color: var(--vl-alias-text-onaccent); }
-.tree-project__name.is-filled::before,
+.tree-project__name[data-state="filled"]::before,
 [data-region="tree-project__name"][data-state="filled"]::before { transform: scaleX(1); }
 /* 展开/切换填充动画：一次性动画类驱动，避免依赖过渡触发时序 */
-.tree-project__name.is-filling::before { animation: az-fill 0.32s ease both; }
+.tree-project__name[data-anim="fill"]::before { animation: az-fill 0.32s ease both; }
 @keyframes az-fill {
   from { transform: scaleX(0); }
   to { transform: scaleX(1); }
@@ -877,8 +877,8 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   to { opacity: 0; transform: translateX(-8px); }
 }
 /* 展开填充态：本行子元素（箭头/图标）跟随激活文字色，避免被主题底色盖住看不清 */
-.tree-project__name.is-filled .tree-arrow,
-.tree-project__name.is-filled .tree-project__icon,
+.tree-project__name[data-state="filled"] .tree-arrow,
+.tree-project__name[data-state="filled"] .tree-project__icon,
 [data-region="tree-project__name"][data-state="filled"] .tree-arrow,
 [data-region="tree-project__name"][data-state="filled"] .tree-project__icon { color: var(--vl-alias-text-onaccent); }
 
@@ -1235,7 +1235,7 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   border-left: 1px solid var(--vl-alias-border-neutral-l1);
 }
 /* 水印归属判定不通过：仅水印上半区浅红底（唯一定位提示，与 is-modified 红框互不干扰，不影响下方配置名框） */
-.config-editor__wm-section.is-watermark-error {
+.config-editor__wm-section[data-state="error"] {
   background: var(--vl-alias-status-error-surface-l1);
 }
 .config-resizer {
@@ -1553,7 +1553,7 @@ body[data-preview-collapsed] .center-global-search .vl-input-group {
   --vl-btn-bg-hover: var(--vl-alias-bg-overlay-l1);
   --vl-btn-color-hover: var(--vl-alias-text-default);
 }
-.config-path-subheader__refresh.is-spinning svg { animation: vl-refresh-spin 1s linear infinite; }
+.config-path-subheader__refresh[aria-busy="true"] svg { animation: vl-refresh-spin 1s linear infinite; }
 @keyframes vl-refresh-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 /* 与数据行 __browse 按钮对齐的空占位 */
 .config-path-subheader__browse {
@@ -3453,14 +3453,14 @@ body[data-mask="1"] .right-panel__subtitle { display: none; }
 }
 .mask-proj-item:hover { background: var(--vl-alias-bg-base-tertiary); }
 /* 选中项目：品牌色填充整行（与配置管理模式展开填充一致的视觉） */
-/* 选中项目：与批量项目名（.tree-project__name.is-filled）一致 ——
+/* 选中项目：与批量项目名（.tree-project__name[data-state="filled"]）一致 ——
    主题色填满整行 + 文字/图标反色；填充本身由 ::before 的 scaleX 过渡完成 */
 .mask-proj-item--active { color: var(--vl-alias-text-onaccent); }
 .mask-proj-item--active::before { transform: scaleX(1); }
 /* 一次性划入：列表重建后选中项一出生就带 active，transition 无从触发 ——
-   与批量项目名（.is-filling）同款，改用 az-fill 动画补上。
+   与批量项目名（[data-anim="fill"]）同款，改用 az-fill 动画补上。
    切换选中时侧栏不重建，走上面 ::before 的 transition（旧行反向收回、新行划入）。 */
-.mask-proj-item.is-filling::before { animation: az-fill 0.32s ease both; }
+.mask-proj-item[data-anim="fill"]::before { animation: az-fill 0.32s ease both; }
 .mask-proj-item--active .mask-proj-item__name { color: var(--vl-alias-text-onaccent); }
 .mask-proj-item--active .mask-proj-item__icon { color: var(--vl-alias-text-onaccent); }
 .mask-proj-item__icon { color: var(--vl-alias-text-tertiary); flex-shrink: 0; }
@@ -4028,7 +4028,7 @@ body[data-mask="1"] .center-top { min-height: 0; max-height: none; }
 .toast--info { border-color: var(--vl-skin-toast-border, var(--vl-alias-border-neutral-l2, #d0d0d0)); color: var(--vl-alias-text-default); }
 /* 统一灰显按钮（模拟 disabled 外观，但保留可点 → 点击弹 toast 说明，见 app.js/task.js 全局委托） */
 /* 「灰显但仍可点」语义：改为设基线禁用变量，不再手写外观 */
-button.is-vl-disabled {
+button[data-disabled="1"] {
   --vl-btn-bg: transparent;
   --vl-btn-color: var(--vl-alias-text-disabled);
   --vl-btn-border: var(--vl-alias-border-neutral-l2);
