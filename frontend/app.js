@@ -575,7 +575,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       var expanded = (proj.name === state.expandedProject);
       html += '<div class="tree-project">';
       html += '<div class="tree-project__name' + (expanded ? ' tree-project__name--sticky is-filled' : '') + '" data-region="tree-project__name"' + (expanded ? ' data-state="filled"' : '') + ' data-project="' + escapeHtml(proj.name) + '">';
-      html += '<span class="tree-arrow' + (expanded ? ' tree-arrow--open' : '') + '"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M6 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
+      html += '<span class="tree-arrow' + (expanded ? ' tree-arrow--open' : '') + '" data-region="tree-arrow"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M6 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
       html += icon('folder', 16, 'tree-project__icon');
       html += escapeHtml(proj.name);
       // 项目名行右侧：展开时显示「共 N 个配置」徽章（复刻虚拟项目无配置则不显示）
@@ -608,10 +608,10 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
           var dupCls = (state.highlightDup && txt.dup) ? ' tree-txt-item--dup' : '';
           html += '<div class="tree-txt-item vl-btn vl-btn--ghost' + (isActive ? ' tree-txt-item--active' : '') + dupCls + '" data-region="tree-item"' + (isActive ? ' data-state="active"' : '') + ' data-project="' + escapeHtml(proj.name) + '" data-name="' + escapeHtml(txt.name) + '">';
           html += icon('file-text', 16, 'tree-txt-item__icon');
-          html += '<span class="tree-txt-item__name">' + escapeHtml(txt.name) + '</span>';
+          html += '<span class="tree-txt-item__name" data-region="tree-item-name">' + escapeHtml(txt.name) + '</span>';
           // 复刻子项无配置日期，不显示 latest；徽章显示其日志数
-          if (!isReplica) html += '<span class="tree-txt-item__date">' + escapeHtml(txt.latest) + '</span>';
-          html += '<span class="tree-txt-item__badge">' + txt.count + '</span></div>';
+          if (!isReplica) html += '<span class="tree-txt-item__date" data-region="tree-item-date">' + escapeHtml(txt.latest) + '</span>';
+          html += '<span class="tree-txt-item__badge" data-region="tree-item-badge">' + txt.count + '</span></div>';
         });
         html += '</div>';
       }
@@ -3012,6 +3012,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     if (bdg) {
       bdg.classList.remove('tree-project__badge--static'); bdg.removeAttribute('data-static');
       bdg.classList.add('tree-project__badge--leave');
+      bdg.setAttribute('data-state', 'leave');
     }
     var wrap = header.parentElement ? header.parentElement.querySelector('.tree-project__items') : null;
     if (wrap) wrap.classList.add('tree-project__items--leaving');
