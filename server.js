@@ -199,8 +199,8 @@ function startHttpServer(opts) {
   // 开发者工具：只有以 --dev-tools 启动时才注册该路由 —— 无参数时这个地址直接 404，
   // 面板既进不去、也不在任何界面留入口（与上游「默认关闭的独立件」一致）。
   const devToolsEnabled = opts.devTools === true;
-  // 开发者工具相关的文件（面板页与其样式、脚本）
-  const isDevToolsPath = (rel) => /(^|\/)dev-tokens(\.[A-Za-z0-9]+)?$/.test(String(rel || ''));
+  // 开发者工具相关的文件（面板页与其样式、脚本；含组件展示页 dev-components）
+  const isDevToolsPath = (rel) => /(^|\/)dev-(tokens|components)(\.[A-Za-z0-9]+)?$/.test(String(rel || ''));
   const notFound = (res) => { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('Not Found'); };
   const sseClients = new Set();
 
@@ -628,6 +628,12 @@ function startHttpServer(opts) {
       // 开发者工具面板：未以 --dev-tools 启动时不注册 → 404（普通用户完全无从访问）
       if (devToolsEnabled && (pathname === '/dev-tokens' || pathname === '/dev-tokens.html')) {
       serveStatic(req, res, path.join(FRONTEND_DIR, 'dev-tokens.html'));
+      return;
+      }
+      // 组件展示页：与 dev-tokens 同门控。视觉基线的组件级快照（C-07）需要它走 HTTP 通道，
+      // 否则只能 file:// 采集，与「双宿主一致性」的口径对不上。
+      if (devToolsEnabled && (pathname === '/dev-components' || pathname === '/dev-components.html')) {
+      serveStatic(req, res, path.join(FRONTEND_DIR, 'dev-components.html'));
       return;
       }
     if (pathname === '/manifest.json') {
