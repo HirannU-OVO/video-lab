@@ -48,6 +48,41 @@
     <div class="vl-row" id="rowsTag"></div>
   </section>
 
+  <!-- 状态样例：组件层用到的每个状态在这里各出现一次。
+       守门 verify-state-showcase.js 保证「组件层用到的状态 ⊆ 本页枚举」，新增状态必须补样例。 -->
+  <section class="vl-dc__sec">
+    <h2 class="vl-dc__h2">状态 · 按钮</h2>
+    <div class="vl-row">
+      <button class="vl-btn" aria-pressed="true">按下（aria-pressed）</button>
+      <button class="vl-btn" aria-disabled="true">不可用（aria-disabled）</button>
+      <button class="vl-btn" data-loading="1">提交中（data-loading）</button>
+      <button class="vl-btn" disabled>禁用（disabled）</button>
+    </div>
+  </section>
+
+  <section class="vl-dc__sec">
+    <h2 class="vl-dc__h2">状态 · 输入</h2>
+    <div class="vl-row">
+      <input class="vl-input" value="错误态" aria-invalid="true">
+      <input class="vl-input" value="只读" readonly>
+      <input class="vl-input" value="禁用" disabled>
+    </div>
+  </section>
+
+  <section class="vl-dc__sec">
+    <h2 class="vl-dc__h2">状态 · 选择</h2>
+    <div class="vl-row">
+      <label class="vl-check"><input type="checkbox" checked><span class="vl-check__box"></span>已选中（:checked）</label>
+      <label class="vl-check"><input type="checkbox" disabled><span class="vl-check__box"></span>禁用（:disabled）</label>
+      <label class="vl-check" data-disabled="1"><input type="checkbox"><span class="vl-check__box"></span>只读（data-disabled）</label>
+    </div>
+    <div class="vl-row">
+      <button class="vl-tab" role="tab" aria-selected="true">选中 tab</button>
+      <button class="vl-tab" role="tab" aria-selected="false">未选中 tab</button>
+      <button class="vl-btn vl-btn--ghost" aria-checked="true">切换项（aria-checked）</button>
+    </div>
+  </section>
+
   <script src="common.js"></script>
   <script src="dev-components.js"></script>
 </body>
