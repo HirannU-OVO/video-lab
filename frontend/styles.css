@@ -1,6 +1,10 @@
 @layer reset, tokens, base, layout, components, pages, skins, utilities;
 
-@layer components {
+@layer reset {
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+}
+
+@layer pages {
 /* 等宽字体 JetBrains Mono（SIL OFL 1.1，可商用分发，见 fonts/OFL-JetBrainsMono.txt）：
    内嵌 Regular，用于路径/日志/数值等 mono 场景，不依赖客户端安装。
    用官方标准版（267 KB）而非 Nerd Font Mono 变体（2.4 MB）—— 界面未使用 Nerd Font
@@ -183,7 +187,6 @@ samp,
 /* ═══════════════════════════════════════════════════════════════
    Page-Specific Styles
    ═══════════════════════════════════════════════════════════════ */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; overflow: hidden; }
 body {
   font-family: var(--vl-font-family-base);
