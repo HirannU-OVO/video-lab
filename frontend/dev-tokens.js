@@ -20,10 +20,11 @@
   const layerOf = (n) => { for (const l of LAYERS) if (l.test(n)) return l.key; return 'other'; };
   const layerLabel = (k) => { const l = LAYERS.find(x => x.key === k); return l ? l.label : '其它'; };
 
+  // 皮肤样式表从清单派生（skins/skins.json），新增皮肤无需改这里
+  const SKIN_CSS = (window.VL && window.VL.skins ? window.VL.skins() : []).map((s) => '/frontend/skins/' + s.id + '.css');
   const CSS_FILES = [
-    '/frontend/styles/tokens.css', '/frontend/styles.css', '/frontend/settings.css', '/frontend/guide.css',
-    '/frontend/skins/white_blue.css', '/frontend/skins/Black_Orange.css', '/frontend/skins/Maid_Atelier.css'
-  ];
+    '/frontend/styles/tokens.css', '/frontend/styles.css', '/frontend/settings.css', '/frontend/guide.css'
+  ].concat(SKIN_CSS);
 
   const state = { tokens: [], filter: '', group: 'all', tried: new Map() };
 

@@ -1,0 +1,8 @@
+{
+  "_note": "皮肤清单 · 唯一事实源。主进程白名单、设置页主题列表、令牌面板、行为层加载、注册守门都从这里派生；新增皮肤只改本文件 + skins/_all.css 的 @import（+ 需要时同 id 的 .js）。",
+  "skins": [
+    { "id": "white_blue", "label": "浅色", "bg": "#F5F5F5", "theme": "#4B3FE3" },
+    { "id": "Black_Orange", "label": "深色", "bg": "#111113", "theme": "#FF6600" },
+    { "id": "Maid_Atelier", "label": "深海女仆", "bg": "#0e1d49", "theme": "#c5a468", "js": "skins/Maid_Atelier.js" }
+  ]
+}

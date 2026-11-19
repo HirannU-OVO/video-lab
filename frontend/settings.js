@@ -15,11 +15,10 @@
     if (t && t.tagName === 'INPUT' && (t.type === 'number' || t.type === 'range')) ev.preventDefault();
   }, { passive: false });
 
-  var THEMES = [
-    { id: 'white_blue', label: '浅色', bg: '#F5F5F5', theme: '#4B3FE3' },
-    { id: 'Black_Orange', label: '深色', bg: '#111113', theme: '#FF6600' },
-    { id: 'Maid_Atelier', label: '深海女仆', bg: '#0e1d49', theme: '#c5a468' }
-  ];
+  // 主题列表来自 skins/skins.json（单一事实源），此处不再硬编码
+  var THEMES = window.VL.skins().map(function (s) {
+    return { id: s.id, label: s.label, bg: s.bg, theme: s.theme };
+  });
   var state = {
     batch: { root: '', max_duration: '', max_retry: '', speed_limit: '', txt_prefix: [], producer: '', suffix_mark: '' },
     // ⚠ 复刻不再携带 max_duration / speed_limit —— 这两项与批量拼接共用同一套（后端 runReplica 读 config.batch），

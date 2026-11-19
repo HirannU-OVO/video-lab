@@ -638,8 +638,8 @@
         pauseBtn.style.display = 'none';
       } else {
       pauseBtn.style.display = '';
-      // ⚠ className 是整体覆盖：必须带上 vl-btn，否则只剩 --vl-btn-* 变量无人消费 →
-      //    按钮退回浏览器默认外观（用户 2026-11-19 报「继续按钮变成默认样式」即此原因）
+      // ⚠ className 是整体覆盖：必须带上 vl-btn，否则只剩 --vl-btn-* 变量无人消费，
+      //    按钮会退回浏览器默认外观（原生灰底 / 2px outset 边框 / 13px 字号）。
       pauseBtn.className = 'task-card__pause vl-btn';
       pauseBtn.disabled = false;
       pauseBtn.innerHTML = icon('pause', 12) + '暂停';

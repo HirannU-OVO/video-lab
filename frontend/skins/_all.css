@@ -1,0 +1,11 @@
+@layer reset, tokens, base, layout, components, pages, skins, utilities;
+
+/* 皮肤聚合入口：页面只引这一条，新增皮肤只改本文件的 @import（不再逐页加 <link>）。
+   ⚠ @import 必须位于所有规则之前，因此顺序固定为「层序声明语句 → @import → 空 @layer 块」；
+   空块只用于满足「整表必须入层」的分层守门判据，具体样式仍在各皮肤文件自己的 @layer skins 块里。 */
+@import url("white_blue.css");
+@import url("Black_Orange.css");
+@import url("Maid_Atelier.css");
+
+@layer skins {
+}

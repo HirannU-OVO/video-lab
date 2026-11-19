@@ -18,6 +18,28 @@
     origin: location.origin
   };
 
+  /**
+   * 皮肤清单（单一事实源：skins/skins.json）。
+   * 用同步 XHR 读一次并缓存：本地文件、体积只有几百字节，换来的是「各页初始化顺序无需为异步让路」。
+   * 页面通过 HTTP 加载（软件端与浏览器端都是），file:// 下若被安全策略拒绝则回退内置最简清单。
+   */
+  var _skins = null;
+  root.VL.skins = function () {
+    if (_skins) return _skins;
+    var fallback = [{ id: 'white_blue', label: '浅色', bg: '#F5F5F5', theme: '#4B3FE3' }];
+    try {
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', 'skins/skins.json', false);
+      xhr.send(null);
+      var data = JSON.parse(xhr.responseText);
+      var list = (data && data.skins) || [];
+      _skins = list.length ? list : fallback;
+    } catch (e) {
+      _skins = fallback;
+    }
+    return _skins;
+  };
+
   /** 任务状态 → 中文文案。全项目唯一一份，避免两个窗口对同一状态显示不同文字。 */
   var STATUS_TEXT = {
     queued: '排队中',

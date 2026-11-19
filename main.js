@@ -402,10 +402,18 @@ function defaultRoot() { return path.dirname(projectDir()); }
 //   config_storage（数据目录选择）。数据目录**恒为 %APPDATA%\Video Lab**，该键不再参与路径决策；
 //   老版本可能已把它写进设置库/旧 config.json，不剔除会带着一起进内存并被 get_settings 带出去。
 const OBSOLETE_CONFIG_KEYS = ['scripts_dir', 'use_node_engine', 'config_storage'];
-// 主题（皮肤）白名单 —— 须与前端 app.js 的 SKINS、settings.js 的 THEMES 三处一致
+// 主题（皮肤）白名单 —— **单一事实源是 frontend/skins/skins.json**。
+// 前端 app.js / settings.js / dev-tokens.js 都从同一份清单派生，不再各自硬编码。
 // 写入口必须校验：皮肤 id 是**外部可见**的值（配置文件、IPC、HTTP API 都能写），
 // 前端遇到无法识别的 id 会静默回落到第一个主题 —— 故非法值一律忽略、保留原值，不抛错也不改动其它键。
-const SKIN_IDS = ['white_blue', 'Black_Orange', 'Maid_Atelier'];
+const SKIN_MANIFEST = (() => {
+  try {
+    const raw = JSON.parse(fs.readFileSync(path.join(__dirname, 'frontend', 'skins', 'skins.json'), 'utf8'));
+    return Array.isArray(raw.skins) ? raw.skins : [];
+  } catch (e) { return []; }
+})();
+const SKIN_IDS = SKIN_MANIFEST.map((s) => s && s.id).filter(Boolean);
+if (!SKIN_IDS.length) { SKIN_IDS.push('white_blue'); console.error('[skin] skins.json 读取失败，回退单皮肤'); }
 const isValidSkin = (v) => typeof v === 'string' && SKIN_IDS.indexOf(v.trim()) >= 0;
 // ── 配置读取：settings.db 为唯一业务来源，config.json 只用于「首次引导」与开发者开关 ──
 // ⚠ 业务键一律只从 settings.db 取，**不得回退读 config.json**：config 会逐步简化，

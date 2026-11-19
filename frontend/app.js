@@ -2681,11 +2681,10 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
   // 皮肤列表按下拉名拼音升序：浅色 < 深色
 
   // ── 第 10 节：皮肤、数据刷新与版本切换 ───────────────────────────────────────────
-  var SKINS = [
-    { id: 'white_blue', label: '浅色', bg: '#F5F5F5', theme: '#4B3FE3' },
-    { id: 'Black_Orange', label: '深色', bg: '#111113', theme: '#FF6600' },
-    { id: 'Maid_Atelier', label: '深海女仆', bg: '#0e1d49', theme: '#c5a468' }
-  ];
+  // 皮肤列表来自 skins/skins.json（单一事实源），此处不再硬编码
+  var SKINS = window.VL.skins().map(function (s) {
+    return { id: s.id, label: s.label, bg: s.bg, theme: s.theme };
+  });
   function applySkin(id, persist) {
     var target = SKINS.some(function (s) { return s.id === id; }) ? id : SKINS[0].id;
     document.documentElement.setAttribute('data-skin', target);
