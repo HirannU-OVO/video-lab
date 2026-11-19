@@ -229,7 +229,7 @@ html[data-skin="Maid_Atelier"] [data-region="center-top"] {
 }
 
 /* 日期分支按钮容器：透明，让 navy band 与宫殿背景透出 */
-html[data-skin="Maid_Atelier"] .center-top__dates {
+html[data-skin="Maid_Atelier"] [data-region="center-top-dates"] {
   position: relative;
   z-index: 1;
 }
@@ -421,7 +421,7 @@ html[data-skin="Maid_Atelier"] [data-region="sidebar__root"] > [data-region="sid
 /* ⚠ 与 .is-pressed 合并：:hover/:active 在鼠标拖出按钮后会失效，
    靠 JS 托管的 .is-pressed 保持按下态。 */
 html[data-skin="Maid_Atelier"] [data-region="sidebar__root"] > [data-region="sidebar__footer"] #sidebarToTop:hover,
-html[data-skin="Maid_Atelier"] [data-region="sidebar__root"] > [data-region="sidebar__footer"] #sidebarToTop.is-pressed {
+html[data-skin="Maid_Atelier"] [data-region="sidebar__root"] > [data-region="sidebar__footer"] [data-region="sidebar-to-top"][data-state="pressed"] {
   background: var(--vl-alias-brand-500);
   color: var(--vl-alias-text-onaccent);
   border: none;
@@ -567,7 +567,7 @@ html[data-skin="Maid_Atelier"] body[data-maid-sidebar-size="rail"] [data-skin-ch
 html[data-skin="Maid_Atelier"] [data-region="sidebar__az-index"] {
   margin-left: 4px;
 }
-html[data-skin="Maid_Atelier"] [data-region="sidebar__az-index"].is-show {
+html[data-skin="Maid_Atelier"] [data-region="sidebar__az-index"][data-state="show"] {
   margin-left: 8px;
 }
 /* azbar 首字母激活突出时：字母颜色换成深棕色（与亮金缎带区分明）
@@ -584,7 +584,7 @@ html[data-skin="Maid_Atelier"] [data-region="az-letter"][data-active] {
    让 tile 顶部蕾丝绣花移出可见区，只留 navy 布 + 金色横线）+ 半透明纯色压降。
    启动/未选中态：整行隐藏（上移出画 + 透明），由装饰衬层接管顶部；
    选中态：标题行下移入场、衬层同速上移退场（双向 transition，替换原单向 animation）*/
-html[data-skin="Maid_Atelier"] .center-top__header {
+html[data-skin="Maid_Atelier"] [data-region="center-top-header"] {
   position: relative;
   z-index: 21;
   color: #f8f3e8;
@@ -602,13 +602,13 @@ html[data-skin="Maid_Atelier"] .center-top__header {
 }
 /* 启动/未选中态：标题行整体上移出画（center-top overflow:hidden 裁剪）并透明，
    三种交互都不再显示，点击穿透交由背景与装饰层 */
-html[data-skin="Maid_Atelier"] body:not([data-maid-chat-active]) .center-top__header {
+html[data-skin="Maid_Atelier"] body:not([data-maid-chat-active]) [data-region="center-top-header"] {
   transform: translateY(-36px);
   opacity: 0;
   pointer-events: none;
 }
 /* 标题文字：次要色，紧贴标题行最左（盾徽已移除，不再预留缩进） */
-html[data-skin="Maid_Atelier"] .center-top__title {
+html[data-skin="Maid_Atelier"] [data-region="center-top-title"] {
   padding-left: 0;
   color: #b5c1dd;
 }
@@ -675,7 +675,7 @@ html[data-skin="Maid_Atelier"] .vl-tab {
   transition: color 0.15s ease, background 0.15s ease;
 }
 /* 选中态下划线由组件层 .vl-tab 绘制，颜色见上方 --vl-tab-underline-on */
-html[data-skin="Maid_Atelier"] [data-region="task-tab"][aria-selected="true"] .task-tab__count {
+html[data-skin="Maid_Atelier"] [data-region="task-tab"][aria-selected="true"] [data-region="task-tab-count"] {
   background: rgba(255, 247, 230, 0.16);
   color: #fff7e6;
 }
@@ -748,14 +748,14 @@ html[data-skin="Maid_Atelier"] [data-region="task-list"] > * {
 /* 日志预览高亮块：浅蓝（替代金色 brand-100/200，避免金色高亮刺眼） */
 /* ⚠ 高亮状态只落在行号列（`data-state="target"` 由 app.js 打在 .right-panel__line-num 上），
    代码行从不带该状态 —— 原先针对成片名行的加深色规则形同废码，已删除，别再照抄回来。 */
-html[data-skin="Maid_Atelier"] .right-panel__line-num[data-state="target"] {
+html[data-skin="Maid_Atelier"] [data-region="line-num"][data-state="target"] {
   background: rgba(105, 158, 216, 0.24);
 }
 /* 日志选择模式选中行：浅黄底上白字看不清，整行文字改深蓝色（hover 态恢复默认浅字，避免深蓝叠深背景） */
 html[data-skin="Maid_Atelier"] [data-region="log-list"][data-selecting] [data-region="log-entry"][data-selected]:not(:hover),
-html[data-skin="Maid_Atelier"] [data-region="log-list"][data-selecting] [data-region="log-entry"][data-selected]:not(:hover) .log-entry__video-name,
-html[data-skin="Maid_Atelier"] [data-region="log-list"][data-selecting] [data-region="log-entry"][data-selected]:not(:hover) .log-entry__clip-count,
-html[data-skin="Maid_Atelier"] [data-region="log-list"][data-selecting] [data-region="log-entry"][data-selected]:not(:hover) .log-entry__clip-path {
+html[data-skin="Maid_Atelier"] [data-region="log-list"][data-selecting] [data-region="log-entry"][data-selected]:not(:hover) [data-region="log-entry-name"],
+html[data-skin="Maid_Atelier"] [data-region="log-list"][data-selecting] [data-region="log-entry"][data-selected]:not(:hover) [data-region="log-entry-clip-count"],
+html[data-skin="Maid_Atelier"] [data-region="log-list"][data-selecting] [data-region="log-entry"][data-selected]:not(:hover) [data-region="log-entry-clip-path"] {
   color: #14335e;
 }
 
@@ -778,10 +778,10 @@ html[data-skin="Maid_Atelier"] [data-region="status-bar"]::before {
   opacity: 0.25;
   pointer-events: none;
 }
-html[data-skin="Maid_Atelier"] .status-bar__left {
+html[data-skin="Maid_Atelier"] [data-region="status-bar-left"] {
   position: relative;
 }
-html[data-skin="Maid_Atelier"] .status-bar__left::after {
+html[data-skin="Maid_Atelier"] [data-region="status-bar-left"]::after {
   content: '';
   position: absolute;
   left: 50%;
@@ -862,7 +862,7 @@ html[data-skin="Maid_Atelier"] [data-region="config-resizer"][data-active] {
 /* ── 左侧列表栏三竖线按钮 + 右侧预览栏中缝尺寸栏（蓝金）── */
 /* ⚠ 只声明变量：直接写 background/border/color 会压死页面层的 --vl-btn-* 声明，
    让下面 869-870 行的变量变成死代码（与 .vl-btn--ghost 写死属性同型的事故）。 */
-html[data-skin="Maid_Atelier"] .sidebar-resize-btn,
+html[data-skin="Maid_Atelier"] [data-region="sidebar-resize"],
 html[data-skin="Maid_Atelier"] [data-region="preview-resizer"] {
   --vl-btn-bg: linear-gradient(180deg, rgba(23, 46, 106, 0.95), rgba(11, 24, 64, 0.95));
   --vl-btn-border: rgba(242, 217, 143, 0.55);
@@ -873,13 +873,13 @@ html[data-skin="Maid_Atelier"] [data-region="preview-resizer"] {
   --vl-btn-color-hover: #fff3cf;
 }
 /* 悬浮色已在上面的 --vl-btn-*-hover 声明 */
-html[data-skin="Maid_Atelier"] .sidebar-resize-btn svg {
+html[data-skin="Maid_Atelier"] [data-region="sidebar-resize"] svg {
   width: 14px;
   height: 14px;
 }
 /* 女仆皮肤：三竖线按钮右移 1.5px（净 -8.5px，骑在金边框中间）与实色背景（不透明，不透背景） */
 /* 位移单独一条（定位属布局；配色已在上面的共用规则里用变量表达） */
-html[data-skin="Maid_Atelier"] .sidebar-resize-btn {
+html[data-skin="Maid_Atelier"] [data-region="sidebar-resize"] {
   transform: translate(-50%, -50%) translateX(-8.5px);
 }
 /* 女仆皮肤：按钮 hover 同样使用实色，避免常态实色↔hover 半透明渐变切换时出现"丢背景"闪变 */
@@ -899,13 +899,13 @@ html[data-skin="Maid_Atelier"] :is([data-region="preview-collapse"], [data-regio
 html[data-skin="Maid_Atelier"] [data-region="new-config"] {
   --vl-btn-lift-hover: -1px;
 }
-html[data-skin="Maid_Atelier"] .preview-collapse-round .preview-collapse__icon,
-html[data-skin="Maid_Atelier"] .preview-collapse-round svg {
+html[data-skin="Maid_Atelier"] [data-region="preview-collapse"] svg,
+html[data-skin="Maid_Atelier"] [data-region="preview-collapse"] svg {
   width: 12px;
   height: 12px;
 }
 /* 侧栏「新增配置」按钮的外观已在上面与圆形折叠按钮合并声明，这里只留图标尺寸 */
-html[data-skin="Maid_Atelier"] .sidebar__new-config svg {
+html[data-skin="Maid_Atelier"] [data-region="new-config"] svg {
   width: 12px;
   height: 12px;
 }
@@ -987,7 +987,7 @@ html[data-skin="Maid_Atelier"] [data-region="tree-item"][data-state="active"] > 
   color: var(--vl-skin-maid-gold-light);
 }
 /* ── 水印文件名：严格匹配左侧配置选中常规态（金描边 + 蓝渐变底 + 浅金文字） ── */
-html[data-skin="Maid_Atelier"] .config-watermark__path {
+html[data-skin="Maid_Atelier"] [data-region="watermark-path"] {
   background: linear-gradient(90deg, rgba(30, 58, 120, 0.85), rgba(42, 79, 155, 0.65));
   color: var(--vl-skin-maid-gold-light);
   font-weight: var(--vl-font-font-weight-medium);
@@ -995,7 +995,7 @@ html[data-skin="Maid_Atelier"] .config-watermark__path {
   border-radius: var(--vl-static-radius-6);
   box-shadow: 0 0 8px rgba(245, 220, 120, 0.15), inset 0 0 12px rgba(30, 58, 120, 0.3);
 }
-html[data-skin="Maid_Atelier"] .config-watermark__path:hover {
+html[data-skin="Maid_Atelier"] [data-region="watermark-path"]:hover {
   /* 与激活态常态一致：hover 不再加深/变色 */
   background: linear-gradient(90deg, rgba(30, 58, 120, 0.85), rgba(42, 79, 155, 0.65));
   border-color: rgba(245, 220, 120, 0.6);
@@ -1116,7 +1116,7 @@ html[data-skin="Maid_Atelier"] [data-region="mask-proj-item"]::after {
   pointer-events: none;
   filter: drop-shadow(0 2px 3px rgba(2, 8, 28, 0.48));
 }
-html[data-skin="Maid_Atelier"] [data-region="mask-proj-item"] .mask-proj-item__icon { display: none; }
+html[data-skin="Maid_Atelier"] [data-region="mask-proj-item"] > svg { display: none; }
 html[data-skin="Maid_Atelier"] [data-region="mask-proj-item"][data-state="active"] {
   background: transparent;
   box-shadow: none;
@@ -1124,7 +1124,7 @@ html[data-skin="Maid_Atelier"] [data-region="mask-proj-item"][data-state="active
   text-shadow: 0 1px 2px rgba(2, 8, 28, 0.54);
 }
 html[data-skin="Maid_Atelier"] [data-region="mask-proj-item"][data-state="active"]:hover { background: transparent; }
-html[data-skin="Maid_Atelier"] [data-region="mask-proj-item"][data-state="active"] .mask-proj-item__name { color: #fff8e8; }
+html[data-skin="Maid_Atelier"] [data-region="mask-proj-item"][data-state="active"] [data-region="mask-proj-item-name"] { color: #fff8e8; }
 /* 缎带始终在位：默认为收起（scaleX(0)，不可见），选中展开、取消收回，
    与批量缎带完全同构（transform-origin:left 从左向右划入/向左收回，transition 0.32s ease） */
 html[data-skin="Maid_Atelier"] [data-region="mask-proj-item"]::before {
@@ -1152,8 +1152,8 @@ html[data-skin="Maid_Atelier"] [data-region="mask-proj-item"]::before {
 html[data-skin="Maid_Atelier"] [data-region="mask-proj-item"][data-state="active"]::before {
   transform: scaleX(1);
 }
-html[data-skin="Maid_Atelier"] .mask-proj-item__badge,
-html[data-skin="Maid_Atelier"] [data-region="mask-proj-item"][data-state="active"] .mask-proj-item__badge {
+html[data-skin="Maid_Atelier"] [data-region="mask-proj-item-badge"],
+html[data-skin="Maid_Atelier"] [data-region="mask-proj-item"][data-state="active"] [data-region="mask-proj-item-badge"] {
   background: linear-gradient(180deg, #f2d98f, #d9b65c);
   color: #0a173b;
   text-shadow: none; /* 清除选中态父级继承的文字投影 */
@@ -1162,7 +1162,7 @@ html[data-skin="Maid_Atelier"] [data-region="mask-proj-item"][data-state="active
    本身透明无底色；中心列放行溢出并取消最小高度 → 装饰完整显示、不推挤内容，
    选中后装饰 translateY(-100%) 退场，顶部由 header 材质（选中态自带深蓝底+金线）
    与内容区深底接管，无残留空栏、无蓝底条 */
-html[data-skin="Maid_Atelier"] body.mask-mode [data-region="center-top"] {
+html[data-skin="Maid_Atelier"] body[data-mask="1"] [data-region="center-top"] {
   min-height: 0;
   overflow: visible;
 }
@@ -1171,43 +1171,37 @@ html[data-skin="Maid_Atelier"] [data-region="mask-config"] {
   background: rgba(8, 17, 42, 0.55);
   animation: maidPaneIn 340ms cubic-bezier(0.22, 0.78, 0.2, 1) both;
 }
-/* 静默重复渲染不重放进场（对应批量 config-editor--static） */
-html[data-skin="Maid_Atelier"] [data-region="mask-config"].mask-config--static {
-  animation: none;
-}
-/* 遮罩列表各行 hover：与批量 config-path-row 同款蓝调 */
-html[data-skin="Maid_Atelier"] .mask-folder-row:hover,
+/* 遮罩列表各行 hover：与批量 config-path-row 同款蓝调
+   （`.mask-theme-row` 两条已随死代码删除 —— 该元素全站不再生成） */
+html[data-skin="Maid_Atelier"] [data-region="mask-folder"]:hover,
 html[data-skin="Maid_Atelier"] [data-region="mask-folder"][data-open],
-html[data-skin="Maid_Atelier"] .mask-theme-row:hover,
-html[data-skin="Maid_Atelier"] .mask-theme-row--open,
-html[data-skin="Maid_Atelier"] .mask-file-item:hover,
-html[data-skin="Maid_Atelier"] .mask-group-head:hover,
+html[data-skin="Maid_Atelier"] [data-region="mask-file"]:hover,
+html[data-skin="Maid_Atelier"] [data-region="mask-group-head"]:hover,
 html[data-skin="Maid_Atelier"] [data-region="mask-group-file"]:hover {
   background: rgba(91, 119, 188, 0.14);
 }
 /* 遮罩双栏间竖线（右栏原片素材侧）：女仆皮肤改金色（对应批量编辑器 config-resizer 金线） */
-html[data-skin="Maid_Atelier"] .mask-config__col--raw {
+html[data-skin="Maid_Atelier"] [data-region="mask-config-col"][data-kind="raw"] {
   border-left-color: var(--vl-skin-maid-glass-border);
 }
 /* 遮罩主题字母分组头与时长：女仆皮肤金色系 */
-html[data-skin="Maid_Atelier"] .mask-letter-head__label {
+html[data-skin="Maid_Atelier"] [data-region="mask-letter-label"] {
   color: var(--vl-skin-maid-gold-light);
 }
-html[data-skin="Maid_Atelier"] .mask-letter-head__line {
+html[data-skin="Maid_Atelier"] [data-region="mask-letter-line"] {
   background: var(--vl-skin-maid-glass-border);
 }
-html[data-skin="Maid_Atelier"] .mask-group-file__meta,
-html[data-skin="Maid_Atelier"] .mask-group-head__meta,
-html[data-skin="Maid_Atelier"] .mask-file-item__dur {
+html[data-skin="Maid_Atelier"] [data-region="mask-group-file-meta"],
+html[data-skin="Maid_Atelier"] [data-region="mask-group-meta"],
+html[data-skin="Maid_Atelier"] [data-region="mask-file-dur"] {
   color: var(--vl-skin-maid-gold-light);
 }
-html[data-skin="Maid_Atelier"] .sidebar-menu__item:hover {
+html[data-skin="Maid_Atelier"] [data-region="sidebar-menu-item"]:hover {
   background: var(--vl-skin-maid-gold-glow);
   color: var(--vl-alias-text-default);
 }
 
 /* ── 载入遮罩 / 设置遮罩 ── */
-html[data-skin="Maid_Atelier"] .busy-overlay,
 html[data-skin="Maid_Atelier"] [data-region="settings-dim"] {
   background: rgba(6, 13, 32, 0.6);
   backdrop-filter: blur(4px);
@@ -1256,7 +1250,7 @@ html[data-skin="Maid_Atelier"] body {
 }
 
 /* ── 配置编辑器分隔线 ── */
-html[data-skin="Maid_Atelier"] .config-editor__col--watermark {
+html[data-skin="Maid_Atelier"] [data-region="config-editor-col"][data-kind="watermark"] {
   border-left: 1px solid var(--vl-skin-maid-glass-border);
 }
 
@@ -1269,15 +1263,15 @@ html[data-skin="Maid_Atelier"] .config-editor__col--watermark {
 html[data-skin="Maid_Atelier"] [data-region="config-editor"] {
   background: rgba(8, 17, 42, 0.55);
 }
-html[data-skin="Maid_Atelier"] .config-editor__col-header {
+html[data-skin="Maid_Atelier"] [data-region="config-editor-col-header"] {
   background: rgba(14, 29, 73, 0.6);
   border-bottom-color: rgba(255, 255, 255, 0.06);
 }
-html[data-skin="Maid_Atelier"] .config-editor__col--watermark,
-html[data-skin="Maid_Atelier"] .config-editor__wm-section {
+html[data-skin="Maid_Atelier"] [data-region="config-editor-col"][data-kind="watermark"],
+html[data-skin="Maid_Atelier"] [data-region="wm-section"] {
   background: transparent;
 }
-html[data-skin="Maid_Atelier"] .config-editor__wm-section.is-watermark-error {
+html[data-skin="Maid_Atelier"] [data-region="wm-section"][data-state="error"] {
   background: var(--vl-alias-status-error-surface-l1);
 }
 html[data-skin="Maid_Atelier"] [data-region="config-path-row"] {
@@ -1289,13 +1283,13 @@ html[data-skin="Maid_Atelier"] [data-region="config-path-row"]:hover {
 
 /* 日期分支按钮列表：未选中时透明无框（装饰层接管视觉）；选中后显示分支按钮，
    仅保留简洁 navy band + 底部粗金线 */
-html[data-skin="Maid_Atelier"] body:not([data-maid-chat-active]) .center-top__dates {
+html[data-skin="Maid_Atelier"] body:not([data-maid-chat-active]) [data-region="center-top-dates"] {
   background: transparent;
   border: 0;
   border-radius: 0;
   transition: background 280ms ease, border 280ms ease;
 }
-html[data-skin="Maid_Atelier"] body[data-maid-chat-active] .center-top__dates {
+html[data-skin="Maid_Atelier"] body[data-maid-chat-active] [data-region="center-top-dates"] {
   background:
     linear-gradient(180deg, rgba(16, 36, 86, 0.9), rgba(5, 14, 43, 0.94));
   border: 0;
@@ -1306,7 +1300,7 @@ html[data-skin="Maid_Atelier"] body[data-maid-chat-active] .center-top__dates {
 
 /* 选中配置（对话展开）→ 母本 conversation 形态：
    header 背景为材质 + 纯色（略深）；标题行下缘为细金线（参考配置列表细边框） */
-html[data-skin="Maid_Atelier"] body[data-maid-chat-active] .center-top__header {
+html[data-skin="Maid_Atelier"] body[data-maid-chat-active] [data-region="center-top-header"] {
   transform: translateY(0);
   opacity: 1;
   background:
@@ -1364,7 +1358,7 @@ html[data-skin="Maid_Atelier"] body[data-maid-chat-active] [data-skin-chrome="da
 }
 
 /* ── 中间区内容入场淡入：重建即播放，避免按钮/配置区"突然出现"的割裂感 ── */
-html[data-skin="Maid_Atelier"] .date-branch-btn {
+html[data-skin="Maid_Atelier"] [data-region="date-branch"] {
   animation: maidBtnIn 260ms cubic-bezier(0.22, 0.78, 0.2, 1) both;
 }
 @keyframes maidBtnIn {
@@ -1372,7 +1366,7 @@ html[data-skin="Maid_Atelier"] .date-branch-btn {
   to { opacity: 1; transform: none; }
 }
 /* 配置间切换时静默：按钮不重放进场动画（与徽章/config-editor --static 同思路） */
-html[data-skin="Maid_Atelier"] .date-branch-btn[data-region="date-branch"][data-static] {
+html[data-skin="Maid_Atelier"] [data-region="date-branch"][data-static] {
   animation: none;
 }
 html[data-skin="Maid_Atelier"] [data-region="config-editor"] {
@@ -1389,8 +1383,8 @@ html[data-skin="Maid_Atelier"] [data-region="config-editor"][data-static] {
 
 /* 未选中配置时：两个空态提示框都隐藏（dates 内「从左侧选择一个 TXT」、
    centerBottom 内「请选择一个日期分支查看内容」），装饰层接管该区域视觉 */
-html[data-skin="Maid_Atelier"] body:not([data-maid-chat-active]) .center-top__dates .center-empty,
-html[data-skin="Maid_Atelier"] body:not([data-maid-chat-active]) [data-region="center-bottom"] .center-empty {
+html[data-skin="Maid_Atelier"] body:not([data-maid-chat-active]) [data-region="center-top-dates"] [data-region="center-empty"],
+html[data-skin="Maid_Atelier"] body:not([data-maid-chat-active]) [data-region="center-bottom"] [data-region="center-empty"] {
   display: none;
 }
 
@@ -1531,7 +1525,7 @@ html[data-skin="Maid_Atelier"] [data-region="win-titlebar"] {
   border-bottom: 1px solid rgba(225, 191, 124, 0.55);
   box-shadow: 0 2px 10px rgba(2, 7, 25, 0.28);
 }
-html[data-skin="Maid_Atelier"] .win-titlebar__title {
+html[data-skin="Maid_Atelier"] [data-region="win-titlebar-title"] {
   color: #f4e3bf;
   letter-spacing: 0.06em;
   text-shadow: 0 1px 3px rgba(2, 7, 25, 0.55);
@@ -1547,7 +1541,7 @@ html[data-skin="Maid_Atelier"] [data-region="titlebar-btn"] {
    ⚠ 原先 :hover 直接写 background/color，会压死 --vl-btn-bg-active，
      导致「按下与悬浮同色」，用户看不到点击反馈。
      改法：把 hover 值搬进基础规则的 --vl-btn-*-hover，另给更浓一档的 -active。 */
-html[data-skin="Maid_Atelier"] .win-titlebar__mode {
+html[data-skin="Maid_Atelier"] [data-region="win-titlebar-mode"] {
   --vl-btn-color: var(--vl-skin-maid-gold-light);
   --vl-btn-bg-hover: var(--vl-skin-maid-gold-glow);
   --vl-btn-color-hover: #fff7e6;
@@ -1555,9 +1549,9 @@ html[data-skin="Maid_Atelier"] .win-titlebar__mode {
   --vl-btn-bg-active: rgba(242, 217, 143, 0.26);
   --vl-btn-color-active: #fff7e6;
 }
-html[data-skin="Maid_Atelier"] .win-titlebar__mode i,
+html[data-skin="Maid_Atelier"] [data-region="win-titlebar-mode"] i,
 /* 图标跟随按钮文字色，按下/悬浮时一起变化 */
-html[data-skin="Maid_Atelier"] .win-titlebar__mode svg { color: currentColor; }
+html[data-skin="Maid_Atelier"] [data-region="win-titlebar-mode"] svg { color: currentColor; }
 /* 关闭按钮：悬浮变红（覆盖上面的通用档位） */
 html[data-skin="Maid_Atelier"] [data-region="titlebar-btn"][data-close] {
   --vl-btn-bg-hover: #d34a3f;
@@ -1575,12 +1569,12 @@ html[data-skin="Maid_Atelier"] [data-region="titlebar-btn"][data-close] {
    而同族的 task 橙是 status-warning 的橙金，两者肉眼可辨）。
    需要金色主按钮时请用 .vl-btn--primary（语义就是品牌色主操作）。
    ═══════════════════════════════════════════════════════════════ */
-html[data-skin="Maid_Atelier"] .modal-btn--primary {
+html[data-skin="Maid_Atelier"] [data-region="modal-btn"][data-kind="primary"] {
   background: var(--vl-alias-brand-400);
   border-color: var(--vl-alias-brand-400);
   color: var(--vl-alias-text-onaccent);
 }
-html[data-skin="Maid_Atelier"] .modal-btn--primary:hover {
+html[data-skin="Maid_Atelier"] [data-region="modal-btn"][data-kind="primary"]:hover {
   background: var(--vl-alias-brand-500);
   border-color: var(--vl-alias-brand-500);
 }

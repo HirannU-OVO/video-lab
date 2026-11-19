@@ -53,7 +53,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     var p = wm ? String(wm) : '';
     var showActions = withActions !== false;
     var h = '<div class="config-watermark__row">';
-    if (p) h += '<div class="config-watermark__path" title="' + escapeHtml(p) + '">' + escapeHtml(baseNameNoExt(p)) + '</div>';
+    if (p) h += '<div class="config-watermark__path" data-region="watermark-path" title="' + escapeHtml(p) + '">' + escapeHtml(baseNameNoExt(p)) + '</div>';
     else h += '<div class="config-watermark__path config-watermark__path--empty" data-region="watermark-path" data-empty="1" title="点击更换水印">未设置水印</div>';
     if (showActions) {
       h += '<button type="button" class="config-watermark__btn vl-btn vl-btn--icon' + (p ? '' : ' is-vl-disabled') + '" data-wm="open" title="打开文件"' + (p ? '' : ' data-why="未设置主流水印"') + '>' + icon('image', 15) + '</button>';
@@ -237,8 +237,8 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
               + '</div>'
               + '<div class="modal__actions">'
               + '<button type="button" class="modal-btn vl-btn vl-btn--lift" data-b="cancel">取消</button>'
-              + '<button type="button" class="modal-btn vl-btn vl-btn--lift modal-btn--primary" data-b="full">完全复刻</button>'
-              + '<button type="button" class="modal-btn vl-btn vl-btn--lift modal-btn--primary" data-b="dedup">去重复刻</button>'
+              + '<button type="button" class="modal-btn vl-btn vl-btn--lift modal-btn--primary" data-region="modal-btn" data-kind="primary" data-b="full">完全复刻</button>'
+              + '<button type="button" class="modal-btn vl-btn vl-btn--lift modal-btn--primary" data-region="modal-btn" data-kind="primary" data-b="dedup">去重复刻</button>'
               + '</div>';
             overlay.appendChild(card);
             document.body.appendChild(overlay);
@@ -342,7 +342,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
         '</div>' +
         '<div class="modal__actions">' +
         '<button type="button" class="modal-btn vl-btn vl-btn--lift" data-wm-act="cancel">取消</button>' +
-        '<button type="button" class="modal-btn vl-btn vl-btn--lift modal-btn--primary" data-wm-act="save">保存</button>' +
+        '<button type="button" class="modal-btn vl-btn vl-btn--lift modal-btn--primary" data-region="modal-btn" data-kind="primary" data-wm-act="save">保存</button>' +
         '</div>';
       overlay.appendChild(card);
       document.body.appendChild(overlay);
@@ -797,6 +797,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     var hasTxt = !!(tree && tree.querySelector('.tree-txt-item'));
     var show = state.sortMode === 'name' && hasTxt;
     bar.classList.toggle('is-show', show);
+    if (show) bar.setAttribute('data-state', 'show'); else bar.removeAttribute('data-state');
     // 不自动判定高亮：由点击/滚动/拖拽交互触发（无交互保持初始排布）
   }
   // 仅当配置分支名/日期为严格 4 位 MMdd 时返回该日期，否则返回空串
@@ -890,7 +891,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     }
     if (state.mode === 'log') { buildLogDateBranches(c, silent); return; }
     if (!state.activeTxt || state.versions.length === 0) {
-      c.innerHTML = '<div class="center-empty" style="padding:var(--vl-static-spacer-16)">' + icon('arrow-left', 24, 'center-empty__icon') + '<span class="center-empty__text">从左侧选择一个 TXT</span></div>';
+      c.innerHTML = '<div class="center-empty" data-region="center-empty" style="padding:var(--vl-static-spacer-16)">' + icon('arrow-left', 24, 'center-empty__icon') + '<span class="center-empty__text">从左侧选择一个 TXT</span></div>';
       updateModeToggle();
       return;
     }
@@ -947,13 +948,13 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     var cb = $('centerBottom');
     if (!cb) return; // 容器缺失时安全忽略（遮罩/恢复切换的窗口期）
     if (!state.activeTxt || !state.activeVersion) {
-      cb.innerHTML = '<div class="center-empty">' + icon('file-text', 24, 'center-empty__icon') + '<span class="center-empty__text">请选择一个日期分支查看内容</span></div>';
+      cb.innerHTML = '<div class="center-empty" data-region="center-empty">' + icon('file-text', 24, 'center-empty__icon') + '<span class="center-empty__text">请选择一个日期分支查看内容</span></div>';
       return;
     }
     if (state.mode === 'log') { buildLogConfigBar(); buildLogList(); return; }
     var container = cb;
     var data = state.configData;
-    if (!data) { container.innerHTML = '<div class="center-empty">' + icon('file-text', 24, 'center-empty__icon') + '<span class="center-empty__text">正在加载配置…</span></div>'; return; }
+    if (!data) { container.innerHTML = '<div class="center-empty" data-region="center-empty">' + icon('file-text', 24, 'center-empty__icon') + '<span class="center-empty__text">正在加载配置…</span></div>'; return; }
     var folders = data.folders || [];
     var excludes = data.excludes || [];
     var watermark = data.watermark || '';
@@ -979,22 +980,22 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     html += '<div class="config-resizer" data-region="config-resizer"></div>';
     html += '<div class="config-editor__bottom">';
     html += '<div class="config-editor__col config-editor__col--exclude">';
-    html += '<div class="config-editor__col-header">排除字段 <span class="config-editor__col-count">' + excludes.length + '</span></div>';
+    html += '<div class="config-editor__col-header" data-region="config-editor-col-header">排除字段 <span class="config-editor__col-count">' + excludes.length + '</span></div>';
     html += '<div class="config-editor__exclude-list" id="excludeList">';
     excludes.forEach(function (ex) {
       html += '<div class="config-exclude-row" data-orig="' + escapeHtml(ex) + '"><span class="config-exclude-row__path" title="' + escapeHtml(ex) + '">' + escapeHtml(ex) + '</span><button class="config-exclude-row__remove vl-btn vl-btn--icon" title="移除排除字段">' + icon('x', 12) + '</button></div>';
     });
     html += '</div>';
     html += '<input type="text" class="config-exclude-input" id="inputExclude" placeholder="输入排除字符串，回车添加" spellcheck="false"></div>';
-    html += '<div class="config-editor__col config-editor__col--watermark">';
-    html += '<div class="config-editor__wm-section">';
-    html += '<div class="config-editor__col-header">水印 PNG</div>';
+    html += '<div class="config-editor__col config-editor__col--watermark" data-region="config-editor-col" data-kind="watermark">';
+    html += '<div class="config-editor__wm-section" data-region="wm-section">';
+    html += '<div class="config-editor__col-header" data-region="config-editor-col-header">水印 PNG</div>';
     html += '<div class="config-editor__watermark-content">';
     html += wmRowHtml(watermark);
     html += '</div></div>';
     // 框体下半：配置名（标题行 + 内容栏，与其他框体一致）
-    html += '<div class="config-editor__wm-section">';
-    html += '<div class="config-editor__col-header">配置名</div>';
+    html += '<div class="config-editor__wm-section" data-region="wm-section">';
+    html += '<div class="config-editor__col-header" data-region="config-editor-col-header">配置名</div>';
     html += '<div class="config-editor__wm-field"><input type="text" class="config-bottombar__input config-bottombar__input--name" id="inputConfigName" value="' + escapeHtml((data && data.name) || '') + '"></div></div>';
     html += '</div></div>';
     container.innerHTML = html;
@@ -1579,8 +1580,11 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       flag.style.display = on ? '' : 'none';
       if (on) flag.textContent = missing ? '水印不存在' : '水印错误';
     }
-    var sec = document.querySelector('.config-editor__col--watermark .config-editor__wm-section');
-    if (sec) sec.classList.toggle('is-watermark-error', !!on);
+    var sec = document.querySelector('[data-region="config-editor-col"][data-kind="watermark"] [data-region="wm-section"]');
+    if (sec) {
+      sec.classList.toggle('is-watermark-error', !!on);
+      if (on) sec.setAttribute('data-state', 'error'); else sec.removeAttribute('data-state');
+    }
   }
   // 水印归属判定（可传路径；不传则读当前配置），token 防竞态：仅应用最新一次判定结果
   var _wmCheckToken = 0;
@@ -1943,7 +1947,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
   }
   function buildLogList() {
     var container = $('centerBottom');
-    container.innerHTML = '<div class="center-empty">' + icon('scroll-text', 24, 'center-empty__icon') + '<span class="center-empty__text">正在加载日志…</span></div>';
+    container.innerHTML = '<div class="center-empty" data-region="center-empty">' + icon('scroll-text', 24, 'center-empty__icon') + '<span class="center-empty__text">正在加载日志…</span></div>';
     // 按当前选中的日志分支（精确到日志文件）定位查询目录，切换分支后取对应日志成片
     var probeLog = null;
     if (state.activeProject === REPLICA_PROJECT) {
@@ -1966,7 +1970,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       var q = state.logSearchQuery.trim().toLowerCase();
       if (q) entries = entries.filter(function (en) { return (en.video || '').toLowerCase().indexOf(q) >= 0; });
       if (entries.length === 0) {
-        container.innerHTML = '<div class="center-empty">' + icon('scroll-text', 24, 'center-empty__icon') + '<span class="center-empty__text">' + (q ? '未找到匹配 "' + escapeHtml(state.logSearchQuery) + '" 的成片' : '暂无日志数据') + '</span></div>';
+        container.innerHTML = '<div class="center-empty" data-region="center-empty">' + icon('scroll-text', 24, 'center-empty__icon') + '<span class="center-empty__text">' + (q ? '未找到匹配 "' + escapeHtml(state.logSearchQuery) + '" 的成片' : '暂无日志数据') + '</span></div>';
         return;
       }
       var sel = !!state.selectMode;
@@ -1980,12 +1984,12 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
         html += '<div class="log-entry__header">';
         if (sel) html += '<label class="vl-check log-entry__check-wrap"><input type="checkbox" class="log-entry__check"' + (checked ? ' checked' : '') + ' title="选择该成片进行批量复刻"><span class="vl-check__box"></span></label>';
         html += '<span class="log-entry__arrow">' + icon('chevron-right', 14) + '</span>' + icon('video', 14);
-        html += '<span class="log-entry__video-name" title="' + escapeHtml(entry.video) + '">' + escapeHtml(entry.video || '（未命名成片）') + '</span>';
-        html += '<span class="log-entry__clip-count">' + clips.length + ' 片段</span>';
+        html += '<span class="log-entry__video-name" data-region="log-entry-name" title="' + escapeHtml(entry.video) + '">' + escapeHtml(entry.video || '（未命名成片）') + '</span>';
+        html += '<span class="log-entry__clip-count" data-region="log-entry-clip-count">' + clips.length + ' 片段</span>';
         html += '<button class="log-entry__replica vl-btn" title="用该日志发起复刻">' + icon('repeat', 13) + '复刻</button>';
         html += '</div>';
         html += '<div class="log-entry__clips" style="display:none">';
-        clips.forEach(function (clip) { html += '<div class="log-entry__clip" data-path="' + escapeHtml(clip) + '">' + icon('video', 12) + '<span class="log-entry__clip-path" title="' + escapeHtml(clip) + '">' + escapeHtml(clip) + '</span></div>'; });
+        clips.forEach(function (clip) { html += '<div class="log-entry__clip" data-path="' + escapeHtml(clip) + '">' + icon('video', 12) + '<span class="log-entry__clip-path" data-region="log-entry-clip-path" title="' + escapeHtml(clip) + '">' + escapeHtml(clip) + '</span></div>'; });
         html += '</div></div>';
       });
       html += '</div>';
@@ -1997,7 +2001,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
         if (tries > 1) setTimeout(function () { retryFocus(cont, tries - 1); }, 300);
         else state.focusVideo = null;
       })(container, 8);
-    }).catch(function (e) { container.innerHTML = '<div class="center-empty">' + icon('search-x', 24, 'center-empty__icon') + '<span class="center-empty__text">加载日志失败：' + escapeHtml(e.message) + '</span></div>'; });
+    }).catch(function (e) { container.innerHTML = '<div class="center-empty" data-region="center-empty">' + icon('search-x', 24, 'center-empty__icon') + '<span class="center-empty__text">加载日志失败：' + escapeHtml(e.message) + '</span></div>'; });
     container.oncontextmenu = function (e) {
       var clip = e.target.closest('.log-entry__clip');
       if (clip) {
@@ -2366,7 +2370,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     subtitle.title = subtitle.textContent;
     var numHtml = ''; var codeHtml = '';
     lines.forEach(function (line, idx) {
-      numHtml += '<span class="right-panel__line-num">' + (idx + 1) + '</span>';
+      numHtml += '<span class="right-panel__line-num" data-region="line-num">' + (idx + 1) + '</span>';
       var cls = 'right-panel__code-line';
       var t = line == null ? '' : line;
       if (t === '') cls += ' code-line--empty';
@@ -2413,7 +2417,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     files.forEach(function (f) {
       f.lines.forEach(function (line, li) {
         row++;
-        numHtml += '<span class="right-panel__line-num" data-row="' + row + '">' + row + '</span>';
+        numHtml += '<span class="right-panel__line-num" data-region="line-num" data-row="' + row + '">' + row + '</span>';
         var t = line == null ? '' : line;
         var tt = String(t).trim();
         // 简化模式：去掉原始 txt 自带的分割线行（==== / ---- 等）
@@ -3866,7 +3870,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     card.innerHTML =
       '<button type="button" class="modal-close vl-btn vl-btn--icon" title="关闭">✕</button>' +
       '<div class="changelog-card__body"></div>' +
-      '<div class="changelog-card__actions"><button type="button" class="modal-btn vl-btn vl-btn--lift modal-btn--primary">知道了</button></div>';
+      '<div class="changelog-card__actions"><button type="button" class="modal-btn vl-btn vl-btn--lift modal-btn--primary" data-region="modal-btn" data-kind="primary">知道了</button></div>';
     var body = card.querySelector('.changelog-card__body');
     body.innerHTML = renderMdMd(content);
     var done = function () {
@@ -4537,10 +4541,10 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       var active = maskState.project && maskState.project.name === p.name;
       html += '<div class="mask-proj-item' + (active ? ' mask-proj-item--active' : '') + '" data-region="mask-proj-item"' + (active ? ' data-state="active"' : '') + ' data-maskproj="' + escapeHtml(p.name) + '">' +
         icon('folder', 16, 'mask-proj-item__icon') +
-        '<span class="mask-proj-item__name">' + escapeHtml(p.name) + '</span>' +
+        '<span class="mask-proj-item__name" data-region="mask-proj-item-name">' + escapeHtml(p.name) + '</span>' +
         // 软件内新建、尚未放素材的项目：说「暂无素材」而不是「0种遮罩」——
         // 后者读起来像"这个项目坏了/是空的"，前者才是实情（等用户放 .mov 进来即可）
-        '<span class="mask-proj-item__badge">' + (p.isEmptyProject
+        '<span class="mask-proj-item__badge" data-region="mask-proj-item-badge">' + (p.isEmptyProject
           ? '暂无素材'
           : ((p.themeCount != null ? p.themeCount : (p.themes ? p.themes.length : 0)) + '种遮罩')) + '</span></div>';
     });
@@ -4590,7 +4594,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
         '</div>' +
         '<div class="modal__actions">' +
         '<button type="button" class="modal-btn vl-btn vl-btn--lift" data-mp2-act="cancel">取消</button>' +
-        '<button type="button" class="modal-btn vl-btn vl-btn--lift modal-btn--primary" data-mp2-act="save">保存</button>' +
+        '<button type="button" class="modal-btn vl-btn vl-btn--lift modal-btn--primary" data-region="modal-btn" data-kind="primary" data-mp2-act="save">保存</button>' +
         '</div>';
       overlay.appendChild(card);
       document.body.appendChild(overlay);
@@ -4725,10 +4729,10 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     if (!panel) return;
     if (!maskState.project) {
       if (!maskState.projects.length) {
-        panel.innerHTML = '<div class="center-empty">' + icon('layers', 24, 'center-empty__icon') +
+        panel.innerHTML = '<div class="center-empty" data-region="center-empty">' + icon('layers', 24, 'center-empty__icon') +
           '<span class="center-empty__text">暂无遮罩叠加项目<br>请在 菜单-设置-遮罩叠加 配置工作路径后重试</span></div>';
       } else {
-        panel.innerHTML = '<div class="center-empty">' + icon('layers', 24, 'center-empty__icon') + '<span class="center-empty__text">请在左侧选择一个遮罩叠加项目</span></div>';
+        panel.innerHTML = '<div class="center-empty" data-region="center-empty">' + icon('layers', 24, 'center-empty__icon') + '<span class="center-empty__text">请在左侧选择一个遮罩叠加项目</span></div>';
       }
       return;
     }
@@ -4748,7 +4752,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       html += '</div></div>';
     }
     // ── 右栏：原片选择（标题固定，列表独立滚动） ──
-    html += '<div class="mask-config__col mask-config__col--raw"><div class="mask-config__section-title"><span class="mask-config__title">原片</span>' +
+    html += '<div class="mask-config__col mask-config__col--raw" data-region="mask-config-col" data-kind="raw"><div class="mask-config__section-title"><span class="mask-config__title">原片</span>' +
       '<button type="button" class="mask-config__addbtn vl-btn" id="maskAddRawFile" title="添加单个原片文件（mp4 等视频）">' + icon('plus', 12) + '添加文件</button>' +
       '<button type="button" class="mask-config__addbtn vl-btn" id="maskAddRawDir" title="添加原片文件夹（其中视频递归扫描）">' + icon('plus', 12) + '添加文件夹</button></div><div class="mask-config__list">';
     if (!maskState.rawDirs.length) {
@@ -4907,10 +4911,10 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
             // 单文件项（用户直接添加的视频）：路径即文件本身，不能再往下拼文件名
             var full = rd.single ? rd.path : maskFullPath(rd.path, f.sub, f.name);
             var sel = selNames.indexOf(f.rel) >= 0;
-            html += '<label class="mask-file-item" data-full="' + escapeHtml(full) + '"><input type="checkbox" data-vid="' + escapeHtml(f.rel) + '" data-dur="' + (f.dur || 0) + '"' + (sel ? ' checked' : '') + '>' +
+            html += '<label class="mask-file-item" data-region="mask-file" data-full="' + escapeHtml(full) + '"><input type="checkbox" data-vid="' + escapeHtml(f.rel) + '" data-dur="' + (f.dur || 0) + '"' + (sel ? ' checked' : '') + '>' +
               '<span class="mask-file-item__box"></span>' +
               '<span class="mask-file-item__name" title="' + escapeHtml(full) + '">' + (f.sub ? escapeHtml(f.sub) + '/' : '') + escapeHtml(f.name) + '</span>' +
-              '<span class="mask-file-item__dur">' + maskFmtDur(f.dur) + '</span></label>';
+              '<span class="mask-file-item__dur" data-region="mask-file-dur">' + maskFmtDur(f.dur) + '</span></label>';
           });
           html += '</div></div>';
         });
@@ -4921,10 +4925,10 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
           var full = rd.single ? rd.path : maskFullPath(rd.path, f.sub, f.name);
           var selNames = maskState.rawSel[rd.path] || [];
           var sel = selNames.indexOf(f.rel) >= 0;
-          html += '<label class="mask-file-item" data-full="' + escapeHtml(full) + '"><input type="checkbox" data-vid="' + escapeHtml(f.rel) + '" data-dur="' + (f.dur || 0) + '"' + (sel ? ' checked' : '') + '>' +
+          html += '<label class="mask-file-item" data-region="mask-file" data-full="' + escapeHtml(full) + '"><input type="checkbox" data-vid="' + escapeHtml(f.rel) + '" data-dur="' + (f.dur || 0) + '"' + (sel ? ' checked' : '') + '>' +
             '<span class="mask-file-item__box"></span>' +
             '<span class="mask-file-item__name" title="' + escapeHtml(full) + '">' + (f.sub ? escapeHtml(f.sub) + '/' : '') + escapeHtml(f.name) + '</span>' +
-            '<span class="mask-file-item__dur">' + maskFmtDur(f.dur) + '</span></label>';
+            '<span class="mask-file-item__dur" data-region="mask-file-dur">' + maskFmtDur(f.dur) + '</span></label>';
         });
       }
       box.innerHTML = html;
@@ -5106,7 +5110,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
       });
       var azOrder = AZ_KEYS.concat('#');
       Object.keys(letterMap).sort(function (a, b) { return azOrder.indexOf(a) - azOrder.indexOf(b); }).forEach(function (L) {
-        html += '<div class="mask-letter-head"><span class="mask-letter-head__label">' + escapeHtml(L) + '</span><span class="mask-letter-head__line"></span></div>';
+        html += '<div class="mask-letter-head" data-region="mask-letter-head"><span class="mask-letter-head__label" data-region="mask-letter-label">' + escapeHtml(L) + '</span><span class="mask-letter-head__line" data-region="mask-letter-line"></span></div>';
         letterMap[L].forEach(function (g) {
           var allSel = g.files.every(function (f) { return maskState.maskSel[f.full] === true; });
           var anySel = g.files.some(function (f) { return maskState.maskSel[f.full] === true; });
@@ -5119,17 +5123,17 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
             var f0 = g.files[0];
             var s0 = maskState.maskSel[f0.full] === true;
             html += '<div class="mask-group mask-group--single">' +
-              '<div class="mask-group-head mask-group-head--single" data-full="' + escapeHtml(f0.full) + '">' +
+              '<div class="mask-group-head mask-group-head--single" data-region="mask-group-head" data-full="' + escapeHtml(f0.full) + '">' +
               '<label class="mask-group-head__check"><input type="checkbox" data-grpall="' + gi + '" data-dur="' + (f0.dur || 0) + '"' + (s0 ? ' checked' : '') + '><span class="mask-group-head__box"></span></label>' +
               '<span class="mask-group-head__name" title="' + escapeHtml(f0.full) + '">' + escapeHtml(maskDisplayName(g.prefix)) + '</span>' +
-              '<span class="mask-group-head__meta">' + maskFmtDur(f0.dur) + '</span></div></div>';
+              '<span class="mask-group-head__meta" data-region="mask-group-meta">' + maskFmtDur(f0.dur) + '</span></div></div>';
           } else {
             var gHeadTip = g.files[0].full + (g.files.length > 1 ? '\n（共 ' + g.files.length + ' 个文件）' : '');
             html += '<div class="mask-group">' +
-              '<div class="mask-group-head' + (anySel ? ' mask-group-head--open' : '') + '" data-full="' + escapeHtml(g.files[0].full) + '">' +
+              '<div class="mask-group-head' + (anySel ? ' mask-group-head--open' : '') + '" data-region="mask-group-head"' + (anySel ? ' data-state="open"' : '') + ' data-full="' + escapeHtml(g.files[0].full) + '">' +
               '<label class="mask-group-head__check"><input type="checkbox" data-grpall="' + gi + '"' + (allSel ? ' checked' : '') + '><span class="mask-group-head__box"></span></label>' +
               '<span class="mask-group-head__name" title="' + escapeHtml(gHeadTip) + '">' + escapeHtml(maskDisplayName(g.prefix)) + '</span>' +
-              '<span class="mask-group-head__meta">' + g.files.length + ' 个' + '</span>' +
+              '<span class="mask-group-head__meta" data-region="mask-group-meta">' + g.files.length + ' 个' + '</span>' +
               '<span class="mask-group-head__arrow"></span></div>' +
               '<div class="mask-group-files"' + (anySel ? '' : ' style="display:none"') + '>';
             g.files.forEach(function (f, fi) {
@@ -5137,7 +5141,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
               html += '<label class="mask-group-file" data-region="mask-group-file" data-full="' + escapeHtml(f.full) + '"><input type="checkbox" data-grpfile="' + gi + '_' + fi + '" data-dur="' + (f.dur || 0) + '"' + (sel ? ' checked' : '') + '>' +
                 '<span class="mask-group-file__box"></span>' +
                 '<span class="mask-group-file__name" title="' + escapeHtml(f.full) + '">' + (f.sub ? escapeHtml(maskDisplayName(f.sub)) + '/' : '') + escapeHtml(maskDisplayName(f.name)) + '</span>' +
-                '<span class="mask-group-file__meta">' + maskFmtDur(f.dur) + '</span></label>';
+                '<span class="mask-group-file__meta" data-region="mask-group-file-meta">' + maskFmtDur(f.dur) + '</span></label>';
             });
             html += '</div></div>';
           }
@@ -5245,7 +5249,7 @@ var escapeHtml = VL.esc;   // HTML 转义：实现见 common.js
     var box = $('centerBottom');
     if (!box) return;
     if (!maskState.project) {
-      box.innerHTML = '<div class="center-empty">' + icon('layers', 24, 'center-empty__icon') + '<span class="center-empty__text">请在左侧选择一个遮罩叠加项目</span></div>';
+      box.innerHTML = '<div class="center-empty" data-region="center-empty">' + icon('layers', 24, 'center-empty__icon') + '<span class="center-empty__text">请在左侧选择一个遮罩叠加项目</span></div>';
       return;
     }
     var q = (maskState.search || '').toLowerCase();

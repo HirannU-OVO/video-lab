@@ -25,7 +25,7 @@ var m = new URL(location.href).searchParams.get('token');
 </head>
 <body>
   <div class="win-titlebar" id="winTitlebar" data-region="win-titlebar">
-    <span class="win-titlebar__title">Video Lab - 任务</span>
+    <span class="win-titlebar__title" data-region="win-titlebar-title">Video Lab - 任务</span>
     <div class="win-titlebar__controls">
       <button class="win-titlebar__btn vl-btn vl-btn--ghost win-titlebar__btn--close" data-region="titlebar-btn" data-close="1" data-wctl="close" title="关闭">
         <svg viewBox="0 0 12 12"><path d="M3 3l6 6M9 3L3 9" stroke="currentColor" stroke-width="1" stroke-linecap="round"></path></svg>
@@ -34,13 +34,13 @@ var m = new URL(location.href).searchParams.get('token');
   </div>
   <div class="task-tabs" id="taskTabs" role="tablist" data-region="task-tabs">
     <button data-region="task-tab" class="task-tab vl-tab" role="tab" aria-selected="true" data-tab="running" id="tabRunning">
-      <i data-icon="play" data-size="16"></i><span>正在运行</span><span class="task-tab__count" id="cntRunning">0</span>
+      <i data-icon="play" data-size="16"></i><span>正在运行</span><span class="task-tab__count" data-region="task-tab-count" id="cntRunning">0</span>
     </button>
     <button data-region="task-tab" class="task-tab vl-tab" role="tab" aria-selected="false" data-tab="done" id="tabDone">
-      <i data-icon="check" data-size="16"></i><span>已完成</span><span class="task-tab__count" id="cntDone">0</span>
+      <i data-icon="check" data-size="16"></i><span>已完成</span><span class="task-tab__count" data-region="task-tab-count" id="cntDone">0</span>
     </button>
     <button data-region="task-tab" class="task-tab vl-tab" role="tab" aria-selected="false" data-tab="stopped" id="tabStopped">
-      <i data-icon="stop" data-size="16"></i><span>已停止</span><span class="task-tab__count" id="cntStopped">0</span>
+      <i data-icon="stop" data-size="16"></i><span>已停止</span><span class="task-tab__count" data-region="task-tab-count" id="cntStopped">0</span>
     </button>
   </div>
   <div class="task-main">

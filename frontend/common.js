@@ -512,7 +512,7 @@
     if (typeof document === "undefined") return;
     function clearAll() {
       var list = document.querySelectorAll(".is-pressed");
-      for (var i = 0; i < list.length; i++) list[i].classList.remove("is-pressed");
+      for (var i = 0; i < list.length; i++) { list[i].classList.remove("is-pressed"); list[i].removeAttribute("data-state"); }
     }
     document.addEventListener("pointerdown", function (e) {
       var el = e.target && e.target.closest ? e.target.closest(".vl-btn") : null;
@@ -520,6 +520,8 @@
       if (el.hasAttribute("disabled") || el.getAttribute("aria-disabled") === "true") return;
       if (el.classList.contains("is-vl-disabled")) return;
       el.classList.add("is-pressed");
+      // 状态属性化（C-03）：皮肤按 [data-state="pressed"] 接管按下态，不必依赖 .is-pressed 类名
+      el.setAttribute("data-state", "pressed");
     }, true);
     document.addEventListener("pointerup", clearAll, true);
     document.addEventListener("pointercancel", clearAll, true);
